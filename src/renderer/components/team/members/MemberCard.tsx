@@ -35,6 +35,8 @@ export const MemberCard = ({
   const totalTasks = pending + inProgress + completed;
   const completedRatio = totalTasks > 0 ? completed / totalTasks : 0;
 
+  const progressPercent = Math.round(completedRatio * 100);
+
   return (
     <div className="rounded">
       <div
@@ -116,26 +118,18 @@ export const MemberCard = ({
           </button>
         </div>
       </div>
-      <div className="rounded-b border-x border-b border-t-0 border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1">
-        <div className="flex items-center gap-2">
-          <div
-            className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-raised)]"
-            role="progressbar"
-            aria-valuenow={completed}
-            aria-valuemin={0}
-            aria-valuemax={totalTasks}
-            aria-label={`Tasks ${completed}/${totalTasks} completed`}
-          >
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-all duration-200"
-              style={{ width: `${Math.round(completedRatio * 100)}%` }}
-            />
-          </div>
-          <span className="shrink-0 text-[10px] font-medium tabular-nums text-[var(--color-text-muted)]">
-            {completed}/{totalTasks}
-          </span>
-        </div>
-      </div>
+      <div
+        className="h-0.5 rounded-b bg-[var(--color-border)]"
+        role="progressbar"
+        aria-valuenow={completed}
+        aria-valuemin={0}
+        aria-valuemax={totalTasks}
+        aria-label={`Tasks ${completed}/${totalTasks} completed`}
+        title={`${completed}/${totalTasks} tasks`}
+        style={{
+          background: `linear-gradient(to right, #10b981 ${progressPercent}%, var(--color-border) ${progressPercent}%)`,
+        }}
+      />
     </div>
   );
 };

@@ -25,7 +25,7 @@ function collectFromOptions(messages: InboxMessage[]): string[] {
   for (const m of messages) {
     if (m.from?.trim()) set.add(m.from.trim());
   }
-  return Array.from(set).sort();
+  return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
 function collectToOptions(messages: InboxMessage[]): string[] {
@@ -33,7 +33,7 @@ function collectToOptions(messages: InboxMessage[]): string[] {
   for (const m of messages) {
     if (m.to?.trim()) set.add(m.to.trim());
   }
-  return Array.from(set).sort();
+  return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 }
 
 export const MessagesFilterPopover = ({
@@ -47,10 +47,12 @@ export const MessagesFilterPopover = ({
 
   useEffect(() => {
     if (open) {
-      setDraft({
+      const next = {
         from: new Set(filter.from),
         to: new Set(filter.to),
-      });
+      };
+      const schedule = (): void => setDraft(next);
+      queueMicrotask(schedule);
     }
   }, [open, filter.from, filter.to]);
 
