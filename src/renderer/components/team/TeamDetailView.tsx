@@ -3,9 +3,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@renderer/api';
 import { Button } from '@renderer/components/ui/button';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
+import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { buildTaskCountsByOwner } from '@renderer/utils/pathNormalize';
+import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { MessageSquare, Pencil, Play, Plus, Search, Trash2, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -286,6 +288,12 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     }
     return list;
   }, [data, timeWindow, messagesFilter, messagesSearchQuery]);
+
+  const { readSet, markRead } = useTeamMessagesRead(teamName ?? '');
+  const messagesUnreadCount = useMemo(
+    () => filteredMessages.filter((m) => !readSet.has(toMessageKey(m))).length,
+    [filteredMessages, readSet]
+  );
 
   const kanbanDisplayTasks = useMemo(() => {
     const query = kanbanSearch.trim();
@@ -623,6 +631,9 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       <CollapsibleTeamSection
         title="Messages"
         badge={filteredMessages.length}
+        secondaryBadge={
+          filteredMessages.length > 0 && messagesUnreadCount > 0 ? messagesUnreadCount : undefined
+        }
         defaultOpen
         action={
           <div className="flex items-center gap-2 pl-2">
@@ -680,6 +691,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
             setReplyQuote({ from: message.from, text: message.text });
             setSendDialogOpen(true);
           }}
+          onMessageVisible={(message) => markRead(toMessageKey(message))}
         />
       </CollapsibleTeamSection>
 

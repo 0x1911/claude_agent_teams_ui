@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useRef } from 'react';
+
 import { getMemberColorByName } from '@shared/constants/memberColors';
 
 import { ActivityItem } from './ActivityItem';
@@ -10,7 +12,72 @@ interface ActivityTimelineProps {
   onCreateTaskFromMessage?: (subject: string, description: string) => void;
   onReplyToMessage?: (message: InboxMessage) => void;
   onMemberClick?: (member: ResolvedTeamMember) => void;
+  /** Called when a message enters the viewport (for marking as read). */
+  onMessageVisible?: (message: InboxMessage) => void;
 }
+
+const VIEWPORT_THRESHOLD = 0.15;
+
+const MessageRowWithObserver = ({
+  message,
+  memberRole,
+  memberColor,
+  recipientColor,
+  onMemberNameClick,
+  onCreateTask,
+  onReply,
+  onVisible,
+}: {
+  message: InboxMessage;
+  memberRole?: string;
+  memberColor?: string;
+  recipientColor?: string;
+  onMemberNameClick?: (name: string) => void;
+  onCreateTask?: (subject: string, description: string) => void;
+  onReply?: (message: InboxMessage) => void;
+  onVisible?: (message: InboxMessage) => void;
+}): React.JSX.Element => {
+  const ref = useRef<HTMLDivElement>(null);
+  const reportedRef = useRef(false);
+
+  const handleIntersect = useCallback(
+    (entry: IntersectionObserverEntry) => {
+      if (!entry.isIntersecting || !onVisible) return;
+      if (reportedRef.current) return;
+      reportedRef.current = true;
+      onVisible(message);
+    },
+    [message, onVisible]
+  );
+
+  useEffect(() => {
+    if (!onVisible) return;
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry) handleIntersect(entry);
+      },
+      { threshold: VIEWPORT_THRESHOLD, rootMargin: '0px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onVisible, handleIntersect]);
+
+  return (
+    <div ref={ref} className="min-h-px">
+      <ActivityItem
+        message={message}
+        memberRole={memberRole}
+        memberColor={memberColor}
+        recipientColor={recipientColor}
+        onMemberNameClick={onMemberNameClick}
+        onCreateTask={onCreateTask}
+        onReply={onReply}
+      />
+    </div>
+  );
+};
 
 export const ActivityTimeline = ({
   messages,
@@ -18,6 +85,7 @@ export const ActivityTimeline = ({
   onCreateTaskFromMessage,
   onReplyToMessage,
   onMemberClick,
+  onMessageVisible,
 }: ActivityTimelineProps): React.JSX.Element => {
   const memberInfo = new Map<string, { role?: string; color?: string }>();
   if (members) {
@@ -54,9 +122,10 @@ export const ActivityTimeline = ({
         const recipientInfo = message.to ? memberInfo.get(message.to) : undefined;
         const recipientColor =
           recipientInfo?.color ?? (message.to ? getMemberColorByName(message.to) : undefined);
+        const messageKey = `${message.messageId ?? index}-${message.timestamp}-${message.from}`;
         return (
-          <ActivityItem
-            key={`${message.messageId ?? index}-${message.timestamp}-${message.from}`}
+          <MessageRowWithObserver
+            key={messageKey}
             message={message}
             memberRole={info?.role}
             memberColor={info?.color}
@@ -64,6 +133,7 @@ export const ActivityTimeline = ({
             onMemberNameClick={onMemberClick ? handleMemberNameClick : undefined}
             onCreateTask={onCreateTaskFromMessage}
             onReply={onReplyToMessage}
+            onVisible={onMessageVisible}
           />
         );
       })}

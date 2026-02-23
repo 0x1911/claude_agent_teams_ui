@@ -6,6 +6,8 @@ import { ChevronRight } from 'lucide-react';
 interface CollapsibleTeamSectionProps {
   title: string;
   badge?: string | number;
+  /** Secondary badge (e.g. unread count). Shown next to main badge when defined. */
+  secondaryBadge?: number;
   defaultOpen?: boolean;
   forceOpen?: boolean;
   action?: React.ReactNode;
@@ -15,6 +17,7 @@ interface CollapsibleTeamSectionProps {
 export const CollapsibleTeamSection = ({
   title,
   badge,
+  secondaryBadge,
   defaultOpen = true,
   forceOpen,
   action,
@@ -42,6 +45,19 @@ export const CollapsibleTeamSection = ({
               className="px-1.5 py-0.5 text-[10px] font-normal leading-none"
             >
               {badge}
+            </Badge>
+          )}
+          {secondaryBadge != null && secondaryBadge >= 0 && (
+            <Badge
+              variant="secondary"
+              className={
+                secondaryBadge > 0
+                  ? 'bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-normal leading-none text-blue-400'
+                  : 'px-1.5 py-0.5 text-[10px] font-normal leading-none text-[var(--color-text-muted)]'
+              }
+              title={secondaryBadge > 0 ? `${secondaryBadge} unread` : undefined}
+            >
+              {secondaryBadge}
             </Badge>
           )}
         </button>
