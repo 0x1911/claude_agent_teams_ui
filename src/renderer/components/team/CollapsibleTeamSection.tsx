@@ -8,6 +8,8 @@ interface CollapsibleTeamSectionProps {
   badge?: string | number;
   /** Secondary badge (e.g. unread count). Shown next to main badge when defined. */
   secondaryBadge?: number;
+  /** Extra element rendered inline after badges (e.g. notification icon). */
+  headerExtra?: React.ReactNode;
   defaultOpen?: boolean;
   forceOpen?: boolean;
   action?: React.ReactNode;
@@ -18,6 +20,7 @@ export const CollapsibleTeamSection = ({
   title,
   badge,
   secondaryBadge,
+  headerExtra,
   defaultOpen = true,
   forceOpen,
   action,
@@ -58,6 +61,7 @@ export const CollapsibleTeamSection = ({
               {secondaryBadge} new
             </Badge>
           )}
+          {headerExtra}
         </div>
         {action && <div className="relative z-10 flex shrink-0 items-center">{action}</div>}
       </div>

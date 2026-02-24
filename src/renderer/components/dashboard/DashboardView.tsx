@@ -315,11 +315,35 @@ const NewProjectCard = (): React.JSX.Element => {
         return;
       }
 
-      // Still no match — open the folder in file manager as fallback
-      const result = await api.openPath(selectedPath, undefined, true);
-      if (!result.success) {
-        logger.error('Failed to open folder:', result.error);
-      }
+      // Still no match — create a synthetic group for this new folder and navigate to it.
+      // This allows launching teams in projects that don't have Claude sessions yet.
+      const encodedId = selectedPath.replace(/[/\\]/g, '-');
+      const folderName = selectedPath.split('/').filter(Boolean).pop() ?? selectedPath;
+      const now = Date.now();
+
+      const syntheticGroup: RepositoryGroup = {
+        id: encodedId,
+        identity: null,
+        worktrees: [
+          {
+            id: encodedId,
+            path: selectedPath,
+            name: folderName,
+            isMainWorktree: true,
+            source: 'unknown',
+            sessions: [],
+            createdAt: now,
+          },
+        ],
+        name: folderName,
+        mostRecentSession: undefined,
+        totalSessions: 0,
+      };
+
+      useStore.setState((state) => ({
+        repositoryGroups: [syntheticGroup, ...state.repositoryGroups],
+      }));
+      navigateToMatch({ repoId: encodedId, worktreeId: encodedId });
     } catch (error) {
       logger.error('Error selecting folder:', error);
     }

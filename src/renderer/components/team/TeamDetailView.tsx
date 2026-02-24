@@ -18,6 +18,7 @@ import { useStore } from '@renderer/store';
 import { buildTaskCountsByOwner } from '@renderer/utils/pathNormalize';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import {
+  Bell,
   CheckCheck,
   GitBranch,
   Pencil,
@@ -831,6 +832,25 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
         badge={filteredMessages.length}
         secondaryBadge={
           filteredMessages.length > 0 && messagesUnreadCount > 0 ? messagesUnreadCount : undefined
+        }
+        headerExtra={
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="pointer-events-auto rounded p-0.5 text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)]"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void window.electronAPI.openExternal(
+                    'https://github.com/777genius/claude-notifications-go'
+                  );
+                }}
+              >
+                <Bell size={12} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Desktop notifications plugin</TooltipContent>
+          </Tooltip>
         }
         defaultOpen
         action={
