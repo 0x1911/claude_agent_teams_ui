@@ -73,6 +73,7 @@ interface KanbanBoardProps {
   onMoveBackToDone: (taskId: string) => void;
   onStartTask: (taskId: string) => void;
   onCompleteTask: (taskId: string) => void;
+  onCancelTask: (taskId: string) => void;
   onScrollToTask?: (taskId: string) => void;
   onTaskClick?: (task: TeamTask) => void;
   /** Вызывается после изменения порядка задач в колонке (drag-and-drop). */
@@ -147,6 +148,7 @@ interface SortableKanbanTaskCardProps {
   onMoveBackToDone: (taskId: string) => void;
   onStartTask: (taskId: string) => void;
   onCompleteTask: (taskId: string) => void;
+  onCancelTask: (taskId: string) => void;
   onScrollToTask?: (taskId: string) => void;
   onTaskClick?: (task: TeamTask) => void;
 }
@@ -164,6 +166,7 @@ const SortableKanbanTaskCard = ({
   onMoveBackToDone,
   onStartTask,
   onCompleteTask,
+  onCancelTask,
   onScrollToTask,
   onTaskClick,
 }: SortableKanbanTaskCardProps): React.JSX.Element => {
@@ -195,6 +198,7 @@ const SortableKanbanTaskCard = ({
         onMoveBackToDone={onMoveBackToDone}
         onStartTask={onStartTask}
         onCompleteTask={onCompleteTask}
+        onCancelTask={onCancelTask}
         onScrollToTask={onScrollToTask}
         onTaskClick={onTaskClick}
       />
@@ -217,6 +221,7 @@ export const KanbanBoard = ({
   onMoveBackToDone,
   onStartTask,
   onCompleteTask,
+  onCancelTask,
   onScrollToTask,
   onTaskClick,
   onColumnOrderChange,
@@ -280,52 +285,61 @@ export const KanbanBoard = ({
   );
 
   const renderCards = (columnId: KanbanColumnId, columnTasks: TeamTask[]): React.JSX.Element => {
+    const addHandler =
+      onAddTask && columnId === 'todo'
+        ? () => onAddTask(false)
+        : onAddTask && columnId === 'in_progress'
+          ? () => onAddTask(true)
+          : undefined;
+
+    const addButton = addHandler ? (
+      <button
+        type="button"
+        onClick={addHandler}
+        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-[var(--color-border)] p-3 text-xs text-[var(--color-text-muted)] transition-colors hover:border-[var(--color-border-emphasis)] hover:text-[var(--color-text-secondary)]"
+      >
+        <Plus size={13} />
+        Add task
+      </button>
+    ) : null;
+
     if (columnTasks.length === 0) {
-      const addHandler =
-        onAddTask && columnId === 'todo'
-          ? () => onAddTask(false)
-          : onAddTask && columnId === 'in_progress'
-            ? () => onAddTask(true)
-            : undefined;
-      return addHandler ? (
-        <button
-          type="button"
-          onClick={addHandler}
-          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-[var(--color-border)] p-3 text-xs text-[var(--color-text-muted)] transition-colors hover:border-[var(--color-border-emphasis)] hover:text-[var(--color-text-secondary)]"
-        >
-          <Plus size={13} />
-          Add task
-        </button>
-      ) : (
-        <div className="rounded-md border border-dashed border-[var(--color-border)] p-3 text-xs text-[var(--color-text-muted)]">
-          No tasks
-        </div>
+      return (
+        addButton ?? (
+          <div className="rounded-md border border-dashed border-[var(--color-border)] p-3 text-xs text-[var(--color-text-muted)]">
+            No tasks
+          </div>
+        )
       );
     }
     if (onColumnOrderChange) {
       const itemIds = columnTasks.map((t) => t.id);
       return (
-        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-          {columnTasks.map((task) => (
-            <SortableKanbanTaskCard
-              key={task.id}
-              task={task}
-              columnId={columnId}
-              teamName={teamName}
-              kanbanState={kanbanState}
-              taskMap={taskMap}
-              members={members}
-              onRequestReview={onRequestReview}
-              onApprove={onApprove}
-              onRequestChanges={onRequestChanges}
-              onMoveBackToDone={onMoveBackToDone}
-              onStartTask={onStartTask}
-              onCompleteTask={onCompleteTask}
-              onScrollToTask={onScrollToTask}
-              onTaskClick={onTaskClick}
-            />
-          ))}
-        </SortableContext>
+        <>
+          <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+            {columnTasks.map((task) => (
+              <SortableKanbanTaskCard
+                key={task.id}
+                task={task}
+                columnId={columnId}
+                teamName={teamName}
+                kanbanState={kanbanState}
+                taskMap={taskMap}
+                members={members}
+                onRequestReview={onRequestReview}
+                onApprove={onApprove}
+                onRequestChanges={onRequestChanges}
+                onMoveBackToDone={onMoveBackToDone}
+                onStartTask={onStartTask}
+                onCompleteTask={onCompleteTask}
+                onCancelTask={onCancelTask}
+                onScrollToTask={onScrollToTask}
+                onTaskClick={onTaskClick}
+              />
+            ))}
+          </SortableContext>
+          {addButton}
+        </>
       );
     }
     return (
@@ -346,10 +360,12 @@ export const KanbanBoard = ({
             onMoveBackToDone={onMoveBackToDone}
             onStartTask={onStartTask}
             onCompleteTask={onCompleteTask}
+            onCancelTask={onCancelTask}
             onScrollToTask={onScrollToTask}
             onTaskClick={onTaskClick}
           />
         ))}
+        {addButton}
       </>
     );
   };

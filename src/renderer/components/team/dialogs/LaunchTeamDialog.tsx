@@ -23,6 +23,7 @@ import {
 } from '@renderer/components/ui/select';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { cn } from '@renderer/lib/utils';
+import { useStore } from '@renderer/store';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { AlertTriangle, Check, CheckCircle2, Loader2 } from 'lucide-react';
 
@@ -158,7 +159,9 @@ export const LaunchTeamDialog = ({
     };
   }, [open]);
 
-  // Fetch projects on open
+  const repositoryGroups = useStore((s) => s.repositoryGroups);
+
+  // Fetch projects on open, merging with repositoryGroups from store
   useEffect(() => {
     if (!open) {
       return;
@@ -170,11 +173,30 @@ export const LaunchTeamDialog = ({
     let cancelled = false;
     void (async () => {
       try {
-        const nextProjects = await api.getProjects();
+        const apiProjects = await api.getProjects();
         if (cancelled) {
           return;
         }
-        setProjects(nextProjects);
+
+        // Merge repositoryGroups (may include synthetic folders without sessions)
+        const pathSet = new Set(apiProjects.map((p) => p.path));
+        const extras: Project[] = [];
+        for (const repo of repositoryGroups) {
+          for (const wt of repo.worktrees) {
+            if (!pathSet.has(wt.path)) {
+              pathSet.add(wt.path);
+              extras.push({
+                id: wt.id,
+                path: wt.path,
+                name: wt.name,
+                sessions: [],
+                createdAt: wt.createdAt ?? Date.now(),
+              });
+            }
+          }
+        }
+
+        setProjects([...apiProjects, ...extras]);
       } catch (error) {
         if (cancelled) {
           return;
@@ -191,7 +213,7 @@ export const LaunchTeamDialog = ({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, repositoryGroups]);
 
   // Pre-select defaultProjectPath when projects loaded
   useEffect(() => {

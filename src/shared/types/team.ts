@@ -13,6 +13,7 @@ export interface TeamConfig {
   name: string;
   description?: string;
   color?: string;
+  language?: string;
   members?: TeamMember[];
   projectPath?: string;
   projectPathHistory?: string[];
@@ -24,6 +25,7 @@ export interface TeamUpdateConfigRequest {
   name?: string;
   description?: string;
   color?: string;
+  language?: string;
 }
 
 export interface TeamSummaryMember {

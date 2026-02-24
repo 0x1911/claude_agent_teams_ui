@@ -19,6 +19,7 @@ import {
 } from '@renderer/utils/agentMessageFormatting';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { createAgentBlockRegex } from '@shared/constants/agentBlocks';
+import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
 import { AlertTriangle, ChevronRight, ListPlus, Reply } from 'lucide-react';
 
@@ -169,6 +170,10 @@ export const ActivityItem = ({
     [displayText]
   );
 
+  const rawSummary =
+    message.summary || (structured ? getStructuredMessageSummary(structured) : '') || '';
+  const summaryText = useMemo(() => extractMarkdownPlainText(rawSummary), [rawSummary]);
+
   // Noise messages: minimal inline row
   if (noiseLabel) {
     return <NoiseRow name={message.from} label={noiseLabel} colors={colors} />;
@@ -185,7 +190,6 @@ export const ActivityItem = ({
     onCreateTask?.(subject, description);
   };
 
-  const summaryText = message.summary || autoSummary || '';
   const isHeaderClickable = Boolean(systemLabel);
 
   return (

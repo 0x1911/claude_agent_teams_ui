@@ -107,6 +107,9 @@ export function initializeIpcHandlers(
   );
   initializeConfigHandlers({
     onClaudeRootPathUpdated: contextCallbacks.onClaudeRootPathUpdated,
+    onAgentLanguageUpdated: (newLangCode) => {
+      void teamProvisioningService.notifyLanguageChange(newLangCode);
+    },
   });
   if (httpServerDeps) {
     initializeHttpServerHandlers(httpServerDeps.httpServer, httpServerDeps.startHttpServer);

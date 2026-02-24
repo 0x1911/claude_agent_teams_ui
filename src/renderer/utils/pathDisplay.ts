@@ -74,6 +74,40 @@ function inferHomeDir(projectRoot: string): string | null {
  * - `src/foo/bar` → `{projectRoot}/src/foo/bar`
  * - Already absolute → returned as-is
  */
+/**
+ * Truncate a project path to ~/relative/path format.
+ * Works for macOS (/Users/...), Linux (/home/...) and Windows (C:\Users\...).
+ */
+export function formatProjectPath(path: string): string {
+  const p = path.replace(/\\/g, '/');
+
+  if (p.startsWith('/Users/') || p.startsWith('/home/')) {
+    const parts = p.split('/').filter(Boolean);
+    if (parts.length >= 2) {
+      const rest = parts.slice(2).join('/');
+      return rest ? `~/${rest}` : '~';
+    }
+  }
+
+  if (isWindowsUserPath(path)) {
+    const parts = p.split('/').filter(Boolean);
+    if (parts.length >= 3) {
+      const rest = parts.slice(3).join('/');
+      return rest ? `~/${rest}` : '~';
+    }
+  }
+
+  return p;
+}
+
+function isWindowsUserPath(input: string): boolean {
+  if (input.length < 10) return false;
+  const drive = input.charCodeAt(0);
+  const hasDriveLetter =
+    ((drive >= 65 && drive <= 90) || (drive >= 97 && drive <= 122)) && input[1] === ':';
+  return hasDriveLetter && input.startsWith('\\Users\\', 2);
+}
+
 export function resolveAbsolutePath(filePath: string, projectRoot?: string): string {
   let p = filePath;
 

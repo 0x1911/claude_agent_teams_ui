@@ -278,10 +278,15 @@ export const TeamListView = (): React.JSX.Element => {
           const data = await api.teams.getData(teamName);
           const existingNames = teams.map((t) => t.teamName);
           const uniqueName = generateUniqueName(teamName, existingNames);
-          const members = (data.config.members ?? []).map((m) => ({
-            name: m.name,
-            role: m.role,
-          }));
+          const members = (data.members ?? [])
+            .filter((m) => !m.removedAt)
+            .map((m) => {
+              let role = m.role;
+              if (!role && m.agentType && m.agentType !== 'general-purpose') {
+                role = m.agentType === 'team-lead' ? 'lead' : m.agentType;
+              }
+              return { name: m.name, role };
+            });
           setCopyData({
             teamName: uniqueName,
             description: data.config.description,

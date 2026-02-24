@@ -146,7 +146,7 @@ export class TeamConfigReader {
 
   async updateConfig(
     teamName: string,
-    updates: { name?: string; description?: string; color?: string }
+    updates: { name?: string; description?: string; color?: string; language?: string }
   ): Promise<TeamConfig | null> {
     const config = await this.getConfig(teamName);
     if (!config) {
@@ -160,6 +160,9 @@ export class TeamConfigReader {
     }
     if (updates.color !== undefined) {
       config.color = updates.color.trim() || undefined;
+    }
+    if (updates.language !== undefined) {
+      config.language = updates.language.trim() || undefined;
     }
     const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
     await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');

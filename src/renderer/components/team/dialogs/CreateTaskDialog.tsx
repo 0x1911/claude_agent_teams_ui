@@ -108,7 +108,8 @@ export const CreateTaskDialog = ({
     [members]
   );
 
-  const canSubmit = subject.trim().length > 0 && !submitting;
+  const requiresOwner = defaultStartImmediately === true;
+  const canSubmit = subject.trim().length > 0 && !submitting && (!requiresOwner || !!owner);
 
   // Only show non-internal, non-deleted tasks as candidates for blocking
   const availableTasks = tasks.filter((t) => t.status !== 'deleted');
@@ -146,6 +147,43 @@ export const CreateTaskDialog = ({
     }
   };
 
+  const assigneeField = (
+    <div className="grid gap-2">
+      <Label>{requiresOwner ? 'Assignee' : 'Assignee (optional)'}</Label>
+      <Select
+        value={owner || '__unassigned__'}
+        onValueChange={(v) => setOwner(v === '__unassigned__' ? '' : v)}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder={requiresOwner ? 'Select a member' : 'Unassigned'} />
+        </SelectTrigger>
+        <SelectContent>
+          {!requiresOwner && <SelectItem value="__unassigned__">Unassigned</SelectItem>}
+          {members.map((m) => {
+            const role = formatAgentRole(m.role) ?? formatAgentRole(m.agentType);
+            const memberColor = m.color ? getTeamColorSet(m.color) : null;
+            return (
+              <SelectItem key={m.name} value={m.name}>
+                <span className="inline-flex items-center gap-1.5">
+                  {memberColor ? (
+                    <span
+                      className="inline-block size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: memberColor.border }}
+                    />
+                  ) : null}
+                  <span style={memberColor ? { color: memberColor.text } : undefined}>
+                    {m.name}
+                  </span>
+                  {role ? <span className="text-[var(--color-text-muted)]">({role})</span> : null}
+                </span>
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
@@ -182,6 +220,8 @@ export const CreateTaskDialog = ({
             />
           </div>
 
+          {assigneeField}
+
           <div className="grid gap-2">
             <Label htmlFor="task-description">Description (optional)</Label>
             <MentionableTextarea
@@ -216,43 +256,6 @@ export const CreateTaskDialog = ({
                 ) : null
               }
             />
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Assignee (optional)</Label>
-            <Select
-              value={owner || '__unassigned__'}
-              onValueChange={(v) => setOwner(v === '__unassigned__' ? '' : v)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Unassigned" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__unassigned__">Unassigned</SelectItem>
-                {members.map((m) => {
-                  const role = formatAgentRole(m.role) ?? formatAgentRole(m.agentType);
-                  const memberColor = m.color ? getTeamColorSet(m.color) : null;
-                  return (
-                    <SelectItem key={m.name} value={m.name}>
-                      <span className="inline-flex items-center gap-1.5">
-                        {memberColor ? (
-                          <span
-                            className="inline-block size-2 shrink-0 rounded-full"
-                            style={{ backgroundColor: memberColor.border }}
-                          />
-                        ) : null}
-                        <span style={memberColor ? { color: memberColor.text } : undefined}>
-                          {m.name}
-                        </span>
-                        {role ? (
-                          <span className="text-[var(--color-text-muted)]">({role})</span>
-                        ) : null}
-                      </span>
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
           </div>
 
           {owner ? (

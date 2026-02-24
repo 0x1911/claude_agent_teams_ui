@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
@@ -10,6 +10,55 @@ import { MarkdownViewer } from '../chat/viewers/MarkdownViewer';
 import { STEP_LABELS, STEP_ORDER } from './provisioningSteps';
 
 import type { ProvisioningStep } from './provisioningSteps';
+
+// ---------------------------------------------------------------------------
+// JSON syntax-highlighted CLI logs
+// ---------------------------------------------------------------------------
+
+const JSON_KEY_COLOR = 'var(--syntax-property, #7dd3fc)';
+const JSON_STRING_COLOR = 'var(--syntax-string, #86efac)';
+const JSON_NUMBER_COLOR = 'var(--syntax-number, #fde68a)';
+const JSON_BOOL_NULL_COLOR = 'var(--syntax-keyword, #c4b5fd)';
+const JSON_BRACKET_COLOR = 'var(--color-text-muted)';
+
+function syntaxHighlightJson(json: string): string {
+  return (
+    json
+      .replace(/("(?:\\.|[^"\\])*")\s*:/g, `<span style="color:${JSON_KEY_COLOR}">$1</span>:`)
+      .replace(/:\s*("(?:\\.|[^"\\])*")/g, (match, str: string) =>
+        match.replace(str, `<span style="color:${JSON_STRING_COLOR}">${str}</span>`)
+      )
+      // eslint-disable-next-line security/detect-unsafe-regex -- number format is bounded, input is our JSON
+      .replace(/:\s*(-?\d+(?:\.\d{1,20})?(?:[eE][+-]?\d{1,5})?)/g, (match, num: string) =>
+        match.replace(num, `<span style="color:${JSON_NUMBER_COLOR}">${num}</span>`)
+      )
+      .replace(/:\s*(true|false|null)/g, (match, kw: string) =>
+        match.replace(kw, `<span style="color:${JSON_BOOL_NULL_COLOR}">${kw}</span>`)
+      )
+      .replace(/([{}[\]])/g, `<span style="color:${JSON_BRACKET_COLOR}">$1</span>`)
+  );
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function prettyFormatLogs(raw: string): string {
+  return raw
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return '';
+      try {
+        const parsed = JSON.parse(trimmed) as unknown;
+        const pretty = escapeHtml(JSON.stringify(parsed, null, 2));
+        return syntaxHighlightJson(pretty);
+      } catch {
+        return escapeHtml(trimmed);
+      }
+    })
+    .join('\n');
+}
 
 export interface ProvisioningProgressBlockProps {
   /** Title above the steps, e.g. "Launching team" */
@@ -78,6 +127,10 @@ export const ProvisioningProgressBlock = ({
   const [logsOpen, setLogsOpen] = useState(false);
   const logsRef = useRef<HTMLPreElement>(null);
   const outputScrollRef = useRef<HTMLDivElement>(null);
+  const prettyLogs = useMemo(
+    () => (cliLogsTail ? prettyFormatLogs(cliLogsTail) : ''),
+    [cliLogsTail]
+  );
 
   // Auto-scroll CLI logs
   useEffect(() => {
@@ -182,9 +235,9 @@ export const ProvisioningProgressBlock = ({
             <pre
               ref={logsRef}
               className="mt-1 max-h-[400px] overflow-y-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-2 font-mono text-[11px] leading-relaxed text-[var(--color-text-secondary)]"
-            >
-              {cliLogsTail}
-            </pre>
+              // Content is HTML-escaped via escapeHtml() before syntax highlighting spans are added
+              dangerouslySetInnerHTML={{ __html: prettyLogs }}
+            />
           ) : null}
         </div>
       ) : null}

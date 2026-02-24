@@ -581,7 +581,7 @@ const electronAPI: ElectronAPI = {
       return invokeIpcWithResult<void>(TEAM_UPDATE_TASK_OWNER, teamName, taskId, owner);
     },
     startTask: async (teamName: string, taskId: string) => {
-      return invokeIpcWithResult<void>(TEAM_START_TASK, teamName, taskId);
+      return invokeIpcWithResult<{ notifiedOwner: boolean }>(TEAM_START_TASK, teamName, taskId);
     },
     processSend: async (teamName: string, message: string) => {
       return invokeIpcWithResult<void>(TEAM_PROCESS_SEND, teamName, message);

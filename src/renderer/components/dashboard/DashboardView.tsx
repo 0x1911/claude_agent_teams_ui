@@ -12,6 +12,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '@renderer/api';
 import { useStore } from '@renderer/store';
 import { getWorktreeNavigationState } from '@renderer/store/utils/stateResetHelpers';
+import { formatProjectPath } from '@renderer/utils/pathDisplay';
 import {
   buildTaskCountsByProject,
   normalizePath,
@@ -104,43 +105,6 @@ interface RepositoryCardProps {
   onClick: () => void;
   isHighlighted?: boolean;
   taskCounts?: TaskStatusCounts;
-}
-
-/**
- * Truncate path to show ~/relative/path format
- */
-function formatProjectPath(path: string): string {
-  const p = path.replace(/\\/g, '/');
-
-  if (p.startsWith('/Users/') || p.startsWith('/home/')) {
-    const parts = p.split('/').filter(Boolean);
-    if (parts.length >= 2) {
-      const rest = parts.slice(2).join('/');
-      return rest ? `~/${rest}` : '~';
-    }
-  }
-
-  if (isWindowsUserPath(path)) {
-    const parts = p.split('/').filter(Boolean);
-    if (parts.length >= 3) {
-      const rest = parts.slice(3).join('/');
-      return rest ? `~/${rest}` : '~';
-    }
-  }
-
-  return p;
-}
-
-function isWindowsUserPath(input: string): boolean {
-  if (input.length < 10) {
-    return false;
-  }
-
-  const drive = input.charCodeAt(0);
-  const hasDriveLetter =
-    ((drive >= 65 && drive <= 90) || (drive >= 97 && drive <= 122)) && input[1] === ':';
-
-  return hasDriveLetter && input.startsWith('\\Users\\', 2);
 }
 
 const RepositoryCard = ({
@@ -318,7 +282,7 @@ const NewProjectCard = (): React.JSX.Element => {
       // Still no match — create a synthetic group for this new folder and navigate to it.
       // This allows launching teams in projects that don't have Claude sessions yet.
       const encodedId = selectedPath.replace(/[/\\]/g, '-');
-      const folderName = selectedPath.split('/').filter(Boolean).pop() ?? selectedPath;
+      const folderName = selectedPath.split(/[/\\]/).filter(Boolean).pop() ?? selectedPath;
       const now = Date.now();
 
       const syntheticGroup: RepositoryGroup = {

@@ -1278,7 +1278,7 @@ async function handleStartTask(
   _event: IpcMainInvokeEvent,
   teamName: unknown,
   taskId: unknown
-): Promise<IpcResult<void>> {
+): Promise<IpcResult<{ notifiedOwner: boolean }>> {
   const validatedTeamName = validateTeamName(teamName);
   if (!validatedTeamName.valid) {
     return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };

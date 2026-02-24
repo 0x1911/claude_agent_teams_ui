@@ -81,7 +81,7 @@ export interface TeamSlice {
     orderedTaskIds: string[]
   ) => Promise<void>;
   createTeamTask: (teamName: string, request: CreateTaskRequest) => Promise<TeamTask>;
-  startTask: (teamName: string, taskId: string) => Promise<void>;
+  startTask: (teamName: string, taskId: string) => Promise<{ notifiedOwner: boolean }>;
   updateTaskStatus: (teamName: string, taskId: string, status: TeamTaskStatus) => Promise<void>;
   updateTaskOwner: (teamName: string, taskId: string, owner: string | null) => Promise<void>;
   addingComment: boolean;
@@ -222,8 +222,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   selectTeam: async (teamName: string) => {
+    // Clear stale data immediately to prevent flash of previous team's content
+    const prev = get().selectedTeamName;
     set({
       selectedTeamName: teamName,
+      selectedTeamData: prev !== teamName ? null : get().selectedTeamData,
       selectedTeamLoading: true,
       selectedTeamError: null,
       reviewActionError: null,
@@ -410,8 +413,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   startTask: async (teamName: string, taskId: string) => {
-    await unwrapIpc('team:startTask', () => api.teams.startTask(teamName, taskId));
+    const result = await unwrapIpc('team:startTask', () => api.teams.startTask(teamName, taskId));
     await get().refreshTeamData(teamName);
+    return result;
   },
 
   updateTaskStatus: async (teamName: string, taskId: string, status: TeamTaskStatus) => {

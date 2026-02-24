@@ -54,6 +54,7 @@ const execFileAsync = promisify(execFile);
 const configManager = ConfigManager.getInstance();
 let onClaudeRootPathUpdated: ((claudeRootPath: string | null) => Promise<void> | void) | null =
   null;
+let onAgentLanguageUpdated: ((newLangCode: string) => Promise<void> | void) | null = null;
 
 /**
  * Initializes config handlers with callbacks that require app-level services.
@@ -61,9 +62,11 @@ let onClaudeRootPathUpdated: ((claudeRootPath: string | null) => Promise<void> |
 export function initializeConfigHandlers(
   options: {
     onClaudeRootPathUpdated?: (claudeRootPath: string | null) => Promise<void> | void;
+    onAgentLanguageUpdated?: (newLangCode: string) => Promise<void> | void;
   } = {}
 ): void {
   onClaudeRootPathUpdated = options.onClaudeRootPathUpdated ?? null;
+  onAgentLanguageUpdated = options.onAgentLanguageUpdated ?? null;
 }
 
 /**
@@ -155,6 +158,13 @@ async function handleUpdateConfig(
       validation.section === 'general' &&
       Object.prototype.hasOwnProperty.call(validation.data, 'claudeRootPath');
 
+    // Capture previous language BEFORE applying the update so we can detect real changes
+    const prevAgentLanguage =
+      validation.section === 'general' &&
+      Object.prototype.hasOwnProperty.call(validation.data, 'agentLanguage')
+        ? configManager.getConfig().general.agentLanguage
+        : undefined;
+
     configManager.updateConfig(validation.section, validation.data);
 
     if (isClaudeRootUpdate && onClaudeRootPathUpdated) {
@@ -164,6 +174,17 @@ async function handleUpdateConfig(
         await onClaudeRootPathUpdated(nextClaudeRootPath ?? null);
       } catch (callbackError) {
         logger.error('Failed to apply updated Claude root path at runtime:', callbackError);
+      }
+    }
+
+    if (prevAgentLanguage !== undefined && onAgentLanguageUpdated) {
+      const newLangCode = (validation.data as { agentLanguage?: string }).agentLanguage;
+      if (newLangCode && newLangCode !== prevAgentLanguage) {
+        try {
+          await onAgentLanguageUpdated(newLangCode);
+        } catch (callbackError) {
+          logger.error('Failed to notify teams about language change:', callbackError);
+        }
       }
     }
 

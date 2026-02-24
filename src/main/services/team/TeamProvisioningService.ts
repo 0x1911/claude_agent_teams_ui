@@ -450,7 +450,7 @@ function updateProgress(
 ): TeamProvisioningProgress {
   const assistantOutput =
     run.provisioningOutputParts.length > 0
-      ? run.provisioningOutputParts.join('')
+      ? run.provisioningOutputParts.join('\n\n')
       : run.progress.assistantOutput;
   run.progress = {
     ...run.progress,
@@ -493,7 +493,7 @@ function extractLogsTail(stdoutBuffer: string, stderrBuffer: string): string | u
 function emitLogsProgress(run: ProvisioningRun): void {
   const logsTail = extractLogsTail(run.stdoutBuffer, run.stderrBuffer);
   const assistantOutput =
-    run.provisioningOutputParts.length > 0 ? run.provisioningOutputParts.join('') : undefined;
+    run.provisioningOutputParts.length > 0 ? run.provisioningOutputParts.join('\n\n') : undefined;
 
   if (!logsTail && !assistantOutput) {
     return;
@@ -1447,6 +1447,56 @@ export class TeamProvisioningService {
     return Array.from(this.activeByTeam.keys()).filter((name) => this.isTeamAlive(name));
   }
 
+  private languageChangeInFlight: Promise<void> = Promise.resolve();
+
+  /**
+   * Notify alive teams when the agent language setting changes.
+   * Compares each team's stored `config.language` with the new code and sends
+   * a message to the team lead if they differ.
+   *
+   * Serialised: rapid language switches (e.g. ru → en → ru) are queued so that
+   * only the latest value is applied to each team.
+   */
+  async notifyLanguageChange(newLangCode: string): Promise<void> {
+    this.languageChangeInFlight = this.languageChangeInFlight.then(() =>
+      this.doNotifyLanguageChange(newLangCode)
+    );
+    return this.languageChangeInFlight;
+  }
+
+  private async doNotifyLanguageChange(newLangCode: string): Promise<void> {
+    const aliveTeams = this.getAliveTeams();
+    if (aliveTeams.length === 0) return;
+
+    const newResolved = resolveLanguageName(newLangCode);
+
+    for (const teamName of aliveTeams) {
+      try {
+        const config = await this.configReader.getConfig(teamName);
+        if (!config) continue;
+
+        const oldCode = config.language || 'system';
+        if (oldCode === newLangCode) continue;
+
+        const oldResolved = resolveLanguageName(oldCode);
+        const message =
+          `The user has changed the preferred communication language from "${oldResolved}" to "${newResolved}". ` +
+          `Please switch to ${newResolved} for all future responses and broadcast this change to all teammates ` +
+          `so they also switch to ${newResolved}.`;
+
+        await this.sendMessageToTeam(teamName, message);
+        await this.configReader.updateConfig(teamName, { language: newLangCode });
+        logger.info(`[${teamName}] Notified about language change: ${oldCode} → ${newLangCode}`);
+      } catch (error) {
+        logger.warn(
+          `[${teamName}] Failed to notify language change: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+  }
+
   private async markInboxMessagesRead(
     teamName: string,
     member: string,
@@ -2299,6 +2349,10 @@ export class TeamProvisioningService {
           config.sessionHistory = sessionHistory;
         }
       }
+
+      // Save current language setting
+      const langCode = ConfigManager.getInstance().getConfig().general.agentLanguage || 'system';
+      config.language = langCode;
 
       // Ensure projectPath
       if (projectPath.trim()) {

@@ -424,7 +424,7 @@ export class TeamDataService {
     return task;
   }
 
-  async startTask(teamName: string, taskId: string): Promise<void> {
+  async startTask(teamName: string, taskId: string): Promise<{ notifiedOwner: boolean }> {
     const tasks = await this.taskReader.getTasks(teamName);
     const task = tasks.find((t) => t.id === taskId);
     if (!task) {
@@ -458,6 +458,8 @@ export class TeamDataService {
         // Best-effort notification
       }
     }
+
+    return { notifiedOwner: !!task.owner };
   }
 
   async updateTaskStatus(teamName: string, taskId: string, status: TeamTaskStatus): Promise<void> {

@@ -314,7 +314,9 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
       }
     >
       {/* Copy button overlay (when no label header) */}
-      {copyable && !label && <CopyButton text={content} />}
+      {copyable && !label && (
+        <CopyButton text={content} bgColor={bare ? 'transparent' : undefined} />
+      )}
 
       {/* Optional header - matches CodeBlockViewer style */}
       {label && (

@@ -56,15 +56,22 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
     );
   }
 
+  const isTransparent = bgColor === 'transparent';
+
   return (
     <div className="pointer-events-none absolute right-0 top-0 z-10 flex opacity-0 transition-opacity group-hover:opacity-100">
       {/* Gradient fade from transparent to bgColor so text isn't obscured */}
-      <div
-        className="w-8 self-stretch"
-        style={{ background: `linear-gradient(to right, transparent, ${bgColor})` }}
-      />
+      {!isTransparent && (
+        <div
+          className="w-8 self-stretch"
+          style={{ background: `linear-gradient(to right, transparent, ${bgColor})` }}
+        />
+      )}
       {/* Solid background holding the button */}
-      <div className="rounded-bl-lg p-1.5" style={{ backgroundColor: bgColor }}>
+      <div
+        className="rounded-bl-lg p-1.5"
+        style={isTransparent ? undefined : { backgroundColor: bgColor }}
+      >
         <button
           onClick={handleCopy}
           className="pointer-events-auto rounded p-1.5"

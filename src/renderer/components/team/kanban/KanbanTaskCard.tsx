@@ -1,9 +1,12 @@
+import { useState } from 'react';
+
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { UnreadCommentsBadge } from '@renderer/components/team/UnreadCommentsBadge';
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { useUnreadCommentCount } from '@renderer/hooks/useUnreadCommentCount';
-import { ArrowLeftFromLine, ArrowRightFromLine, CheckCircle2, Play } from 'lucide-react';
+import { ArrowLeftFromLine, ArrowRightFromLine, CheckCircle2, Play, XCircle } from 'lucide-react';
 
 import type { KanbanColumnId, KanbanTaskState, ResolvedTeamMember, TeamTask } from '@shared/types';
 
@@ -21,6 +24,7 @@ interface KanbanTaskCardProps {
   onMoveBackToDone: (taskId: string) => void;
   onStartTask: (taskId: string) => void;
   onCompleteTask: (taskId: string) => void;
+  onCancelTask: (taskId: string) => void;
   onScrollToTask?: (taskId: string) => void;
   onTaskClick?: (task: TeamTask) => void;
 }
@@ -58,6 +62,59 @@ const DependencyBadge = ({
   );
 };
 
+const CancelTaskButton = ({
+  taskId,
+  onConfirm,
+}: {
+  taskId: string;
+  onConfirm: (taskId: string) => void;
+}): React.JSX.Element => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="gap-1"
+          aria-label={`Cancel task ${taskId}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <XCircle size={12} />
+          Cancel
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-56 p-3"
+        side="top"
+        align="start"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p className="mb-3 text-xs text-[var(--color-text-secondary)]">
+          Move this task back to TODO and notify the team?
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            className="flex-1"
+            onClick={() => {
+              setOpen(false);
+              onConfirm(taskId);
+            }}
+          >
+            Confirm
+          </Button>
+          <Button variant="outline" size="sm" className="flex-1" onClick={() => setOpen(false)}>
+            Keep
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 export const KanbanTaskCard = ({
   task,
   teamName,
@@ -72,6 +129,7 @@ export const KanbanTaskCard = ({
   onMoveBackToDone,
   onStartTask,
   onCompleteTask,
+  onCancelTask,
   onScrollToTask,
   onTaskClick,
 }: KanbanTaskCardProps): React.JSX.Element => {
@@ -148,7 +206,7 @@ export const KanbanTaskCard = ({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-end gap-2">
         <div className="flex flex-1 flex-wrap gap-2">
           {columnId === 'todo' ? (
             <>
@@ -182,19 +240,22 @@ export const KanbanTaskCard = ({
           ) : null}
 
           {columnId === 'in_progress' ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1"
-              aria-label={`Complete task ${task.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onCompleteTask(task.id);
-              }}
-            >
-              <CheckCircle2 size={12} />
-              Complete
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                aria-label={`Complete task ${task.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCompleteTask(task.id);
+                }}
+              >
+                <CheckCircle2 size={12} />
+                Complete
+              </Button>
+              <CancelTaskButton taskId={task.id} onConfirm={onCancelTask} />
+            </>
           ) : null}
 
           {columnId === 'done' ? (

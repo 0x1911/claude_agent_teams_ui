@@ -10,6 +10,7 @@ import {
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { detectOperationalNoise } from '@renderer/utils/agentMessageFormatting';
 import { formatTokensCompact } from '@renderer/utils/formatters';
+import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
 import { ChevronRight, CornerDownLeft, MessageSquare, RefreshCw } from 'lucide-react';
 
 import { MarkdownViewer } from '../viewers/MarkdownViewer';
@@ -85,6 +86,18 @@ export const TeammateMessageItem: React.FC<TeammateMessageItemProps> = ({
   // Detect resent/duplicate messages
   const isResend = useMemo(() => isResendMessage(teammateMessage), [teammateMessage]);
 
+  const plainSummary = useMemo(
+    () => extractMarkdownPlainText(teammateMessage.summary),
+    [teammateMessage.summary]
+  );
+  const plainReplyToSummary = useMemo(
+    () =>
+      teammateMessage.replyToSummary
+        ? extractMarkdownPlainText(teammateMessage.replyToSummary)
+        : undefined,
+    [teammateMessage.replyToSummary]
+  );
+
   // Noise: minimal inline row (no card, no expand)
   if (noiseLabel) {
     return (
@@ -100,11 +113,8 @@ export const TeammateMessageItem: React.FC<TeammateMessageItemProps> = ({
     );
   }
 
-  // Real message: full card with visual distinction
   const truncatedSummary =
-    teammateMessage.summary.length > 80
-      ? teammateMessage.summary.slice(0, 80) + '...'
-      : teammateMessage.summary;
+    plainSummary.length > 80 ? plainSummary.slice(0, 80) + '...' : plainSummary;
 
   return (
     <div
@@ -160,7 +170,7 @@ export const TeammateMessageItem: React.FC<TeammateMessageItemProps> = ({
         </span>
 
         {/* Reply indicator — shows which SendMessage triggered this response */}
-        {teammateMessage.replyToSummary && (
+        {plainReplyToSummary && (
           <span
             role="presentation"
             className="flex cursor-default items-center gap-1 text-[10px]"
@@ -170,7 +180,7 @@ export const TeammateMessageItem: React.FC<TeammateMessageItemProps> = ({
           >
             <CornerDownLeft className="size-2.5" />
             <span className="truncate" style={{ maxWidth: '180px' }}>
-              {teammateMessage.replyToSummary}
+              {plainReplyToSummary}
             </span>
           </span>
         )}

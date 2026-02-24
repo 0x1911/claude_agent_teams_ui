@@ -90,8 +90,7 @@ export const Combobox = ({
           </div>
           <CommandPrimitive.List
             id={listboxId}
-            className="max-h-72 overflow-y-auto overscroll-contain py-1 pl-0 pr-2"
-            style={{ paddingLeft: 0 }}
+            className="max-h-72 overflow-y-auto overscroll-contain px-2 py-1"
             onWheel={(e) => e.stopPropagation()}
           >
             <CommandPrimitive.Empty className="py-4 pr-2 text-center text-xs text-[var(--color-text-muted)]">
@@ -105,8 +104,7 @@ export const Combobox = ({
                   setOpen(false);
                   setSearch('');
                 }}
-                className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-0 pr-2 text-xs outline-none data-[selected=true]:bg-[var(--color-surface-raised)] data-[selected=true]:text-[var(--color-text)]"
-                style={{ paddingLeft: 0 }}
+                className="relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none data-[selected=true]:bg-[var(--color-surface-raised)] data-[selected=true]:text-[var(--color-text)]"
               >
                 <X className="mr-2 size-3.5 shrink-0 text-[var(--color-text-muted)]" />
                 <span className="text-[var(--color-text-muted)]">
@@ -135,19 +133,13 @@ export const Combobox = ({
                       setOpen(false);
                       setSearch('');
                     }}
-                    className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-0 pr-2 text-xs outline-none data-[selected=true]:bg-[var(--color-surface-raised)] data-[selected=true]:text-[var(--color-text)]"
-                    style={{ paddingLeft: 0 }}
+                    className="relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none data-[selected=true]:bg-[var(--color-surface-raised)] data-[selected=true]:text-[var(--color-text)]"
                   >
                     {renderOption ? (
                       renderOption(option, isSelected, search)
                     ) : (
                       <>
-                        <Check
-                          className={cn(
-                            'mr-2 size-3.5 shrink-0',
-                            isSelected ? 'opacity-100' : 'opacity-0'
-                          )}
-                        />
+                        {isSelected ? <Check className="mr-2 size-3.5 shrink-0" /> : null}
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium text-[var(--color-text)]">
                             {option.label}

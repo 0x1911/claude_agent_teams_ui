@@ -203,6 +203,7 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
     'theme',
     'defaultTab',
     'claudeRootPath',
+    'agentLanguage',
   ];
 
   const result: Partial<GeneralConfig> = {};
@@ -266,6 +267,12 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
           }
           result.claudeRootPath = path.resolve(normalized);
         }
+        break;
+      case 'agentLanguage':
+        if (typeof value !== 'string' || value.trim().length === 0) {
+          return { valid: false, error: 'general.agentLanguage must be a non-empty string' };
+        }
+        result.agentLanguage = value.trim();
         break;
       default:
         return { valid: false, error: `Unsupported general key: ${key}` };

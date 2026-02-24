@@ -15,12 +15,15 @@ import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
+import { formatProjectPath } from '@renderer/utils/pathDisplay';
 import { buildTaskCountsByOwner } from '@renderer/utils/pathNormalize';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import {
   Bell,
   CheckCheck,
+  FolderOpen,
   GitBranch,
+  History,
   Pencil,
   Play,
   Plus,
@@ -611,27 +614,75 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
             </Tooltip>
           </div>
         </div>
-        {(data.config.description || leadBranch) && (
-          <div
+        {data.config.description && (
+          <p
             className={cn(
-              'flex items-center justify-between gap-2',
+              'min-w-0 truncate text-xs text-[var(--color-text-muted)]',
               headerColorSet && 'relative z-10'
             )}
           >
-            <p className="min-w-0 truncate text-xs text-[var(--color-text-muted)]">
-              {data.config.description || ''}
-            </p>
-            {leadBranch ? (
+            {data.config.description}
+          </p>
+        )}
+        {(data.config.projectPath || leadBranch) && (
+          <div
+            className={cn(
+              'mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5',
+              headerColorSet && 'relative z-10'
+            )}
+          >
+            {data.config.projectPath && (
               <span
-                className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--color-text-muted)]"
+                className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]"
+                title={data.config.projectPath}
+              >
+                <FolderOpen size={11} className="shrink-0 text-[var(--color-text-muted)]" />
+                <span className="max-w-60 truncate font-mono">
+                  {formatProjectPath(data.config.projectPath)}
+                </span>
+              </span>
+            )}
+            {leadBranch && (
+              <span
+                className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)]"
                 title={leadBranch}
               >
-                <GitBranch size={10} />
+                <GitBranch size={11} className="shrink-0 text-[var(--color-text-muted)]" />
                 <span className="max-w-32 truncate">{leadBranch}</span>
               </span>
-            ) : null}
+            )}
+            {data.isAlive && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                <span className="size-1.5 rounded-full bg-emerald-400" />
+                Running
+              </span>
+            )}
+            {!data.isAlive && isTeamProvisioning && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/15 px-1.5 py-0.5 text-[10px] font-medium text-yellow-400">
+                <span className="size-1.5 animate-pulse rounded-full bg-yellow-400" />
+                Launching...
+              </span>
+            )}
           </div>
         )}
+        {(() => {
+          const currentPath = data.config.projectPath;
+          const history = data.config.projectPathHistory?.filter((p) => p !== currentPath);
+          if (!history || history.length === 0) return null;
+          return (
+            <div
+              className={cn(
+                'mt-0.5 flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]',
+                headerColorSet && 'relative z-10'
+              )}
+            >
+              <History size={10} className="shrink-0" />
+              <span className="truncate">
+                Previous: {history.map((p) => formatProjectPath(p)).join(', ')}
+              </span>
+            </div>
+          );
+        })()}
       </div>
 
       {!data.isAlive && !isTeamProvisioning ? (
@@ -789,18 +840,26 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           onStartTask={(taskId) => {
             void (async () => {
               try {
-                await startTask(teamName, taskId);
+                const result = await startTask(teamName, taskId);
                 if (data?.isAlive) {
                   const task = data.tasks.find((t) => t.id === taskId);
-                  if (task?.owner) {
-                    try {
+                  try {
+                    if (result.notifiedOwner && task?.owner) {
                       await api.teams.processSend(
                         teamName,
                         `Task #${taskId} "${task.subject}" has started. Please begin working on it.`
                       );
-                    } catch {
-                      // best-effort
+                    } else if (!result.notifiedOwner) {
+                      const desc = task?.description?.trim()
+                        ? `\nDescription: ${task.description.trim()}`
+                        : '';
+                      await api.teams.processSend(
+                        teamName,
+                        `Task #${taskId} "${task?.subject ?? ''}" has been moved to IN PROGRESS but has no assignee.${desc}\nPlease assign it to an available team member, or take it yourself if everyone is busy.`
+                      );
                     }
+                  } catch {
+                    // best-effort
                   }
                 }
               } catch {
@@ -810,6 +869,44 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
           }}
           onCompleteTask={(taskId) => {
             void updateTaskStatus(teamName, taskId, 'completed');
+          }}
+          onCancelTask={(taskId) => {
+            void (async () => {
+              try {
+                const task = data?.tasks.find((t) => t.id === taskId);
+                await updateTaskStatus(teamName, taskId, 'pending');
+
+                // Notify assignee directly via inbox — they'll see it immediately
+                if (task?.owner) {
+                  try {
+                    await api.teams.sendMessage(teamName, {
+                      member: task.owner,
+                      text: `Task #${taskId} "${task.subject}" has been CANCELLED by the user and moved back to TODO. Stop working on it immediately.`,
+                      summary: `Task #${taskId} cancelled`,
+                    });
+                  } catch {
+                    // best-effort
+                  }
+                }
+
+                // Also notify team lead so they can reassign/coordinate
+                if (data?.isAlive) {
+                  try {
+                    const ownerSuffix = task?.owner
+                      ? ` ${task.owner} has been notified to stop.`
+                      : '';
+                    await api.teams.processSend(
+                      teamName,
+                      `Task #${taskId} "${task?.subject ?? ''}" has been cancelled and moved back to TODO.${ownerSuffix}`
+                    );
+                  } catch {
+                    // best-effort
+                  }
+                }
+              } catch {
+                // error via store
+              }
+            })();
           }}
           onColumnOrderChange={(columnId, orderedTaskIds) => {
             void updateKanbanColumnOrder(teamName, columnId, orderedTaskIds);
