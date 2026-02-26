@@ -212,7 +212,9 @@ export const ActivityItem = ({
 
   const handleCreateTask = (): void => {
     const subject = message.summary || autoSummary || `Task from ${message.from}`;
-    const plainText = structured ? JSON.stringify(structured, null, 2) : message.text;
+    const plainText = structured
+      ? JSON.stringify(structured, null, 2)
+      : stripAgentBlocks(message.text);
     const description = `From: ${message.from}\nAt: ${timestamp}\n\n${plainText}`.slice(0, 2000);
     onCreateTask?.(subject, description);
   };

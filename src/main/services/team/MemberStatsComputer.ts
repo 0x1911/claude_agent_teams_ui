@@ -4,9 +4,13 @@ import * as readline from 'readline';
 
 import { type TeamMemberLogsFinder } from './TeamMemberLogsFinder';
 
-import type { MemberFullStats } from '@shared/types';
+import type { FileLineStats, MemberFullStats } from '@shared/types';
 
 const logger = createLogger('Service:MemberStatsComputer');
+
+function isValidFilePath(value: string): boolean {
+  return value.length > 0 && value !== 'null' && value !== 'undefined' && value !== 'None';
+}
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -32,6 +36,7 @@ export class MemberStatsComputer {
     let linesAdded = 0;
     let linesRemoved = 0;
     const filesTouchedSet = new Set<string>();
+    const perFileStats: Record<string, FileLineStats> = {};
     const toolUsage: Record<string, number> = {};
     let inputTokens = 0;
     let outputTokens = 0;
@@ -40,26 +45,38 @@ export class MemberStatsComputer {
     let totalDurationMs = 0;
 
     for (const filePath of paths) {
-      const fileStats = await this.parseFile(filePath);
-      linesAdded += fileStats.linesAdded;
-      linesRemoved += fileStats.linesRemoved;
-      for (const f of fileStats.filesTouched) filesTouchedSet.add(f);
-      for (const [tool, count] of Object.entries(fileStats.toolUsage)) {
+      const parsed = await this.parseFile(filePath);
+      linesAdded += parsed.linesAdded;
+      linesRemoved += parsed.linesRemoved;
+      for (const f of parsed.filesTouched) filesTouchedSet.add(f);
+      for (const [fp, fls] of Object.entries(parsed.perFileStats)) {
+        const existing = perFileStats[fp];
+        if (existing) {
+          existing.added += fls.added;
+          existing.removed += fls.removed;
+        } else {
+          perFileStats[fp] = { added: fls.added, removed: fls.removed };
+        }
+      }
+      for (const [tool, count] of Object.entries(parsed.toolUsage)) {
         toolUsage[tool] = (toolUsage[tool] ?? 0) + count;
       }
-      inputTokens += fileStats.inputTokens;
-      outputTokens += fileStats.outputTokens;
-      cacheReadTokens += fileStats.cacheReadTokens;
-      messageCount += fileStats.messageCount;
-      totalDurationMs += fileStats.durationMs;
+      inputTokens += parsed.inputTokens;
+      outputTokens += parsed.outputTokens;
+      cacheReadTokens += parsed.cacheReadTokens;
+      messageCount += parsed.messageCount;
+      totalDurationMs += parsed.durationMs;
     }
+
+    const validFiles = [...filesTouchedSet]
+      .filter(isValidFilePath)
+      .sort((a, b) => a.localeCompare(b));
 
     const stats: MemberFullStats = {
       linesAdded,
       linesRemoved,
-      filesTouched: [...filesTouchedSet]
-        .filter((f) => f && f !== 'null' && f !== 'undefined')
-        .sort((a, b) => a.localeCompare(b)),
+      filesTouched: validFiles,
+      fileStats: perFileStats,
       toolUsage,
       inputTokens,
       outputTokens,
@@ -80,6 +97,7 @@ export class MemberStatsComputer {
     linesAdded: number;
     linesRemoved: number;
     filesTouched: string[];
+    perFileStats: Record<string, FileLineStats>;
     toolUsage: Record<string, number>;
     inputTokens: number;
     outputTokens: number;
@@ -90,6 +108,7 @@ export class MemberStatsComputer {
     let linesAdded = 0;
     let linesRemoved = 0;
     const filesTouchedSet = new Set<string>();
+    const perFileStats: Record<string, FileLineStats> = {};
     const toolUsage: Record<string, number> = {};
     let inputTokens = 0;
     let outputTokens = 0;
@@ -97,6 +116,21 @@ export class MemberStatsComputer {
     let messageCount = 0;
     let firstTimestamp: string | null = null;
     let lastTimestamp: string | null = null;
+
+    const trackFile = (fp: string): void => {
+      if (typeof fp === 'string' && isValidFilePath(fp)) filesTouchedSet.add(fp);
+    };
+
+    const addFileLines = (fp: string, added: number, removed: number): void => {
+      if (!isValidFilePath(fp)) return;
+      const existing = perFileStats[fp];
+      if (existing) {
+        existing.added += added;
+        existing.removed += removed;
+      } else {
+        perFileStats[fp] = { added, removed };
+      }
+    };
 
     try {
       const stream = createReadStream(filePath, { encoding: 'utf8' });
@@ -146,10 +180,10 @@ export class MemberStatsComputer {
 
                   // Track files
                   if (typeof input.file_path === 'string') {
-                    filesTouchedSet.add(input.file_path);
+                    trackFile(input.file_path);
                   }
                   if (typeof input.path === 'string' && toolName === 'Read') {
-                    filesTouchedSet.add(input.path);
+                    trackFile(input.path);
                   }
 
                   // Count lines for Edit
@@ -158,15 +192,24 @@ export class MemberStatsComputer {
                     const newStr = typeof input.new_string === 'string' ? input.new_string : '';
                     const oldLines = oldStr ? oldStr.split('\n').length : 0;
                     const newLines = newStr ? newStr.split('\n').length : 0;
-                    if (newLines > oldLines) linesAdded += newLines - oldLines;
-                    if (oldLines > newLines) linesRemoved += oldLines - newLines;
+                    const fileAdded = newLines > oldLines ? newLines - oldLines : 0;
+                    const fileRemoved = oldLines > newLines ? oldLines - newLines : 0;
+                    linesAdded += fileAdded;
+                    linesRemoved += fileRemoved;
+                    if (typeof input.file_path === 'string') {
+                      addFileLines(input.file_path, fileAdded, fileRemoved);
+                    }
                   }
 
                   // Count lines for Write
                   if (toolName === 'Write') {
                     const writeContent = typeof input.content === 'string' ? input.content : '';
                     if (writeContent) {
-                      linesAdded += writeContent.split('\n').length;
+                      const fileAdded = writeContent.split('\n').length;
+                      linesAdded += fileAdded;
+                      if (typeof input.file_path === 'string') {
+                        addFileLines(input.file_path, fileAdded, 0);
+                      }
                     }
                   }
 
@@ -174,10 +217,14 @@ export class MemberStatsComputer {
                   if (toolName === 'NotebookEdit') {
                     const src = typeof input.new_source === 'string' ? input.new_source : '';
                     if (src) {
-                      linesAdded += src.split('\n').length;
+                      const fileAdded = src.split('\n').length;
+                      linesAdded += fileAdded;
+                      if (typeof input.notebook_path === 'string') {
+                        addFileLines(input.notebook_path, fileAdded, 0);
+                      }
                     }
                     if (typeof input.notebook_path === 'string') {
-                      filesTouchedSet.add(input.notebook_path);
+                      trackFile(input.notebook_path);
                     }
                   }
 
@@ -188,7 +235,10 @@ export class MemberStatsComputer {
                       const bashLines = estimateBashLinesChanged(cmd);
                       linesAdded += bashLines.added;
                       linesRemoved += bashLines.removed;
-                      for (const f of bashLines.files) filesTouchedSet.add(f);
+                      for (const f of bashLines.files) {
+                        trackFile(f);
+                        addFileLines(f, bashLines.added, bashLines.removed);
+                      }
                     }
                   }
                 }
@@ -218,6 +268,7 @@ export class MemberStatsComputer {
       linesAdded,
       linesRemoved,
       filesTouched: [...filesTouchedSet],
+      perFileStats,
       toolUsage,
       inputTokens,
       outputTokens,

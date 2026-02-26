@@ -239,8 +239,17 @@ export const TEAM_UPDATE_TASK_STATUS = 'team:updateTaskStatus';
 /** Update task owner (reassign) */
 export const TEAM_UPDATE_TASK_OWNER = 'team:updateTaskOwner';
 
-/** Delete a team and its associated task directory */
+/** Soft-delete a team (sets deletedAt in config) */
 export const TEAM_DELETE_TEAM = 'team:deleteTeam';
+
+/** Restore a soft-deleted team (removes deletedAt from config) */
+export const TEAM_RESTORE = 'team:restoreTeam';
+
+/** Permanently delete a team and its associated task directory */
+export const TEAM_PERMANENTLY_DELETE = 'team:permanentlyDeleteTeam';
+
+/** Restore a soft-deleted task (removes deletedAt, sets status back to pending) */
+export const TEAM_RESTORE_TASK = 'team:restoreTask';
 
 /** Get list of teams with live CLI processes */
 export const TEAM_ALIVE_LIST = 'team:aliveList';

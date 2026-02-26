@@ -54,10 +54,9 @@ export const TaskFiltersPopover = ({
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium text-text-muted transition-colors hover:text-text-secondary data-[state=open]:bg-surface-raised data-[state=open]:text-text"
+          className="flex shrink-0 items-center justify-center rounded p-0.5 text-text-muted transition-colors hover:text-text-secondary data-[state=open]:bg-surface-raised data-[state=open]:text-text"
         >
-          <Filter className="size-3" />
-          Filters
+          <Filter className="size-3.5" />
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-3" align="end" sideOffset={6}>

@@ -30,6 +30,8 @@ import { normalizePath } from '@renderer/utils/pathNormalize';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { AlertTriangle, Check, CheckCircle2, Loader2 } from 'lucide-react';
 
+import { MembersJsonEditor } from './MembersJsonEditor';
+
 const TEAM_COLOR_NAMES = [
   'blue',
   'green',
@@ -271,6 +273,9 @@ export const CreateTeamDialog = ({
   const [launchTeam, setLaunchTeam] = useState(true);
   const [teamColor, setTeamColor] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
+  const [jsonEditorOpen, setJsonEditorOpen] = useState(false);
+  const [jsonText, setJsonText] = useState('');
+  const [jsonError, setJsonError] = useState<string | null>(null);
 
   const resetUIState = (): void => {
     setLocalError(null);
@@ -292,6 +297,9 @@ export const CreateTeamDialog = ({
     setCustomCwd('');
     setLaunchTeam(true);
     setSelectedModel('');
+    setJsonEditorOpen(false);
+    setJsonText('');
+    setJsonError(null);
     resetUIState();
   };
 
@@ -447,6 +455,60 @@ export const CreateTeamDialog = ({
   }, [cwdMode, projects, selectedProjectPath, defaultProjectPath]);
 
   const effectiveCwd = cwdMode === 'project' ? selectedProjectPath.trim() : customCwd.trim();
+
+  const membersToJsonText = (drafts: MemberDraft[]): string => {
+    const arr = drafts
+      .filter((d) => d.name.trim())
+      .map((d) => {
+        const role =
+          d.roleSelection === CUSTOM_ROLE
+            ? d.customRole.trim() || undefined
+            : d.roleSelection === NO_ROLE
+              ? undefined
+              : d.roleSelection.trim() || undefined;
+        return role ? { name: d.name.trim(), role } : { name: d.name.trim() };
+      });
+    return JSON.stringify(arr, null, 2);
+  };
+
+  const handleJsonChange = (text: string): void => {
+    setJsonText(text);
+    try {
+      const arr: unknown = JSON.parse(text);
+      if (!Array.isArray(arr)) {
+        setJsonError('Root must be an array');
+        return;
+      }
+      const drafts: MemberDraft[] = (arr as Record<string, unknown>[]).map((item) => {
+        const name = typeof item.name === 'string' ? item.name : '';
+        const role = typeof item.role === 'string' ? item.role.trim() : '';
+        const presetRoles: readonly string[] = PRESET_ROLES;
+        const isPreset = presetRoles.includes(role);
+        return createMemberDraft({
+          name,
+          roleSelection: role ? (isPreset ? role : CUSTOM_ROLE) : '',
+          customRole: role && !isPreset ? role : '',
+        });
+      });
+      setMembers(drafts);
+      setJsonError(null);
+    } catch (e) {
+      setJsonError(e instanceof Error ? e.message : 'Invalid JSON');
+    }
+  };
+
+  const toggleJsonEditor = (): void => {
+    if (!jsonEditorOpen) {
+      setJsonText(membersToJsonText(members));
+      setJsonError(null);
+    }
+    setJsonEditorOpen((prev) => !prev);
+  };
+
+  useEffect(() => {
+    if (!jsonEditorOpen || jsonError !== null) return;
+    setJsonText(membersToJsonText(members));
+  }, [members, jsonEditorOpen, jsonError]);
 
   const description = descriptionDraft.value;
   const prompt = promptDraft.value;
@@ -655,9 +717,7 @@ export const CreateTeamDialog = ({
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="team-name" className="text-xs text-[var(--color-text-muted)]">
-              teamName
-            </Label>
+            <Label htmlFor="team-name">Team name</Label>
             <Input
               id="team-name"
               className="h-8 text-xs"
@@ -673,56 +733,23 @@ export const CreateTeamDialog = ({
           </div>
 
           <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="team-description" className="text-xs text-[var(--color-text-muted)]">
-              description (optional)
-            </Label>
-            <AutoResizeTextarea
-              id="team-description"
-              className="text-xs"
-              minRows={2}
-              maxRows={8}
-              value={description}
-              onChange={(event) => descriptionDraft.setValue(event.target.value)}
-              placeholder="Brief description of the team purpose"
-            />
-            {descriptionDraft.isSaved ? (
-              <span className="text-[10px] text-[var(--color-text-muted)]">Draft saved</span>
-            ) : null}
-          </div>
-
-          <div className="space-y-1.5 md:col-span-2">
-            <Label className="text-xs text-[var(--color-text-muted)]">color (optional)</Label>
-            <div className="flex flex-wrap gap-2">
-              {TEAM_COLOR_NAMES.map((colorName) => {
-                const colorSet = getTeamColorSet(colorName);
-                const isSelected = teamColor === colorName;
-                return (
-                  <button
-                    key={colorName}
-                    type="button"
-                    className={cn(
-                      'flex size-7 items-center justify-center rounded-full border-2 transition-all',
-                      isSelected ? 'scale-110' : 'opacity-70 hover:opacity-100'
-                    )}
-                    style={{
-                      backgroundColor: colorSet.badge,
-                      borderColor: isSelected ? colorSet.border : 'transparent',
-                    }}
-                    title={colorName}
-                    onClick={() => setTeamColor(isSelected ? '' : colorName)}
-                  >
-                    <span
-                      className="size-3.5 rounded-full"
-                      style={{ backgroundColor: colorSet.border }}
-                    />
-                  </button>
-                );
-              })}
+            <div className="flex items-center justify-between">
+              <Label>Members</Label>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setMembers((prev) => [...prev, createMemberDraft()]);
+                  }}
+                >
+                  Add member
+                </Button>
+                <Button variant="ghost" size="sm" onClick={toggleJsonEditor}>
+                  {jsonEditorOpen ? 'Hide JSON' : 'Edit as JSON'}
+                </Button>
+              </div>
             </div>
-          </div>
-
-          <div className="space-y-1.5 md:col-span-2">
-            <Label className="text-xs text-[var(--color-text-muted)]">members</Label>
             <div className="space-y-2">
               {members.map((member, index) => {
                 const memberColorSet = getTeamColorSet(getMemberColor(index));
@@ -795,210 +822,258 @@ export const CreateTeamDialog = ({
                   </div>
                 );
               })}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setMembers((prev) => [...prev, createMemberDraft()]);
-                }}
-              >
-                Add member
-              </Button>
+              {jsonEditorOpen ? (
+                <MembersJsonEditor value={jsonText} onChange={handleJsonChange} error={jsonError} />
+              ) : null}
             </div>
             {fieldErrors.members ? (
               <p className="text-[11px] text-red-300">{fieldErrors.members}</p>
             ) : null}
           </div>
 
-          <div className="flex items-center gap-2 md:col-span-2">
-            <Checkbox
-              id="launch-team"
-              checked={launchTeam}
-              onCheckedChange={(checked) => setLaunchTeam(checked === true)}
-            />
-            <Label
-              htmlFor="launch-team"
-              className="cursor-pointer text-xs text-[var(--color-text)]"
-            >
-              Launch team
-            </Label>
-          </div>
-
-          {launchTeam ? (
-            <div className="space-y-1.5 md:col-span-2">
-              <Label htmlFor="team-prompt" className="text-xs text-[var(--color-text-muted)]">
-                Prompt for team lead (optional)
-              </Label>
-              <MentionableTextarea
-                id="team-prompt"
-                className="text-xs"
-                minRows={3}
-                maxRows={12}
-                value={prompt}
-                onValueChange={promptDraft.setValue}
-                suggestions={mentionSuggestions}
-                placeholder="Instructions for the team lead during provisioning..."
-                footerRight={
-                  promptDraft.isSaved ? (
-                    <span className="text-[10px] text-[var(--color-text-muted)]">Draft saved</span>
-                  ) : null
-                }
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-4 md:col-span-2">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="launch-team"
+                checked={launchTeam}
+                onCheckedChange={(checked) => setLaunchTeam(checked === true)}
               />
+              <Label htmlFor="launch-team" className="cursor-pointer">
+                Launch team
+              </Label>
             </div>
-          ) : null}
 
-          {launchTeam ? (
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-xs text-[var(--color-text-muted)]">Model (optional)</Label>
-              <Select value={selectedModel} onValueChange={setSelectedModel}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Default (account setting)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__default__">Default (account setting)</SelectItem>
-                  <SelectItem value="opus">Opus 4.6</SelectItem>
-                  <SelectItem value="sonnet">Sonnet 4.5</SelectItem>
-                  <SelectItem value="haiku">Haiku 4.5</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
+            {launchTeam ? (
+              <div className="mt-4 space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Project</Label>
+                  <div className="space-y-2">
+                    <div className="inline-flex rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-0.5">
+                      <button
+                        type="button"
+                        className={cn(
+                          'rounded-[3px] px-3 py-1 text-xs font-medium transition-colors',
+                          cwdMode === 'project'
+                            ? 'bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-sm'
+                            : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
+                        )}
+                        onClick={() => setCwdMode('project')}
+                      >
+                        From project list
+                      </button>
+                      <button
+                        type="button"
+                        className={cn(
+                          'rounded-[3px] px-3 py-1 text-xs font-medium transition-colors',
+                          cwdMode === 'custom'
+                            ? 'bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-sm'
+                            : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'
+                        )}
+                        onClick={() => setCwdMode('custom')}
+                      >
+                        Custom path
+                      </button>
+                    </div>
 
-          {launchTeam ? (
-            <div className="space-y-1.5 md:col-span-2">
-              <Label className="text-xs text-[var(--color-text-muted)]">Project</Label>
-              <div className="space-y-2">
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant={cwdMode === 'project' ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setCwdMode('project')}
-                  >
-                    From project list
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={cwdMode === 'custom' ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setCwdMode('custom')}
-                  >
-                    Custom path
-                  </Button>
+                    {cwdMode === 'project' ? (
+                      <div className="space-y-1.5">
+                        <Combobox
+                          options={projects.map((project) => ({
+                            value: project.path,
+                            label: project.name,
+                            description: project.path,
+                          }))}
+                          value={selectedProjectPath}
+                          onValueChange={setSelectedProjectPath}
+                          placeholder={
+                            projectsLoading ? 'Loading projects...' : 'Select a project...'
+                          }
+                          searchPlaceholder="Search project by name or path"
+                          emptyMessage="Nothing found"
+                          disabled={projectsLoading || projects.length === 0}
+                          renderOption={(option, isSelected, query) => (
+                            <>
+                              <Check
+                                className={cn(
+                                  'mr-2 size-3.5 shrink-0',
+                                  isSelected ? 'opacity-100' : 'opacity-0'
+                                )}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-medium text-[var(--color-text)]">
+                                  {renderHighlightedText(option.label, query)}
+                                </p>
+                                <p className="truncate text-[var(--color-text-muted)]">
+                                  {renderHighlightedText(option.description ?? '', query)}
+                                </p>
+                              </div>
+                            </>
+                          )}
+                        />
+                        {!selectedProjectPath ? (
+                          <p className="text-[11px] text-[var(--color-text-muted)]">
+                            Select a project from the list
+                          </p>
+                        ) : null}
+                        {projectsError ? (
+                          <p className="text-[11px] text-red-300">{projectsError}</p>
+                        ) : null}
+                        {!projectsLoading && projects.length === 0 ? (
+                          <p className="text-[11px] text-amber-300">
+                            No projects found, switch to custom path.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="flex gap-2">
+                          <Input
+                            className="h-8 text-xs"
+                            value={customCwd}
+                            aria-label="Custom working directory"
+                            onChange={(event) => setCustomCwd(event.target.value)}
+                            placeholder="/absolute/path/to/project"
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              void (async () => {
+                                const paths = await api.config.selectFolders();
+                                if (paths.length > 0) {
+                                  setCustomCwd(paths[0]);
+                                }
+                              })();
+                            }}
+                          >
+                            Browse
+                          </Button>
+                        </div>
+                        <p className="text-[11px] text-[var(--color-text-muted)]">
+                          If the directory does not exist, it will be created automatically.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  {fieldErrors.cwd ? (
+                    <p className="text-[11px] text-red-300">{fieldErrors.cwd}</p>
+                  ) : null}
                 </div>
 
-                {cwdMode === 'project' ? (
-                  <div className="space-y-1.5">
-                    <Combobox
-                      options={projects.map((project) => ({
-                        value: project.path,
-                        label: project.name,
-                        description: project.path,
-                      }))}
-                      value={selectedProjectPath}
-                      onValueChange={setSelectedProjectPath}
-                      placeholder={projectsLoading ? 'Loading projects...' : 'Select a project...'}
-                      searchPlaceholder="Search project by name or path"
-                      emptyMessage="Nothing found"
-                      disabled={projectsLoading || projects.length === 0}
-                      renderOption={(option, isSelected, query) => (
-                        <>
-                          <Check
-                            className={cn(
-                              'mr-2 size-3.5 shrink-0',
-                              isSelected ? 'opacity-100' : 'opacity-0'
-                            )}
-                          />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium text-[var(--color-text)]">
-                              {renderHighlightedText(option.label, query)}
-                            </p>
-                            <p className="truncate text-[var(--color-text-muted)]">
-                              {renderHighlightedText(option.description ?? '', query)}
-                            </p>
-                          </div>
-                        </>
-                      )}
-                    />
-                    {!selectedProjectPath ? (
-                      <p className="text-[11px] text-[var(--color-text-muted)]">
-                        Select a project from the list
-                      </p>
-                    ) : null}
-                    {projectsError ? (
-                      <p className="text-[11px] text-red-300">{projectsError}</p>
-                    ) : null}
-                    {!projectsLoading && projects.length === 0 ? (
-                      <p className="text-[11px] text-amber-300">
-                        No projects found, switch to custom path.
-                      </p>
-                    ) : null}
+                <div className="space-y-1.5">
+                  <Label htmlFor="team-prompt" className="label-optional">
+                    Prompt for team lead (optional)
+                  </Label>
+                  <MentionableTextarea
+                    id="team-prompt"
+                    className="text-xs"
+                    minRows={3}
+                    maxRows={12}
+                    value={prompt}
+                    onValueChange={promptDraft.setValue}
+                    suggestions={mentionSuggestions}
+                    placeholder="Instructions for the team lead during provisioning..."
+                    footerRight={
+                      promptDraft.isSaved ? (
+                        <span className="text-[10px] text-[var(--color-text-muted)]">
+                          Draft saved
+                        </span>
+                      ) : null
+                    }
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="label-optional">Model (optional)</Label>
+                  <Select value={selectedModel} onValueChange={setSelectedModel}>
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue placeholder="Default (account setting)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__default__">Default (account setting)</SelectItem>
+                      <SelectItem value="opus">Opus 4.6</SelectItem>
+                      <SelectItem value="sonnet">Sonnet 4.5</SelectItem>
+                      <SelectItem value="haiku">Haiku 4.5</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {canCreate && (prepareState === 'idle' || prepareState === 'loading') ? (
+                  <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+                    <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    <span>
+                      {prepareMessage ??
+                        (prepareState === 'idle'
+                          ? 'Warming up CLI environment...'
+                          : 'Preparing environment...')}
+                    </span>
                   </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <div className="flex gap-2">
-                      <Input
-                        className="h-8 text-xs"
-                        value={customCwd}
-                        aria-label="Custom working directory"
-                        onChange={(event) => setCustomCwd(event.target.value)}
-                        placeholder="/absolute/path/to/project"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          void (async () => {
-                            const paths = await api.config.selectFolders();
-                            if (paths.length > 0) {
-                              setCustomCwd(paths[0]);
-                            }
-                          })();
-                        }}
-                      >
-                        Browse
-                      </Button>
-                    </div>
-                    <p className="text-[11px] text-[var(--color-text-muted)]">
-                      If the directory does not exist, it will be created automatically.
-                    </p>
+                ) : null}
+
+                {canCreate && prepareState === 'ready' ? (
+                  <div className="flex items-center gap-2 text-xs text-emerald-400">
+                    <CheckCircle2 className="size-3.5 shrink-0" />
+                    <span>CLI environment ready</span>
                   </div>
-                )}
+                ) : null}
               </div>
-              {fieldErrors.cwd ? (
-                <p className="text-[11px] text-red-300">{fieldErrors.cwd}</p>
-              ) : null}
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5 md:col-span-2">
+            <Label htmlFor="team-description" className="label-optional">
+              Description (optional)
+            </Label>
+            <AutoResizeTextarea
+              id="team-description"
+              className="text-xs"
+              minRows={2}
+              maxRows={8}
+              value={description}
+              onChange={(event) => descriptionDraft.setValue(event.target.value)}
+              placeholder="Brief description of the team purpose"
+            />
+            {descriptionDraft.isSaved ? (
+              <span className="text-[10px] text-[var(--color-text-muted)]">Draft saved</span>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5 md:col-span-2">
+            <Label className="label-optional">Color (optional)</Label>
+            <div className="flex flex-wrap gap-2">
+              {TEAM_COLOR_NAMES.map((colorName) => {
+                const colorSet = getTeamColorSet(colorName);
+                const isSelected = teamColor === colorName;
+                return (
+                  <button
+                    key={colorName}
+                    type="button"
+                    className={cn(
+                      'flex size-7 items-center justify-center rounded-full border-2 transition-all',
+                      isSelected ? 'scale-110' : 'opacity-70 hover:opacity-100'
+                    )}
+                    style={{
+                      backgroundColor: colorSet.badge,
+                      borderColor: isSelected ? colorSet.border : 'transparent',
+                    }}
+                    title={colorName}
+                    onClick={() => setTeamColor(isSelected ? '' : colorName)}
+                  >
+                    <span
+                      className="size-3.5 rounded-full"
+                      style={{ backgroundColor: colorSet.border }}
+                    />
+                  </button>
+                );
+              })}
             </div>
-          ) : null}
+          </div>
         </div>
 
         {activeError ? (
           <p className="rounded border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-300">
             {activeError}
           </p>
-        ) : null}
-
-        {canCreate && launchTeam && (prepareState === 'idle' || prepareState === 'loading') ? (
-          <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-            <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            <span>
-              {prepareMessage ??
-                (prepareState === 'idle'
-                  ? 'Warming up CLI environment...'
-                  : 'Preparing environment...')}
-            </span>
-            <span className="text-[var(--color-text-muted)]">&middot;</span>
-            <span>Team provisioning via local Claude CLI.</span>
-          </div>
-        ) : null}
-
-        {canCreate && launchTeam && prepareState === 'ready' ? (
-          <div className="flex items-center gap-2 text-xs text-emerald-400">
-            <CheckCircle2 className="size-3.5 shrink-0" />
-            <span>CLI environment ready</span>
-          </div>
         ) : null}
 
         <DialogFooter className="gap-2 sm:gap-0">

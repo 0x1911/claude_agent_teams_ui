@@ -13,7 +13,7 @@ import {
   Loader2,
 } from 'lucide-react';
 
-import type { MemberFullStats } from '@shared/types';
+import type { FileLineStats, MemberFullStats } from '@shared/types';
 
 interface MemberStatsTabProps {
   teamName: string;
@@ -95,6 +95,7 @@ export const MemberStatsTab = ({
       <ToolUsageBars toolUsage={stats.toolUsage} />
       <FilesTouchedSection
         files={stats.filesTouched}
+        fileStats={stats.fileStats}
         onFileClick={onFileClick}
         onShowAll={onShowAllFiles}
       />
@@ -191,27 +192,33 @@ const ToolUsageBars = ({
   );
 };
 
+const INVALID_PATHS = new Set(['null', 'undefined', 'None', '']);
+
 const FilesTouchedSection = ({
   files,
+  fileStats,
   onFileClick,
   onShowAll,
 }: {
   files: string[];
+  fileStats?: Record<string, FileLineStats>;
   onFileClick?: (filePath: string) => void;
   onShowAll?: () => void;
 }): React.JSX.Element | null => {
   const [expanded, setExpanded] = useState(false);
-  if (files.length === 0) return null;
 
-  const visibleFiles = expanded ? files : files.slice(0, 5);
-  const hiddenCount = files.length - 5;
+  const validFiles = files.filter((f) => !INVALID_PATHS.has(f));
+  if (validFiles.length === 0) return null;
+
+  const visibleFiles = expanded ? validFiles : validFiles.slice(0, 5);
+  const hiddenCount = validFiles.length - 5;
   const isClickable = !!onFileClick;
 
   return (
     <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
       <div className="mb-2 flex items-center justify-between">
         <p className="text-[11px] font-medium text-[var(--color-text-secondary)]">
-          Files Touched ({files.length})
+          Files Touched ({validFiles.length})
         </p>
         {onShowAll && (
           <button className="text-[10px] text-blue-400 hover:text-blue-300" onClick={onShowAll}>
@@ -222,6 +229,7 @@ const FilesTouchedSection = ({
       <div className="space-y-0.5">
         {visibleFiles.map((filePath) => {
           const basename = filePath.split('/').pop() ?? filePath;
+          const fStats = fileStats?.[filePath];
           return (
             <button
               key={filePath}
@@ -236,7 +244,13 @@ const FilesTouchedSection = ({
               disabled={!isClickable}
             >
               <FileCode size={10} className="shrink-0 opacity-50" />
-              <span className="truncate">{basename}</span>
+              <span className="min-w-0 truncate">{basename}</span>
+              {fStats && (fStats.added > 0 || fStats.removed > 0) && (
+                <span className="ml-auto flex shrink-0 items-center gap-1 font-mono text-[10px]">
+                  {fStats.added > 0 && <span className="text-emerald-400">+{fStats.added}</span>}
+                  {fStats.removed > 0 && <span className="text-red-400">-{fStats.removed}</span>}
+                </span>
+              )}
             </button>
           );
         })}

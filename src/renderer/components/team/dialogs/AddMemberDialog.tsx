@@ -113,7 +113,7 @@ export const AddMemberDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label>Role (optional)</Label>
+            <Label className="label-optional">Role (optional)</Label>
             <Select value={roleSelect} onValueChange={setRoleSelect}>
               <SelectTrigger>
                 <SelectValue placeholder="No role" />

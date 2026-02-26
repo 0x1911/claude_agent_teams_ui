@@ -46,7 +46,7 @@ export const GeneralInfoSection = ({
 
       {/* Scope/Tool Name */}
       <div className="flex items-center justify-between border-b border-border-subtle py-2">
-        <label htmlFor="new-trigger-tool-name" className="text-sm text-text-secondary">
+        <label htmlFor="new-trigger-tool-name" className="label-optional text-sm">
           Scope / Tool Name (optional)
         </label>
         <select

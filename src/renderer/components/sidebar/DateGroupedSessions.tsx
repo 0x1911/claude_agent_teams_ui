@@ -7,19 +7,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import {
   getNonEmptyCategories,
   groupSessionsByDate,
   separatePinnedSessions,
 } from '@renderer/utils/dateGrouping';
+import { truncateMiddle } from '@renderer/utils/stringUtils';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   ArrowDownWideNarrow,
   Calendar,
+  Check,
   CheckSquare,
+  ChevronDown,
   Eye,
   EyeOff,
+  GitBranch,
   Loader2,
   MessageSquareOff,
   Pin,
@@ -27,10 +32,108 @@ import {
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
+import { WorktreeBadge } from '../common/WorktreeBadge';
+import { Combobox, type ComboboxOption } from '../ui/combobox';
+
 import { SessionItem } from './SessionItem';
 
-import type { Session } from '@renderer/types/data';
+import type { Session, Worktree, WorktreeSource } from '@renderer/types/data';
 import type { DateCategory } from '@renderer/types/tabs';
+
+// ---------------------------------------------------------------------------
+// Worktree grouping helpers (moved from SidebarHeader)
+// ---------------------------------------------------------------------------
+
+interface WorktreeGroup {
+  source: WorktreeSource;
+  label: string;
+  worktrees: Worktree[];
+  mostRecent: number;
+}
+
+const SOURCE_LABELS: Record<WorktreeSource, string> = {
+  'vibe-kanban': 'Vibe Kanban',
+  conductor: 'Conductor',
+  'auto-claude': 'Auto Claude',
+  '21st': '21st',
+  'claude-desktop': 'Claude Desktop',
+  ccswitch: 'ccswitch',
+  git: 'Git',
+  unknown: 'Other',
+};
+
+function groupWorktreesBySource(worktrees: Worktree[]): {
+  mainWorktree: Worktree | null;
+  groups: WorktreeGroup[];
+} {
+  const mainWorktree = worktrees.find((w) => w.isMainWorktree) ?? null;
+  const groupMap = new Map<WorktreeSource, Worktree[]>();
+
+  for (const wt of worktrees) {
+    if (wt.isMainWorktree) continue;
+    const existing = groupMap.get(wt.source) ?? [];
+    existing.push(wt);
+    groupMap.set(wt.source, existing);
+  }
+
+  const groups: WorktreeGroup[] = [];
+  for (const [source, wts] of groupMap) {
+    const sorted = [...wts].sort((a, b) => (b.mostRecentSession ?? 0) - (a.mostRecentSession ?? 0));
+    const mostRecent = Math.max(...sorted.map((w) => w.mostRecentSession ?? 0));
+    groups.push({ source, label: SOURCE_LABELS[source] ?? source, worktrees: sorted, mostRecent });
+  }
+  groups.sort((a, b) => b.mostRecent - a.mostRecent);
+  return { mainWorktree, groups };
+}
+
+// ---------------------------------------------------------------------------
+// WorktreeItem (inline, moved from SidebarHeader)
+// ---------------------------------------------------------------------------
+
+const WorktreeItem = ({
+  worktree,
+  isSelected,
+  onSelect,
+}: {
+  worktree: Worktree;
+  isSelected: boolean;
+  onSelect: () => void;
+}): React.JSX.Element => {
+  const [isHovered, setIsHovered] = useState(false);
+
+  const buttonStyle: React.CSSProperties = isSelected
+    ? { backgroundColor: 'var(--color-surface-raised)', color: 'var(--color-text)' }
+    : {
+        backgroundColor: isHovered ? 'var(--color-surface-raised)' : 'transparent',
+        opacity: isHovered ? 0.5 : 1,
+      };
+
+  return (
+    <button
+      onClick={onSelect}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="flex w-full items-center gap-1.5 px-4 py-1.5 text-left transition-colors"
+      style={buttonStyle}
+    >
+      <GitBranch
+        className="size-3.5 shrink-0"
+        style={{ color: isSelected ? '#34d399' : 'var(--color-text-muted)' }}
+      />
+      {worktree.isMainWorktree && <WorktreeBadge source={worktree.source} isMain />}
+      <span
+        className="flex-1 truncate font-mono text-xs"
+        style={{ color: isSelected ? 'var(--color-text)' : 'var(--color-text-muted)' }}
+      >
+        {truncateMiddle(worktree.name, 28)}
+      </span>
+      <span className="shrink-0 text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+        {worktree.sessions.length}
+      </span>
+      {isSelected && <Check className="size-3.5 shrink-0 text-indigo-400" />}
+    </button>
+  );
+};
 
 // Virtual list item types
 type VirtualItem =
@@ -74,6 +177,19 @@ export const DateGroupedSessions = (): React.JSX.Element => {
     hideMultipleSessions,
     unhideMultipleSessions,
     pinMultipleSessions,
+    // Project / repository state
+    repositoryGroups,
+    selectedRepositoryId,
+    selectedWorktreeId,
+    selectWorktree,
+    selectRepository,
+    viewMode,
+    projects,
+    activeProjectId,
+    setActiveProject,
+    clearActiveProject,
+    fetchRepositoryGroups,
+    fetchProjects,
   } = useStore(
     useShallow((s) => ({
       sessions: s.sessions,
@@ -98,12 +214,82 @@ export const DateGroupedSessions = (): React.JSX.Element => {
       hideMultipleSessions: s.hideMultipleSessions,
       unhideMultipleSessions: s.unhideMultipleSessions,
       pinMultipleSessions: s.pinMultipleSessions,
+      // Project / repository
+      repositoryGroups: s.repositoryGroups,
+      selectedRepositoryId: s.selectedRepositoryId,
+      selectedWorktreeId: s.selectedWorktreeId,
+      selectWorktree: s.selectWorktree,
+      selectRepository: s.selectRepository,
+      viewMode: s.viewMode,
+      projects: s.projects,
+      activeProjectId: s.activeProjectId,
+      setActiveProject: s.setActiveProject,
+      clearActiveProject: s.clearActiveProject,
+      fetchRepositoryGroups: s.fetchRepositoryGroups,
+      fetchProjects: s.fetchProjects,
     }))
   );
 
   const parentRef = useRef<HTMLDivElement>(null);
   const countRef = useRef<HTMLSpanElement>(null);
   const [showCountTooltip, setShowCountTooltip] = useState(false);
+  const [isWorktreeDropdownOpen, setIsWorktreeDropdownOpen] = useState(false);
+  const worktreeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Fetch project data on mount
+  useEffect(() => {
+    if (viewMode === 'grouped' && repositoryGroups.length === 0) {
+      void fetchRepositoryGroups();
+    } else if (viewMode === 'flat' && projects.length === 0) {
+      void fetchProjects();
+    }
+  }, [viewMode, repositoryGroups.length, projects.length, fetchRepositoryGroups, fetchProjects]);
+
+  // Project combobox options
+  const projectComboboxOptions = useMemo((): ComboboxOption[] => {
+    const items =
+      viewMode === 'grouped'
+        ? repositoryGroups.filter((r) => r.totalSessions > 0)
+        : projects.filter((p) => p.sessions.length > 0);
+    return items.map((item) => {
+      const sessionCount =
+        viewMode === 'grouped'
+          ? (item as (typeof repositoryGroups)[0]).totalSessions
+          : (item as (typeof projects)[0]).sessions.length;
+      const path =
+        viewMode === 'grouped'
+          ? (item as (typeof repositoryGroups)[0]).worktrees[0]?.path
+          : (item as (typeof projects)[0]).path;
+      return {
+        value: item.id,
+        label: item.name,
+        description: path,
+        meta: { sessionCount, path },
+      };
+    });
+  }, [viewMode, repositoryGroups, projects]);
+
+  const activeProjectValue = viewMode === 'grouped' ? selectedRepositoryId : activeProjectId;
+
+  const handleProjectValueChange = (id: string): void => {
+    if (viewMode === 'grouped') selectRepository(id);
+    else setActiveProject(id);
+  };
+
+  // Worktree state
+  const activeRepo = repositoryGroups.find((r) => r.id === selectedRepositoryId);
+  const activeWorktree = activeRepo?.worktrees.find((w) => w.id === selectedWorktreeId);
+  const worktrees = (activeRepo?.worktrees ?? []).filter((w) => w.sessions.length > 0);
+  const hasMultipleWorktrees = worktrees.length > 1;
+  const worktreeGroupingResult = useMemo(() => groupWorktreesBySource(worktrees), [worktrees]);
+  const mainWorktree = worktreeGroupingResult.mainWorktree;
+  const worktreeGroups = worktreeGroupingResult.groups;
+  const worktreeName = activeWorktree?.name ?? 'main';
+
+  const handleSelectWorktree = (worktree: Worktree): void => {
+    selectWorktree(worktree.id);
+    setIsWorktreeDropdownOpen(false);
+  };
 
   const hiddenSet = useMemo(() => new Set(hiddenSessionIds), [hiddenSessionIds]);
   const hasHiddenSessions = hiddenSessionIds.length > 0;
@@ -295,11 +481,158 @@ export const DateGroupedSessions = (): React.JSX.Element => {
     clearSidebarSelection();
   }, [pinMultipleSessions, sidebarSelectedSessionIds, clearSidebarSelection]);
 
+  // Project selector (always rendered at top)
+  const projectSelector = (
+    <div className="shrink-0 space-y-0">
+      {/* Project combobox */}
+      <div className="px-2 py-1.5">
+        <Combobox
+          options={projectComboboxOptions}
+          value={activeProjectValue ?? ''}
+          onValueChange={handleProjectValueChange}
+          placeholder="Select Project"
+          searchPlaceholder="Search..."
+          emptyMessage="Nothing found"
+          className="text-[12px]"
+          resetLabel="Reset selection"
+          onReset={clearActiveProject}
+          renderOption={(option, isSelected) => {
+            const sessionCount = (option.meta?.sessionCount as number) ?? 0;
+            const path = option.meta?.path as string | undefined;
+            return (
+              <>
+                <Check
+                  className={cn(
+                    'mr-2 size-3.5 shrink-0',
+                    isSelected ? 'text-indigo-400 opacity-100' : 'opacity-0'
+                  )}
+                />
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={cn(
+                      'truncate',
+                      isSelected
+                        ? 'font-medium text-[var(--color-text)]'
+                        : 'text-[var(--color-text-muted)]'
+                    )}
+                  >
+                    {option.label}
+                  </p>
+                  {path ? (
+                    <p className="truncate text-[10px] text-[var(--color-text-muted)]">{path}</p>
+                  ) : null}
+                </div>
+                <span className="shrink-0 text-[10px] text-[var(--color-text-muted)]">
+                  {sessionCount}
+                </span>
+              </>
+            );
+          }}
+        />
+      </div>
+
+      {/* Worktree selector (grouped mode only, when multiple worktrees) */}
+      {viewMode === 'grouped' && activeRepo && hasMultipleWorktrees && (
+        <div ref={worktreeDropdownRef} className="relative w-full">
+          <button
+            onClick={() => setIsWorktreeDropdownOpen(!isWorktreeDropdownOpen)}
+            className="flex w-full items-center justify-between px-3 py-1 text-left transition-colors"
+            style={{
+              backgroundColor: isWorktreeDropdownOpen
+                ? 'var(--color-surface-raised)'
+                : 'transparent',
+              color: isWorktreeDropdownOpen ? 'var(--color-text)' : 'var(--color-text-muted)',
+            }}
+          >
+            <div className="flex flex-1 items-center gap-1.5 overflow-hidden">
+              <GitBranch
+                className="size-3.5 shrink-0"
+                style={{ color: isWorktreeDropdownOpen ? '#34d399' : 'rgba(52, 211, 153, 0.7)' }}
+              />
+              {activeWorktree?.isMainWorktree ? (
+                <WorktreeBadge source={activeWorktree.source} isMain />
+              ) : (
+                activeWorktree?.source && <WorktreeBadge source={activeWorktree.source} />
+              )}
+              <span className="truncate font-mono text-[11px]">
+                {truncateMiddle(worktreeName, 24)}
+              </span>
+            </div>
+            <ChevronDown
+              className={`size-3.5 shrink-0 transition-transform ${isWorktreeDropdownOpen ? 'rotate-180' : ''}`}
+              style={{ color: 'var(--color-text-muted)' }}
+            />
+          </button>
+
+          {isWorktreeDropdownOpen && (
+            <>
+              <div
+                role="presentation"
+                className="fixed inset-0 z-10"
+                onClick={() => setIsWorktreeDropdownOpen(false)}
+              />
+              <div
+                className="absolute inset-x-0 top-full z-20 mt-0 max-h-[300px] overflow-y-auto py-1 shadow-xl"
+                style={{
+                  backgroundColor: 'var(--color-surface-sidebar)',
+                  borderWidth: '1px',
+                  borderTopWidth: '0',
+                  borderStyle: 'solid',
+                  borderColor: 'var(--color-border)',
+                }}
+              >
+                <div
+                  className="px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  Switch Worktree
+                </div>
+                {mainWorktree && (
+                  <WorktreeItem
+                    worktree={mainWorktree}
+                    isSelected={mainWorktree.id === selectedWorktreeId}
+                    onSelect={() => handleSelectWorktree(mainWorktree)}
+                  />
+                )}
+                {worktreeGroups.map((group) => (
+                  <div key={group.source}>
+                    <div
+                      className="mt-1 px-4 py-1.5 text-[9px] font-medium uppercase tracking-wider"
+                      style={{
+                        borderTopWidth: '1px',
+                        borderTopStyle: 'solid',
+                        borderTopColor: 'var(--color-border)',
+                        color: 'var(--color-text-muted)',
+                      }}
+                    >
+                      {group.label}
+                    </div>
+                    {group.worktrees.map((worktree) => (
+                      <WorktreeItem
+                        key={worktree.id}
+                        worktree={worktree}
+                        isSelected={worktree.id === selectedWorktreeId}
+                        onSelect={() => handleSelectWorktree(worktree)}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   if (!selectedProjectId) {
     return (
-      <div className="p-4">
-        <div className="py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
-          <p>Select a project to view sessions</p>
+      <div className="flex h-full flex-col">
+        {projectSelector}
+        <div className="flex flex-1 items-center justify-center p-4">
+          <div className="text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <p>Select a project to view sessions</p>
+          </div>
         </div>
       </div>
     );
@@ -313,8 +646,9 @@ export const DateGroupedSessions = (): React.JSX.Element => {
     ];
 
     return (
-      <div className="p-4">
-        <div className="space-y-3">
+      <div className="flex h-full flex-col">
+        {projectSelector}
+        <div className="space-y-3 p-4">
           {widths.map((w, i) => (
             <div key={i} className="space-y-2">
               <div
@@ -338,19 +672,22 @@ export const DateGroupedSessions = (): React.JSX.Element => {
 
   if (sessionsError) {
     return (
-      <div className="p-4">
-        <div
-          className="rounded-lg border p-3 text-sm"
-          style={{
-            borderColor: 'var(--color-border)',
-            backgroundColor: 'var(--color-surface-raised)',
-            color: 'var(--color-text-muted)',
-          }}
-        >
-          <p className="mb-1 font-semibold" style={{ color: 'var(--color-text)' }}>
-            Error loading sessions
-          </p>
-          <p>{sessionsError}</p>
+      <div className="flex h-full flex-col">
+        {projectSelector}
+        <div className="p-4">
+          <div
+            className="rounded-lg border p-3 text-sm"
+            style={{
+              borderColor: 'var(--color-border)',
+              backgroundColor: 'var(--color-surface-raised)',
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            <p className="mb-1 font-semibold" style={{ color: 'var(--color-text)' }}>
+              Error loading sessions
+            </p>
+            <p>{sessionsError}</p>
+          </div>
         </div>
       </div>
     );
@@ -358,11 +695,14 @@ export const DateGroupedSessions = (): React.JSX.Element => {
 
   if (sessions.length === 0) {
     return (
-      <div className="p-4">
-        <div className="py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
-          <MessageSquareOff className="mx-auto mb-2 size-8 opacity-50" />
-          <p className="mb-2">No sessions found</p>
-          <p className="text-xs opacity-70">This project has no sessions yet</p>
+      <div className="flex h-full flex-col">
+        {projectSelector}
+        <div className="flex flex-1 items-center justify-center p-4">
+          <div className="text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <MessageSquareOff className="mx-auto mb-2 size-8 opacity-50" />
+            <p className="mb-2">No sessions found</p>
+            <p className="text-xs opacity-70">This project has no sessions yet</p>
+          </div>
         </div>
       </div>
     );
@@ -370,7 +710,8 @@ export const DateGroupedSessions = (): React.JSX.Element => {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="mt-2 flex items-center gap-2 px-4 py-3">
+      {projectSelector}
+      <div className="flex items-center gap-2 px-4 py-2">
         <Calendar className="size-4" style={{ color: 'var(--color-text-muted)' }} />
         <h2
           className="text-xs uppercase tracking-wider"

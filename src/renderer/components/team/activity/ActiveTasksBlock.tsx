@@ -86,32 +86,27 @@ export const ActiveTasksBlock = ({
                   {roleLabel}
                 </span>
               ) : null}
-              <span
-                className="min-w-0 flex-1 truncate text-[10px]"
-                style={{ color: CARD_ICON_MUTED }}
-              >
+              <span className="shrink-0 text-[10px]" style={{ color: CARD_ICON_MUTED }}>
                 working on
               </span>
               {task &&
                 (onTaskClick ? (
                   <button
                     type="button"
-                    className="truncate rounded px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-text)] transition-opacity hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-[var(--color-border)]"
+                    className="min-w-0 flex-1 truncate rounded px-1.5 py-0.5 text-left text-[10px] font-medium text-[var(--color-text)] transition-opacity hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-[var(--color-border)]"
                     style={{ border: `1px solid ${colors.border}40` }}
                     onClick={() => onTaskClick(task)}
                     title={task.subject}
                   >
-                    #{task.id} {task.subject.slice(0, 40)}
-                    {task.subject.length > 40 ? '…' : ''}
+                    #{task.id} {task.subject}
                   </button>
                 ) : (
                   <span
-                    className="truncate px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-text)]"
+                    className="min-w-0 flex-1 truncate px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-text)]"
                     style={{ border: `1px solid ${colors.border}40` }}
                     title={task.subject}
                   >
-                    #{task.id} {task.subject.slice(0, 40)}
-                    {task.subject.length > 40 ? '…' : ''}
+                    #{task.id} {task.subject}
                   </span>
                 ))}
             </div>

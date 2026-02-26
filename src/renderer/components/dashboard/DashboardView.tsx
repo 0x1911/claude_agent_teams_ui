@@ -7,7 +7,7 @@
  * - Border-first project cards with minimal backgrounds
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '@renderer/api';
 import { useStore } from '@renderer/store';
@@ -18,13 +18,14 @@ import {
   normalizePath,
   type TaskStatusCounts,
 } from '@renderer/utils/pathNormalize';
+import { projectColor } from '@renderer/utils/projectColor';
 import { formatShortcut } from '@renderer/utils/stringUtils';
 import { createLogger } from '@shared/utils/logger';
 import { useShallow } from 'zustand/react/shallow';
 
 const logger = createLogger('Component:DashboardView');
 import { formatDistanceToNow } from 'date-fns';
-import { Command, FolderGit2, FolderOpen, GitBranch, Search, Settings, Users } from 'lucide-react';
+import { Command, FolderGit2, FolderOpen, GitBranch, Search, Users } from 'lucide-react';
 
 import type { RepositoryGroup } from '@renderer/types/data';
 
@@ -131,27 +132,78 @@ const RepositoryCard = ({
   const projectPath = repo.worktrees[0]?.path || '';
   const formattedPath = formatProjectPath(projectPath);
 
+  // Git branch info from worktrees
+  const mainWorktree = repo.worktrees.find((w) => w.isMainWorktree) ?? repo.worktrees[0];
+  const mainBranch = mainWorktree?.gitBranch;
+
+  const color = useMemo(() => projectColor(repo.name), [repo.name]);
+  const cardRef = useRef<HTMLButtonElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleOpenPath = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (projectPath) {
+        void api.openPath(projectPath);
+      }
+    },
+    [projectPath]
+  );
+
   return (
     <button
+      ref={cardRef}
       onClick={onClick}
-      className={`group relative flex min-h-[120px] flex-col overflow-hidden rounded-lg border p-4 text-left transition-all duration-300 ${
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={`group relative flex min-h-[120px] flex-col overflow-hidden rounded-lg border border-l-[3px] p-4 text-left transition-all duration-300 ${
         isHighlighted
           ? 'border-border-emphasis bg-surface-raised'
           : 'bg-surface/50 border-border hover:border-border-emphasis hover:bg-surface-raised'
       } `}
+      style={{
+        borderLeftColor: color.border,
+        boxShadow: isHovered ? `inset 3px 0 12px -4px ${color.glow}` : undefined,
+      }}
     >
       {/* Icon + Project name */}
       <div className="mb-1 flex items-center gap-2.5">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-overlay transition-colors duration-300 group-hover:border-border-emphasis">
-          <FolderGit2 className="size-4 text-text-secondary transition-colors group-hover:text-text" />
+          <FolderGit2
+            className="size-4 transition-colors group-hover:text-text"
+            style={{ color: color.icon }}
+          />
         </div>
         <h3 className="min-w-0 truncate text-sm font-medium text-text transition-colors duration-200 group-hover:text-text">
           {repo.name}
         </h3>
       </div>
 
-      {/* Project path - monospace, muted */}
-      <p className="mb-auto truncate font-mono text-[10px] text-text-muted">{formattedPath}</p>
+      {/* Project path - monospace, muted, clickable to open in file manager */}
+      <button
+        type="button"
+        onClick={handleOpenPath}
+        className="flex w-full min-w-0 items-center gap-1 truncate text-left font-mono text-[10px] text-text-muted transition-colors hover:text-text-secondary"
+        title={`Open in file manager: ${projectPath}`}
+      >
+        <FolderOpen className="size-3 shrink-0" />
+        <span className="truncate">{formattedPath}</span>
+      </button>
+
+      {/* Git branch / worktree info */}
+      {mainBranch ? (
+        <div className="mb-auto mt-1 flex items-center gap-1.5 truncate">
+          <GitBranch className="size-3 shrink-0 text-text-muted" />
+          <span className="truncate text-[10px] text-text-secondary">{mainBranch}</span>
+          {hasMultipleWorktrees && (
+            <span className="shrink-0 rounded bg-surface-raised px-1 py-px text-[9px] text-text-muted">
+              +{worktreeCount - 1}
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="mb-auto" />
+      )}
 
       {/* Meta row: worktrees, sessions, time */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -531,12 +583,7 @@ const ProjectsGrid = ({
 
 export const DashboardView = (): React.JSX.Element => {
   const [searchQuery, setSearchQuery] = useState('');
-  const { openSettingsTab, openTeamsTab } = useStore(
-    useShallow((s) => ({
-      openSettingsTab: s.openSettingsTab,
-      openTeamsTab: s.openTeamsTab,
-    }))
-  );
+  const openTeamsTab = useStore((s) => s.openTeamsTab);
 
   return (
     <div className="relative flex-1 overflow-auto bg-surface">
@@ -568,24 +615,14 @@ export const DashboardView = (): React.JSX.Element => {
           <h2 className="text-xs font-medium uppercase tracking-wider text-text-muted">
             {searchQuery.trim() ? 'Search Results' : 'Recent Projects'}
           </h2>
-          <div className="flex items-center gap-3">
-            {searchQuery.trim() && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="text-xs text-text-muted transition-colors hover:text-text-secondary"
-              >
-                Clear search
-              </button>
-            )}
+          {searchQuery.trim() && (
             <button
-              onClick={() => openSettingsTab('general')}
-              className="flex items-center gap-1.5 text-xs text-text-muted transition-colors hover:text-text-secondary"
-              title="Change Claude data folder"
+              onClick={() => setSearchQuery('')}
+              className="text-xs text-text-muted transition-colors hover:text-text-secondary"
             >
-              <Settings className="size-3" />
-              Change default folder
+              Clear search
             </button>
-          </div>
+          )}
         </div>
 
         {/* Projects Grid */}

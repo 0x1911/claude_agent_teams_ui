@@ -99,13 +99,23 @@ function trimTrailingPathSep(p: string): string {
   return s;
 }
 
-function projectLabelFromPath(path: string): string {
+export function projectLabelFromPath(path: string): string {
   const normalized = trimTrailingPathSep(path);
   const segments = normalized
     .split('/')
     .flatMap((s) => s.split('\\'))
     .filter(Boolean);
   return segments.length > 0 ? segments[segments.length - 1] : path || NO_PROJECT_LABEL;
+}
+
+/**
+ * Flat sort: newest (by updatedAt/createdAt) first, no grouping.
+ * Within the same team, tasks are ordered by freshness.
+ * Teams with more recent activity appear first.
+ */
+export function sortTasksByFreshness(tasks: GlobalTask[]): GlobalTask[] {
+  const teamTs = buildTeamMaxTs(tasks);
+  return [...tasks].sort((a, b) => compareByTeamFreshness(a, b, teamTs));
 }
 
 export function groupTasksByProject(tasks: GlobalTask[]): ProjectTaskGroup[] {

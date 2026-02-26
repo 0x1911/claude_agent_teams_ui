@@ -458,7 +458,7 @@ export const LaunchTeamDialog = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="launch-prompt" className="text-xs text-[var(--color-text-muted)]">
+            <Label htmlFor="launch-prompt" className="label-optional text-xs">
               Prompt (optional)
             </Label>
             <MentionableTextarea
@@ -479,7 +479,7 @@ export const LaunchTeamDialog = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-[var(--color-text-muted)]">Model (optional)</Label>
+            <Label className="label-optional text-xs">Model (optional)</Label>
             <Select value={selectedModel} onValueChange={setSelectedModel}>
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue placeholder="Default (account setting)" />

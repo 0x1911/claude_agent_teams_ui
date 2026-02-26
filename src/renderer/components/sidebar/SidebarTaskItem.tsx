@@ -1,7 +1,14 @@
+import { useMemo } from 'react';
+
+import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useUnreadCommentCount } from '@renderer/hooks/useUnreadCommentCount';
 import { useStore } from '@renderer/store';
+import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import { nameColorSet } from '@renderer/utils/projectColor';
+import { projectColor } from '@renderer/utils/projectColor';
+import { projectLabelFromPath } from '@renderer/utils/taskGrouping';
 import { format, isThisYear, isToday, isYesterday } from 'date-fns';
-import { CheckCircle2, Circle, Eye, Loader2, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Circle, Eye, Loader2, ShieldCheck, Trash2 } from 'lucide-react';
 
 import type { GlobalTask, TeamTaskStatus } from '@shared/types';
 import type { LucideIcon } from 'lucide-react';
@@ -47,13 +54,16 @@ function formatUpdatedLabel(task: GlobalTask): string | null {
 interface SidebarTaskItemProps {
   task: GlobalTask;
   hideTeamName?: boolean;
+  showTeamName?: boolean;
 }
 
 export const SidebarTaskItem = ({
   task,
   hideTeamName,
+  showTeamName,
 }: SidebarTaskItemProps): React.JSX.Element => {
   const openGlobalTaskDetail = useStore((s) => s.openGlobalTaskDetail);
+  const teamMembers = useStore((s) => s.teams.find((t) => t.teamName === task.teamName)?.members);
   const unreadCount = useUnreadCommentCount(task.teamName, task.id, task.comments);
   const cfg =
     task.kanbanColumn === 'approved'
@@ -65,14 +75,40 @@ export const SidebarTaskItem = ({
   const updatedLabel = formatUpdatedLabel(task);
   const dateLabel = updatedLabel ?? formatTaskDate(task.createdAt);
 
+  const ownerColorSet = useMemo(() => {
+    if (!teamMembers || !task.owner) return null;
+    const colorMap = buildMemberColorMap(teamMembers);
+    const colorName = colorMap.get(task.owner);
+    return colorName ? getTeamColorSet(colorName) : null;
+  }, [teamMembers, task.owner]);
+
+  const projectLabel = useMemo(() => {
+    if (!task.projectPath?.trim()) return null;
+    return projectLabelFromPath(task.projectPath);
+  }, [task.projectPath]);
+
+  const projectColorSet = useMemo(
+    () => (projectLabel ? projectColor(projectLabel) : null),
+    [projectLabel]
+  );
+
+  const teamColor = useMemo(
+    () => (showTeamName ? nameColorSet(task.teamDisplayName) : null),
+    [showTeamName, task.teamDisplayName]
+  );
+
+  const showTeamRow = showTeamName && !hideTeamName;
+
   return (
     <button
       type="button"
-      className="flex h-[48px] w-full cursor-pointer flex-col justify-center border-b px-3 py-2 text-left transition-colors hover:bg-surface-raised"
+      className={`flex w-full cursor-pointer flex-col justify-center border-b px-3 py-1.5 text-left transition-colors hover:bg-surface-raised ${task.teamDeleted ? 'opacity-50' : ''}`}
       style={{ borderColor: 'var(--color-border)' }}
       onClick={() => openGlobalTaskDetail(task.teamName, task.id)}
     >
+      {/* Row 1: status + subject */}
       <div className="flex w-full items-center gap-1.5 overflow-hidden">
+        <StatusIcon className={`size-3 shrink-0 ${cfg.color}`} />
         <span
           className="truncate text-[13px] font-medium leading-tight"
           style={{ color: 'var(--color-text-muted)' }}
@@ -85,28 +121,59 @@ export const SidebarTaskItem = ({
             title={`${unreadCount} unread`}
           />
         )}
-        <StatusIcon className={`size-3 shrink-0 ${cfg.color}`} />
       </div>
+
+      {/* Row 2: project + owner (when no team row) + date */}
       <div
-        className="mt-0.5 flex items-center gap-1.5 text-[10px] leading-tight"
+        className="mt-0.5 flex w-full items-center gap-1.5 text-[10px] leading-tight"
         style={{ color: 'var(--color-text-muted)' }}
       >
-        <span>{task.owner ?? 'unassigned'}</span>
-        {!hideTeamName && (
-          <>
-            <span className="opacity-40">·</span>
-            <span className="truncate">{task.teamDisplayName}</span>
-          </>
+        {task.teamDeleted && <Trash2 className="size-2.5 shrink-0 text-zinc-500" />}
+        {projectLabel && (
+          <span
+            className="shrink-0"
+            style={projectColorSet ? { color: projectColorSet.text } : undefined}
+          >
+            {projectLabel}
+          </span>
         )}
-        {dateLabel && (
+        {!showTeamRow && (
           <>
-            <span className="opacity-40">·</span>
-            <span className={`shrink-0 ${updatedLabel ? 'italic opacity-70' : ''}`}>
-              {dateLabel}
+            {projectLabel && <span className="opacity-40">·</span>}
+            <span
+              className="shrink-0 opacity-60"
+              style={ownerColorSet ? { color: ownerColorSet.text } : undefined}
+            >
+              {task.owner ?? 'unassigned'}
             </span>
           </>
         )}
+        {dateLabel && (
+          <span className={`ml-auto shrink-0 ${updatedLabel ? 'italic opacity-70' : ''}`}>
+            {dateLabel}
+          </span>
+        )}
       </div>
+
+      {/* Row 3: Team: name · owner */}
+      {showTeamRow && (
+        <div
+          className="mt-0.5 flex w-full items-center gap-1.5 text-[10px] leading-tight"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          <span className="shrink-0 opacity-50">Team:</span>
+          <span className="shrink-0" style={teamColor ? { color: teamColor.text } : undefined}>
+            {task.teamDisplayName}
+          </span>
+          <span className="opacity-40">·</span>
+          <span
+            className="shrink-0 opacity-60"
+            style={ownerColorSet ? { color: ownerColorSet.text } : undefined}
+          >
+            {task.owner ?? 'unassigned'}
+          </span>
+        </div>
+      )}
     </button>
   );
 };

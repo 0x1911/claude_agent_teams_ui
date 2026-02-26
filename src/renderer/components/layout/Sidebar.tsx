@@ -16,7 +16,6 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { DateGroupedSessions } from '../sidebar/DateGroupedSessions';
 import { GlobalTaskList } from '../sidebar/GlobalTaskList';
-import { TaskFiltersPopover } from '../sidebar/TaskFiltersPopover';
 import { defaultTaskFiltersState } from '../sidebar/taskFiltersState';
 
 import { SidebarHeader } from './SidebarHeader';
@@ -30,13 +29,9 @@ const MAX_WIDTH = 500;
 const DEFAULT_WIDTH = 280;
 
 export const Sidebar = (): React.JSX.Element => {
-  const { projects, projectsLoading, fetchProjects, sidebarCollapsed, teams } = useStore(
+  const { sidebarCollapsed } = useStore(
     useShallow((s) => ({
-      projects: s.projects,
-      projectsLoading: s.projectsLoading,
-      fetchProjects: s.fetchProjects,
       sidebarCollapsed: s.sidebarCollapsed,
-      teams: s.teams,
     }))
   );
   const [width, setWidth] = useState(DEFAULT_WIDTH);
@@ -45,13 +40,6 @@ export const Sidebar = (): React.JSX.Element => {
   const [taskFilters, setTaskFilters] = useState<TaskFiltersState>(defaultTaskFiltersState);
   const [taskFiltersPopoverOpen, setTaskFiltersPopoverOpen] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-
-  // Fetch projects on mount if not loaded
-  useEffect(() => {
-    if (projects.length === 0 && !projectsLoading) {
-      void fetchProjects();
-    }
-  }, [projects.length, projectsLoading, fetchProjects]);
 
   // Handle mouse move during resize
   const handleMouseMove = useCallback(
@@ -167,18 +155,7 @@ export const Sidebar = (): React.JSX.Element => {
               Sessions
             </button>
           </div>
-          <div className="flex flex-1 justify-end pb-0.5">
-            {sidebarTab === 'tasks' && (
-              <TaskFiltersPopover
-                open={taskFiltersPopoverOpen}
-                onOpenChange={setTaskFiltersPopoverOpen}
-                teams={teams.map((t) => ({ teamName: t.teamName, displayName: t.displayName }))}
-                filters={taskFilters}
-                onFiltersChange={setTaskFilters}
-                onApply={() => {}}
-              />
-            )}
-          </div>
+          <div className="flex-1" />
         </div>
 
         {/* Content: Tasks list or Sessions list */}

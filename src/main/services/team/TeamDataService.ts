@@ -85,13 +85,19 @@ export class TeamDataService {
       this.configReader.listTeams(),
     ]);
 
-    const teamInfoMap = new Map<string, { displayName: string; projectPath?: string }>();
+    const teamInfoMap = new Map<
+      string,
+      { displayName: string; projectPath?: string; deletedAt?: string }
+    >();
     for (const team of teams) {
       teamInfoMap.set(team.teamName, {
         displayName: team.displayName,
         projectPath: team.projectPath,
+        deletedAt: team.deletedAt,
       });
     }
+
+    const deletedTeams = new Set(teams.filter((t) => t.deletedAt).map((t) => t.teamName));
 
     const teamNames = [
       ...new Set(rawTasks.map((t) => t.teamName).filter((n) => teamInfoMap.has(n))),
@@ -123,6 +129,7 @@ export class TeamDataService {
           teamDisplayName: info.displayName,
           projectPath: task.projectPath ?? info.projectPath,
           kanbanColumn,
+          teamDeleted: deletedTeams.has(task.teamName) || undefined,
         };
       });
   }
@@ -135,6 +142,26 @@ export class TeamDataService {
   }
 
   async deleteTeam(teamName: string): Promise<void> {
+    const config = await this.configReader.getConfig(teamName);
+    if (!config) {
+      throw new Error(`Team not found: ${teamName}`);
+    }
+    config.deletedAt = new Date().toISOString();
+    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    await atomicWriteAsync(configPath, JSON.stringify(config, null, 2));
+  }
+
+  async restoreTeam(teamName: string): Promise<void> {
+    const config = await this.configReader.getConfig(teamName);
+    if (!config) {
+      throw new Error(`Team not found: ${teamName}`);
+    }
+    delete config.deletedAt;
+    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    await atomicWriteAsync(configPath, JSON.stringify(config, null, 2));
+  }
+
+  async permanentlyDeleteTeam(teamName: string): Promise<void> {
     const teamsDir = path.join(getTeamsBasePath(), teamName);
     await fs.promises.rm(teamsDir, { recursive: true, force: true });
 
@@ -666,6 +693,10 @@ export class TeamDataService {
 
   async softDeleteTask(teamName: string, taskId: string): Promise<void> {
     await this.taskWriter.softDelete(teamName, taskId);
+  }
+
+  async restoreTask(teamName: string, taskId: string): Promise<void> {
+    await this.taskWriter.restoreTask(teamName, taskId);
   }
 
   async getDeletedTasks(teamName: string): Promise<TeamTask[]> {

@@ -54,6 +54,7 @@ import {
   TEAM_LAUNCH,
   TEAM_LEAD_ACTIVITY,
   TEAM_LIST,
+  TEAM_PERMANENTLY_DELETE,
   TEAM_PREPARE_PROVISIONING,
   TEAM_PROCESS_ALIVE,
   TEAM_PROCESS_SEND,
@@ -61,6 +62,8 @@ import {
   TEAM_PROVISIONING_STATUS,
   TEAM_REMOVE_MEMBER,
   TEAM_REQUEST_REVIEW,
+  TEAM_RESTORE,
+  TEAM_RESTORE_TASK,
   TEAM_SEND_MESSAGE,
   TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
@@ -566,6 +569,12 @@ const electronAPI: ElectronAPI = {
     deleteTeam: async (teamName: string) => {
       return invokeIpcWithResult<void>(TEAM_DELETE_TEAM, teamName);
     },
+    restoreTeam: async (teamName: string) => {
+      return invokeIpcWithResult<void>(TEAM_RESTORE, teamName);
+    },
+    permanentlyDeleteTeam: async (teamName: string) => {
+      return invokeIpcWithResult<void>(TEAM_PERMANENTLY_DELETE, teamName);
+    },
     prepareProvisioning: async (cwd?: string) => {
       return invokeIpcWithResult<TeamProvisioningPrepareResult>(TEAM_PREPARE_PROVISIONING, cwd);
     },
@@ -680,6 +689,9 @@ const electronAPI: ElectronAPI = {
     },
     softDeleteTask: async (teamName: string, taskId: string) => {
       return invokeIpcWithResult<void>(TEAM_SOFT_DELETE_TASK, teamName, taskId);
+    },
+    restoreTask: async (teamName: string, taskId: string) => {
+      return invokeIpcWithResult<void>(TEAM_RESTORE_TASK, teamName, taskId);
     },
     getDeletedTasks: async (teamName: string) => {
       return invokeIpcWithResult<TeamTask[]>(TEAM_GET_DELETED_TASKS, teamName);

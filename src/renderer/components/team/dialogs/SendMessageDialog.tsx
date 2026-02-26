@@ -173,7 +173,9 @@ export const SendMessageDialog = ({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="smd-summary">Summary (optional)</Label>
+            <Label htmlFor="smd-summary" className="label-optional">
+              Summary (optional)
+            </Label>
             <Input
               id="smd-summary"
               placeholder="Brief description shown as preview..."

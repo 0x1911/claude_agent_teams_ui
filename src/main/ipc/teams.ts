@@ -21,6 +21,7 @@ import {
   TEAM_LAUNCH,
   TEAM_LEAD_ACTIVITY,
   TEAM_LIST,
+  TEAM_PERMANENTLY_DELETE,
   TEAM_PREPARE_PROVISIONING,
   TEAM_PROCESS_ALIVE,
   TEAM_PROCESS_SEND,
@@ -28,6 +29,8 @@ import {
   TEAM_PROVISIONING_STATUS,
   TEAM_REMOVE_MEMBER,
   TEAM_REQUEST_REVIEW,
+  TEAM_RESTORE,
+  TEAM_RESTORE_TASK,
   TEAM_SEND_MESSAGE,
   TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
@@ -180,6 +183,8 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_UPDATE_TASK_STATUS, handleUpdateTaskStatus);
   ipcMain.handle(TEAM_UPDATE_TASK_OWNER, handleUpdateTaskOwner);
   ipcMain.handle(TEAM_DELETE_TEAM, handleDeleteTeam);
+  ipcMain.handle(TEAM_RESTORE, handleRestoreTeam);
+  ipcMain.handle(TEAM_PERMANENTLY_DELETE, handlePermanentlyDeleteTeam);
   ipcMain.handle(TEAM_PROCESS_SEND, handleProcessSend);
   ipcMain.handle(TEAM_PROCESS_ALIVE, handleProcessAlive);
   ipcMain.handle(TEAM_ALIVE_LIST, handleAliveList);
@@ -200,6 +205,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_KILL_PROCESS, handleKillProcess);
   ipcMain.handle(TEAM_LEAD_ACTIVITY, handleLeadActivity);
   ipcMain.handle(TEAM_SOFT_DELETE_TASK, handleSoftDeleteTask);
+  ipcMain.handle(TEAM_RESTORE_TASK, handleRestoreTask);
   ipcMain.handle(TEAM_GET_DELETED_TASKS, handleGetDeletedTasks);
   logger.info('Team handlers registered');
 }
@@ -220,6 +226,8 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_UPDATE_TASK_STATUS);
   ipcMain.removeHandler(TEAM_UPDATE_TASK_OWNER);
   ipcMain.removeHandler(TEAM_DELETE_TEAM);
+  ipcMain.removeHandler(TEAM_RESTORE);
+  ipcMain.removeHandler(TEAM_PERMANENTLY_DELETE);
   ipcMain.removeHandler(TEAM_PROCESS_SEND);
   ipcMain.removeHandler(TEAM_PROCESS_ALIVE);
   ipcMain.removeHandler(TEAM_ALIVE_LIST);
@@ -240,6 +248,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_KILL_PROCESS);
   ipcMain.removeHandler(TEAM_LEAD_ACTIVITY);
   ipcMain.removeHandler(TEAM_SOFT_DELETE_TASK);
+  ipcMain.removeHandler(TEAM_RESTORE_TASK);
   ipcMain.removeHandler(TEAM_GET_DELETED_TASKS);
 }
 
@@ -380,6 +389,30 @@ async function handleDeleteTeam(
     return { success: false, error: validated.error ?? 'Invalid teamName' };
   }
   return wrapTeamHandler('deleteTeam', () => getTeamDataService().deleteTeam(validated.value!));
+}
+
+async function handleRestoreTeam(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown
+): Promise<IpcResult<void>> {
+  const validated = validateTeamName(teamName);
+  if (!validated.valid) {
+    return { success: false, error: validated.error ?? 'Invalid teamName' };
+  }
+  return wrapTeamHandler('restoreTeam', () => getTeamDataService().restoreTeam(validated.value!));
+}
+
+async function handlePermanentlyDeleteTeam(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown
+): Promise<IpcResult<void>> {
+  const validated = validateTeamName(teamName);
+  if (!validated.valid) {
+    return { success: false, error: validated.error ?? 'Invalid teamName' };
+  }
+  return wrapTeamHandler('permanentlyDeleteTeam', () =>
+    getTeamDataService().permanentlyDeleteTeam(validated.value!)
+  );
 }
 
 async function handleUpdateConfig(
@@ -1092,6 +1125,26 @@ async function handleSoftDeleteTask(
 
   return wrapTeamHandler('softDeleteTask', () =>
     getTeamDataService().softDeleteTask(validatedTeamName.value!, validatedTaskId.value!)
+  );
+}
+
+async function handleRestoreTask(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  taskId: unknown
+): Promise<IpcResult<void>> {
+  const validatedTeamName = validateTeamName(teamName);
+  if (!validatedTeamName.valid) {
+    return { success: false, error: validatedTeamName.error ?? 'Invalid teamName' };
+  }
+
+  const validatedTaskId = validateTaskId(taskId);
+  if (!validatedTaskId.valid) {
+    return { success: false, error: validatedTaskId.error ?? 'Invalid taskId' };
+  }
+
+  return wrapTeamHandler('restoreTask', () =>
+    getTeamDataService().restoreTask(validatedTeamName.value!, validatedTaskId.value!)
   );
 }
 

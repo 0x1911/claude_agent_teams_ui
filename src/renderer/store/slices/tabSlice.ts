@@ -401,10 +401,17 @@ export const createTabSlice: StateCreator<AppState, [], [], TabSlice> = (set, ge
     }
   },
 
-  // Open a new dashboard tab in the focused pane
+  // Open a dashboard tab — reuse existing one if found, otherwise create new
   openDashboard: () => {
     const state = get();
     const { paneLayout } = state;
+
+    const existing = getAllTabs(paneLayout).find((t) => t.type === 'dashboard');
+    if (existing) {
+      state.setActiveTab(existing.id);
+      return;
+    }
+
     const focusedPane = findPane(paneLayout, paneLayout.focusedPaneId);
     if (!focusedPane) return;
 

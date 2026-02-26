@@ -386,6 +386,8 @@ export interface TeamsAPI {
   list: () => Promise<TeamSummary[]>;
   getData: (teamName: string) => Promise<TeamData>;
   deleteTeam: (teamName: string) => Promise<void>;
+  restoreTeam: (teamName: string) => Promise<void>;
+  permanentlyDeleteTeam: (teamName: string) => Promise<void>;
   prepareProvisioning: (cwd?: string) => Promise<TeamProvisioningPrepareResult>;
   createTeam: (request: TeamCreateRequest) => Promise<TeamCreateResponse>;
   getProvisioningStatus: (runId: string) => Promise<TeamProvisioningProgress>;
@@ -430,6 +432,7 @@ export interface TeamsAPI {
   killProcess: (teamName: string, pid: number) => Promise<void>;
   getLeadActivity: (teamName: string) => Promise<LeadActivityState>;
   softDeleteTask: (teamName: string, taskId: string) => Promise<void>;
+  restoreTask: (teamName: string, taskId: string) => Promise<void>;
   getDeletedTasks: (teamName: string) => Promise<TeamTask[]>;
   onTeamChange: (callback: (event: unknown, data: TeamChangeEvent) => void) => () => void;
   onProvisioningProgress: (

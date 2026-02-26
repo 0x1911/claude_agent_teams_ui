@@ -624,3 +624,8 @@ body {
     transparent 100%
   );
 }
+
+/* Optional field label — muted text for non-required form fields */
+.label-optional {
+  color: var(--color-text-muted);
+}

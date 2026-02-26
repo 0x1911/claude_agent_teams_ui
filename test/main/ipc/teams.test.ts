@@ -44,6 +44,9 @@ vi.mock('@preload/constants/ipcChannels', () => ({
   TEAM_LEAD_ACTIVITY: 'team:leadActivity',
   TEAM_SOFT_DELETE_TASK: 'team:softDeleteTask',
   TEAM_GET_DELETED_TASKS: 'team:getDeletedTasks',
+  TEAM_RESTORE: 'team:restoreTeam',
+  TEAM_PERMANENTLY_DELETE: 'team:permanentlyDeleteTeam',
+  TEAM_RESTORE_TASK: 'team:restoreTask',
 }));
 
 import {
@@ -79,7 +82,9 @@ import {
   TEAM_GET_PROJECT_BRANCH,
   TEAM_KILL_PROCESS,
   TEAM_LEAD_ACTIVITY,
+  TEAM_PERMANENTLY_DELETE,
   TEAM_REMOVE_MEMBER,
+  TEAM_RESTORE,
   TEAM_SOFT_DELETE_TASK,
   TEAM_UPDATE_MEMBER_ROLE,
 } from '../../../src/preload/constants/ipcChannels';
@@ -189,6 +194,8 @@ describe('ipc teams handlers', () => {
     expect(handlers.has(TEAM_LEAD_ACTIVITY)).toBe(true);
     expect(handlers.has(TEAM_SOFT_DELETE_TASK)).toBe(true);
     expect(handlers.has(TEAM_GET_DELETED_TASKS)).toBe(true);
+    expect(handlers.has(TEAM_RESTORE)).toBe(true);
+    expect(handlers.has(TEAM_PERMANENTLY_DELETE)).toBe(true);
   });
 
   it('returns success false on invalid sendMessage args', async () => {
@@ -501,5 +508,7 @@ describe('ipc teams handlers', () => {
     expect(handlers.has(TEAM_LEAD_ACTIVITY)).toBe(false);
     expect(handlers.has(TEAM_SOFT_DELETE_TASK)).toBe(false);
     expect(handlers.has(TEAM_GET_DELETED_TASKS)).toBe(false);
+    expect(handlers.has(TEAM_RESTORE)).toBe(false);
+    expect(handlers.has(TEAM_PERMANENTLY_DELETE)).toBe(false);
   });
 });

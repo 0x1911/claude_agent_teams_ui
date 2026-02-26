@@ -121,6 +121,7 @@ export class TeamConfigReader {
             ? config.projectPathHistory
             : undefined,
           sessionHistory: Array.isArray(config.sessionHistory) ? config.sessionHistory : undefined,
+          deletedAt: typeof config.deletedAt === 'string' ? config.deletedAt : undefined,
         });
       } catch {
         logger.debug(`Skipping team dir without valid config: ${entry.name}`);

@@ -635,6 +635,12 @@ export class HttpAPIClient implements ElectronAPI {
     deleteTeam: async (_teamName: string): Promise<void> => {
       throw new Error('Team deletion is not available in browser mode');
     },
+    restoreTeam: async (_teamName: string): Promise<void> => {
+      throw new Error('Team restore is not available in browser mode');
+    },
+    permanentlyDeleteTeam: async (_teamName: string): Promise<void> => {
+      throw new Error('Permanent team deletion is not available in browser mode');
+    },
     prepareProvisioning: async (_cwd?: string): Promise<TeamProvisioningPrepareResult> => {
       throw new Error('Team provisioning is not available in browser mode');
     },
@@ -721,6 +727,7 @@ export class HttpAPIClient implements ElectronAPI {
         linesAdded: 0,
         linesRemoved: 0,
         filesTouched: [],
+        fileStats: {},
         toolUsage: {},
         inputTokens: 0,
         outputTokens: 0,
@@ -768,6 +775,9 @@ export class HttpAPIClient implements ElectronAPI {
       return 'offline';
     },
     softDeleteTask: async (_teamName: string, _taskId: string): Promise<void> => {
+      // Not available via HTTP client — no-op
+    },
+    restoreTask: async (_teamName: string, _taskId: string): Promise<void> => {
       // Not available via HTTP client — no-op
     },
     getDeletedTasks: async (_teamName: string): Promise<TeamTask[]> => {

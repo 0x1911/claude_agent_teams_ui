@@ -28,13 +28,13 @@ import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { AlertTriangle, Search } from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
-import type { ResolvedTeamMember, TeamTask } from '@shared/types';
+import type { ResolvedTeamMember, TeamTaskWithKanban } from '@shared/types';
 
 interface CreateTaskDialogProps {
   open: boolean;
   teamName: string;
   members: ResolvedTeamMember[];
-  tasks: TeamTask[];
+  tasks: TeamTaskWithKanban[];
   isTeamAlive?: boolean;
   defaultSubject?: string;
   defaultDescription?: string;
@@ -114,7 +114,9 @@ export const CreateTaskDialog = ({
   const canSubmit = subject.trim().length > 0 && !submitting && (!requiresOwner || !!owner);
 
   // Only show non-internal, non-deleted tasks as candidates for blocking
-  const availableTasks = tasks.filter((t) => t.status !== 'deleted');
+  const availableTasks = tasks.filter(
+    (t) => t.status !== 'deleted' && t.kanbanColumn !== 'approved'
+  );
 
   const toggleBlockedBy = (taskId: string): void => {
     setBlockedBy((prev) =>
@@ -151,7 +153,9 @@ export const CreateTaskDialog = ({
 
   const assigneeField = (
     <div className="grid gap-2">
-      <Label>{requiresOwner ? 'Assignee' : 'Assignee (optional)'}</Label>
+      <Label className={requiresOwner ? undefined : 'label-optional'}>
+        {requiresOwner ? 'Assignee' : 'Assignee (optional)'}
+      </Label>
       <Select
         value={owner || '__unassigned__'}
         onValueChange={(v) => setOwner(v === '__unassigned__' ? '' : v)}
@@ -226,7 +230,9 @@ export const CreateTaskDialog = ({
           {assigneeField}
 
           <div className="grid gap-2">
-            <Label htmlFor="task-description">Description (optional)</Label>
+            <Label htmlFor="task-description" className="label-optional">
+              Description (optional)
+            </Label>
             <MentionableTextarea
               id="task-description"
               placeholder="Task details..."
@@ -244,7 +250,9 @@ export const CreateTaskDialog = ({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="task-prompt">Prompt for assignee (optional)</Label>
+            <Label htmlFor="task-prompt" className="label-optional">
+              Prompt for assignee (optional)
+            </Label>
             <MentionableTextarea
               id="task-prompt"
               placeholder="Custom instructions for the team member..."
@@ -287,7 +295,7 @@ export const CreateTaskDialog = ({
 
           {availableTasks.length > 0 ? (
             <div className="grid gap-2">
-              <Label>Blocked by tasks (optional)</Label>
+              <Label className="label-optional">Blocked by tasks (optional)</Label>
               <div className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
                 {availableTasks.length > 3 ? (
                   <div className="relative border-b border-[var(--color-border)] px-2 py-1.5">
@@ -356,7 +364,7 @@ export const CreateTaskDialog = ({
 
           {availableTasks.length > 0 ? (
             <div className="grid gap-2">
-              <Label>Related tasks (optional)</Label>
+              <Label className="label-optional">Related tasks (optional)</Label>
               <div className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface)]">
                 {availableTasks.length > 3 ? (
                   <div className="relative border-b border-[var(--color-border)] px-2 py-1.5">

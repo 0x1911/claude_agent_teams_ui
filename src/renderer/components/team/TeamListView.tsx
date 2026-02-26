@@ -16,6 +16,7 @@ import { useStore } from '@renderer/store';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { buildTaskCountsByTeam, normalizePath } from '@renderer/utils/pathNormalize';
 import { getBaseName } from '@renderer/utils/pathUtils';
+import { nameColorSet } from '@renderer/utils/projectColor';
 import {
   CheckCircle,
   Clock,
@@ -23,6 +24,7 @@ import {
   FolderOpen,
   GitBranch,
   Play,
+  RotateCcw,
   Search,
   Square,
   Trash2,
@@ -31,8 +33,10 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { CreateTeamDialog } from './dialogs/CreateTeamDialog';
 import { TeamEmptyState } from './TeamEmptyState';
+import { EMPTY_TEAM_FILTER, TeamListFilterPopover } from './TeamListFilterPopover';
 
 import type { ActiveTeamRef, TeamCopyData } from './dialogs/CreateTeamDialog';
+import type { TeamListFilterState } from './TeamListFilterPopover';
 import type {
   TeamCreateRequest,
   TeamProvisioningProgress,
@@ -176,6 +180,7 @@ export const TeamListView = (): React.JSX.Element => {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [copyData, setCopyData] = useState<TeamCopyData | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState<TeamListFilterState>(EMPTY_TEAM_FILTER);
   const [aliveTeams, setAliveTeams] = useState<string[]>([]);
   const [branchByPath, setBranchByPath] = useState<Map<string, string | null>>(new Map());
   const {
@@ -201,6 +206,8 @@ export const TeamListView = (): React.JSX.Element => {
       fetchTeams: s.fetchTeams,
       openTeamTab: s.openTeamTab,
       deleteTeam: s.deleteTeam,
+      restoreTeam: s.restoreTeam,
+      permanentlyDeleteTeam: s.permanentlyDeleteTeam,
       projects: s.projects,
       globalTasks: s.globalTasks,
       fetchAllTasks: s.fetchAllTasks,
@@ -272,6 +279,27 @@ export const TeamListView = (): React.JSX.Element => {
       );
     }
 
+    if (filter.selectedStatuses.size > 0) {
+      result = result.filter((t) => {
+        const status = resolveTeamStatus(
+          t.teamName,
+          aliveTeams,
+          provisioningRuns,
+          leadActivityByTeam
+        );
+        const isRunning = status !== 'offline';
+        if (filter.selectedStatuses.has('running') && isRunning) return true;
+        if (filter.selectedStatuses.has('offline') && !isRunning) return true;
+        return false;
+      });
+    }
+
+    if (filter.selectedProjects.size > 0) {
+      result = result.filter(
+        (t) => t.projectPath != null && filter.selectedProjects.has(t.projectPath.trim())
+      );
+    }
+
     const aliveSet = new Set(aliveTeams);
     const matchesProject = currentProjectPath
       ? (t: TeamSummary): boolean => {
@@ -299,7 +327,15 @@ export const TeamListView = (): React.JSX.Element => {
     });
 
     return result;
-  }, [teams, searchQuery, currentProjectPath, aliveTeams]);
+  }, [
+    teams,
+    searchQuery,
+    currentProjectPath,
+    aliveTeams,
+    filter,
+    provisioningRuns,
+    leadActivityByTeam,
+  ]);
 
   // Live branch/worktree for team project paths (poll so it updates during process)
   const projectPathsToPoll = useMemo(() => {
@@ -344,14 +380,17 @@ export const TeamListView = (): React.JSX.Element => {
     };
   }, [electronMode, projectPathsToPoll]);
 
+  const restoreTeam = useStore((s) => s.restoreTeam);
+  const permanentlyDeleteTeam = useStore((s) => s.permanentlyDeleteTeam);
+
   const handleDeleteTeam = useCallback(
     (teamName: string, e: React.MouseEvent) => {
       e.stopPropagation();
       void (async () => {
         const confirmed = await confirm({
-          title: 'Delete team',
-          message: `Delete team "${teamName}"? This action is irreversible.`,
-          confirmLabel: 'Delete',
+          title: 'Move to trash',
+          message: `Move team "${teamName}" to trash? You can restore it later.`,
+          confirmLabel: 'Move to trash',
           cancelLabel: 'Cancel',
           variant: 'danger',
         });
@@ -361,6 +400,33 @@ export const TeamListView = (): React.JSX.Element => {
       })();
     },
     [deleteTeam]
+  );
+
+  const handleRestoreTeam = useCallback(
+    (teamName: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      void restoreTeam(teamName);
+    },
+    [restoreTeam]
+  );
+
+  const handlePermanentlyDeleteTeam = useCallback(
+    (teamName: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      void (async () => {
+        const confirmed = await confirm({
+          title: 'Delete permanently',
+          message: `Delete team "${teamName}" permanently? All data will be lost.`,
+          confirmLabel: 'Delete forever',
+          cancelLabel: 'Cancel',
+          variant: 'danger',
+        });
+        if (confirmed) {
+          void permanentlyDeleteTeam(teamName);
+        }
+      })();
+    },
+    [permanentlyDeleteTeam]
   );
 
   const handleCopyTeam = useCallback(
@@ -503,17 +569,25 @@ export const TeamListView = (): React.JSX.Element => {
       ) : null}
 
       {teams.length > 0 ? (
-        <div className="relative mt-3">
-          <Search
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]"
-          />
-          <Input
-            type="text"
-            placeholder="Search teams..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-8 pl-8 text-xs"
+        <div className="mt-3 flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]"
+            />
+            <Input
+              type="text"
+              placeholder="Search teams..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          <TeamListFilterPopover
+            filter={filter}
+            teams={teams}
+            aliveTeams={aliveTeams}
+            onFilterChange={setFilter}
           />
         </div>
       ) : null}
@@ -554,197 +628,280 @@ export const TeamListView = (): React.JSX.Element => {
       return <TeamEmptyState />;
     }
 
-    if (filteredTeams.length === 0 && searchQuery.trim()) {
+    const hasActiveFilters = filter.selectedStatuses.size > 0 || filter.selectedProjects.size > 0;
+    if (filteredTeams.length === 0 && (searchQuery.trim() || hasActiveFilters)) {
       return (
         <div className="flex items-center justify-center py-12 text-sm text-[var(--color-text-muted)]">
-          No teams matching &quot;{searchQuery.trim()}&quot;
+          No teams matching current filters
         </div>
       );
     }
 
+    const activeFiltered = filteredTeams.filter((t) => !t.deletedAt);
+    const deletedFiltered = filteredTeams.filter((t) => t.deletedAt);
+
     return (
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {filteredTeams.map((team) => {
-          const status = resolveTeamStatus(
-            team.teamName,
-            aliveTeams,
-            provisioningRuns,
-            leadActivityByTeam
-          );
-          const teamColorSet = team.color ? getTeamColorSet(team.color) : null;
-          const matchesCurrentProject =
-            !!currentProjectPath &&
-            ((team.projectPath ? normalizePath(team.projectPath) === currentProjectPath : false) ||
-              (team.projectPathHistory?.some((p) => normalizePath(p) === currentProjectPath) ??
-                false));
-          return (
-            <div
-              key={team.teamName}
-              role="button"
-              tabIndex={0}
-              className={`group relative cursor-pointer overflow-hidden rounded-lg border bg-[var(--color-surface)] p-4 hover:bg-[var(--color-surface-raised)] ${
-                matchesCurrentProject
-                  ? 'border-emerald-500/70 ring-1 ring-emerald-500/30'
-                  : 'border-[var(--color-border)]'
-              }`}
-              style={
-                teamColorSet
-                  ? { borderLeftWidth: '3px', borderLeftColor: teamColorSet.border }
-                  : undefined
-              }
-              onClick={() => openTeamTab(team.teamName, team.projectPath)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  openTeamTab(team.teamName, team.projectPath);
+      <>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {activeFiltered.map((team) => {
+            const status = resolveTeamStatus(
+              team.teamName,
+              aliveTeams,
+              provisioningRuns,
+              leadActivityByTeam
+            );
+            const teamColorSet = team.color
+              ? getTeamColorSet(team.color)
+              : nameColorSet(team.displayName);
+            const matchesCurrentProject =
+              !!currentProjectPath &&
+              ((team.projectPath
+                ? normalizePath(team.projectPath) === currentProjectPath
+                : false) ||
+                (team.projectPathHistory?.some((p) => normalizePath(p) === currentProjectPath) ??
+                  false));
+            return (
+              <div
+                key={team.teamName}
+                role="button"
+                tabIndex={0}
+                className={`group relative cursor-pointer overflow-hidden rounded-lg border bg-[var(--color-surface)] p-4 hover:bg-[var(--color-surface-raised)] ${
+                  matchesCurrentProject
+                    ? 'border-emerald-500/70 ring-1 ring-emerald-500/30'
+                    : 'border-[var(--color-border)]'
+                }`}
+                style={
+                  teamColorSet
+                    ? { borderLeftWidth: '3px', borderLeftColor: teamColorSet.border }
+                    : undefined
                 }
-              }}
-            >
-              {teamColorSet ? (
-                <div
-                  className="pointer-events-none absolute inset-0 z-0 rounded-lg"
-                  style={{ backgroundColor: teamColorSet.badge }}
-                />
-              ) : null}
-              <div className={teamColorSet ? 'relative z-10' : undefined}>
-                <div className="flex items-start justify-between">
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <h3 className="truncate text-sm font-semibold text-[var(--color-text)]">
-                      {team.displayName}
-                    </h3>
-                    <StatusBadge status={status} />
-                  </div>
-                  <div className="flex shrink-0 gap-1">
-                    {(status === 'active' || status === 'idle') && (
+                onClick={() => openTeamTab(team.teamName, team.projectPath)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openTeamTab(team.teamName, team.projectPath);
+                  }
+                }}
+              >
+                {teamColorSet ? (
+                  <div
+                    className="pointer-events-none absolute inset-0 z-0 rounded-lg"
+                    style={{ backgroundColor: teamColorSet.badge }}
+                  />
+                ) : null}
+                <div className={teamColorSet ? 'relative z-10' : undefined}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <h3 className="truncate text-sm font-semibold text-[var(--color-text)]">
+                        {team.displayName}
+                      </h3>
+                      <StatusBadge status={status} />
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      {(status === 'active' || status === 'idle') && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-amber-500/10 hover:text-amber-300 disabled:opacity-50 group-hover:opacity-100"
+                              onClick={(e) => handleStopTeam(team.teamName, e)}
+                              disabled={stoppingTeamName === team.teamName}
+                              aria-label="Stop team"
+                            >
+                              <Square size={14} fill="currentColor" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {stoppingTeamName === team.teamName ? 'Stopping…' : 'Stop team'}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
                             type="button"
-                            className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-amber-500/10 hover:text-amber-300 disabled:opacity-50 group-hover:opacity-100"
-                            onClick={(e) => handleStopTeam(team.teamName, e)}
-                            disabled={stoppingTeamName === team.teamName}
-                            aria-label="Stop team"
+                            className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-300 group-hover:opacity-100"
+                            onClick={(e) => handleCopyTeam(team.teamName, e)}
                           >
-                            <Square size={14} fill="currentColor" />
+                            <Copy size={14} />
                           </button>
                         </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          {stoppingTeamName === team.teamName ? 'Stopping…' : 'Stop team'}
-                        </TooltipContent>
+                        <TooltipContent side="bottom">Copy team</TooltipContent>
                       </Tooltip>
-                    )}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-300 group-hover:opacity-100"
-                          onClick={(e) => handleCopyTeam(team.teamName, e)}
-                        >
-                          <Copy size={14} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">Copy team</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
-                          onClick={(e) => handleDeleteTeam(team.teamName, e)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">Delete team</TooltipContent>
-                    </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
+                            onClick={(e) => handleDeleteTeam(team.teamName, e)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">Delete team</TooltipContent>
+                      </Tooltip>
+                    </div>
                   </div>
-                </div>
-                <div className="mt-2 flex min-h-10 items-start gap-2">
-                  <p className="line-clamp-2 min-w-0 flex-1 text-xs text-[var(--color-text-muted)]">
-                    {team.description || 'No description'}
-                  </p>
-                  {team.projectPath &&
-                    (() => {
-                      const branch = branchByPath.get(normalizePath(team.projectPath));
-                      if (!branch) return null;
+                  <div className="mt-2 flex min-h-10 items-start gap-2">
+                    <p className="line-clamp-2 min-w-0 flex-1 text-xs text-[var(--color-text-muted)]">
+                      {team.description || 'No description'}
+                    </p>
+                    {team.projectPath &&
+                      (() => {
+                        const branch = branchByPath.get(normalizePath(team.projectPath));
+                        if (!branch) return null;
+                        return (
+                          <span
+                            className="flex shrink-0 items-center gap-1 rounded bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]"
+                            title={branch}
+                          >
+                            <GitBranch size={10} />
+                            <span className="max-w-24 truncate">{branch}</span>
+                          </span>
+                        );
+                      })()}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                    {team.members && team.members.length > 0 ? (
+                      renderMemberChips(team.members)
+                    ) : (
+                      <Badge variant="secondary" className="text-[10px] font-normal">
+                        Members: {team.memberCount}
+                      </Badge>
+                    )}
+                    {(() => {
+                      const tc = taskCountsByTeam.get(team.teamName);
+                      const pending = tc?.pending ?? 0;
+                      const inProgress = tc?.inProgress ?? 0;
+                      const completed = tc?.completed ?? 0;
+                      const totalTasks = pending + inProgress + completed;
+                      const completedRatio = totalTasks > 0 ? completed / totalTasks : 0;
                       return (
-                        <span
-                          className="flex shrink-0 items-center gap-1 rounded bg-[var(--color-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)]"
-                          title={branch}
-                        >
-                          <GitBranch size={10} />
-                          <span className="max-w-24 truncate">{branch}</span>
-                        </span>
+                        <div className="mt-2 w-full space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-raised)]"
+                              role="progressbar"
+                              aria-valuenow={completed}
+                              aria-valuemin={0}
+                              aria-valuemax={totalTasks}
+                              aria-label={`Tasks ${completed}/${totalTasks} completed`}
+                            >
+                              <div
+                                className="h-full rounded-full bg-emerald-500 transition-all duration-200"
+                                style={{ width: `${Math.round(completedRatio * 100)}%` }}
+                              />
+                            </div>
+                            <span className="shrink-0 text-[10px] font-medium tracking-tight text-[var(--color-text-muted)]">
+                              {completed}/{totalTasks}
+                            </span>
+                          </div>
+                          {totalTasks > 0 && (
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-[var(--color-text-muted)]">
+                              {inProgress > 0 && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Play size={10} className="shrink-0 text-blue-400" />
+                                  {inProgress} in_progress
+                                </span>
+                              )}
+                              {pending > 0 && (
+                                <span className="inline-flex items-center gap-1">
+                                  <Clock size={10} className="shrink-0 text-amber-400" />
+                                  {pending} pending
+                                </span>
+                              )}
+                              {completed > 0 && (
+                                <span className="inline-flex items-center gap-1">
+                                  <CheckCircle size={10} className="shrink-0 text-emerald-400" />
+                                  {completed} completed
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       );
                     })()}
+                  </div>
+                  {renderTeamRecentPaths(team, status)}
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  {team.members && team.members.length > 0 ? (
-                    renderMemberChips(team.members)
-                  ) : (
-                    <Badge variant="secondary" className="text-[10px] font-normal">
-                      Members: {team.memberCount}
-                    </Badge>
-                  )}
-                  {(() => {
-                    const tc = taskCountsByTeam.get(team.teamName);
-                    const pending = tc?.pending ?? 0;
-                    const inProgress = tc?.inProgress ?? 0;
-                    const completed = tc?.completed ?? 0;
-                    const totalTasks = pending + inProgress + completed;
-                    const completedRatio = totalTasks > 0 ? completed / totalTasks : 0;
-                    return (
-                      <div className="mt-2 w-full space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-raised)]"
-                            role="progressbar"
-                            aria-valuenow={completed}
-                            aria-valuemin={0}
-                            aria-valuemax={totalTasks}
-                            aria-label={`Tasks ${completed}/${totalTasks} completed`}
-                          >
-                            <div
-                              className="h-full rounded-full bg-emerald-500 transition-all duration-200"
-                              style={{ width: `${Math.round(completedRatio * 100)}%` }}
-                            />
-                          </div>
-                          <span className="shrink-0 text-[10px] font-medium tracking-tight text-[var(--color-text-muted)]">
-                            {completed}/{totalTasks}
-                          </span>
-                        </div>
-                        {totalTasks > 0 && (
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-[var(--color-text-muted)]">
-                            {inProgress > 0 && (
-                              <span className="inline-flex items-center gap-1">
-                                <Play size={10} className="shrink-0 text-blue-400" />
-                                {inProgress} in_progress
-                              </span>
-                            )}
-                            {pending > 0 && (
-                              <span className="inline-flex items-center gap-1">
-                                <Clock size={10} className="shrink-0 text-amber-400" />
-                                {pending} pending
-                              </span>
-                            )}
-                            {completed > 0 && (
-                              <span className="inline-flex items-center gap-1">
-                                <CheckCircle size={10} className="shrink-0 text-emerald-400" />
-                                {completed} completed
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-                {renderTeamRecentPaths(team, status)}
               </div>
+            );
+          })}
+        </div>
+
+        {deletedFiltered.length > 0 && (
+          <>
+            <div className="my-6 flex items-center gap-3">
+              <div className="h-px flex-1 bg-[var(--color-border)]" />
+              <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--color-text-muted)]">
+                Trash ({deletedFiltered.length})
+              </span>
+              <div className="h-px flex-1 bg-[var(--color-border)]" />
             </div>
-          );
-        })}
-      </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {deletedFiltered.map((team) => (
+                <div
+                  key={team.teamName}
+                  className="group relative cursor-default overflow-hidden rounded-lg border border-[var(--color-border)] bg-zinc-800/40 p-4 opacity-60"
+                >
+                  <Trash2
+                    size={64}
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-zinc-400 opacity-[0.06]"
+                  />
+                  <div className="relative z-10">
+                    <div className="flex items-start justify-between">
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <h3 className="truncate text-sm font-semibold text-[var(--color-text)]">
+                          {team.displayName}
+                        </h3>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-zinc-500/15 px-2 py-0.5 text-[10px] font-medium text-zinc-500">
+                          Deleted
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-emerald-500/10 hover:text-emerald-300 group-hover:opacity-100"
+                              onClick={(e) => handleRestoreTeam(team.teamName, e)}
+                              aria-label="Restore team"
+                            >
+                              <RotateCcw size={14} />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Restore</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
+                              onClick={(e) => handlePermanentlyDeleteTeam(team.teamName, e)}
+                              aria-label="Delete permanently"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Delete forever</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-xs text-[var(--color-text-muted)]">
+                      {team.description || 'No description'}
+                    </p>
+                    {team.members && team.members.length > 0 && (
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                        {renderMemberChips(team.members)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </>
     );
   };
 

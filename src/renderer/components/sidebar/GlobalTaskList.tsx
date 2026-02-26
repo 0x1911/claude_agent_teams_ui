@@ -3,13 +3,17 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { normalizePath } from '@renderer/utils/pathNormalize';
+import { projectColor } from '@renderer/utils/projectColor';
 import {
   getNonEmptyTaskCategories,
   groupTasksByDate,
   groupTasksByProject,
+  sortTasksByFreshness,
 } from '@renderer/utils/taskGrouping';
 import { ListTodo, Search, X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
+
+import { Combobox, type ComboboxOption } from '../ui/combobox';
 
 import { SidebarTaskItem } from './SidebarTaskItem';
 import { TaskFiltersPopover } from './TaskFiltersPopover';
@@ -25,16 +29,16 @@ import type { GlobalTask } from '@shared/types';
 
 const TASK_GROUPING_STORAGE_KEY = 'sidebarTasksGrouping';
 
-export type TaskGroupingMode = 'project' | 'time';
+export type TaskGroupingMode = 'none' | 'project' | 'time';
 
 function loadGroupingMode(): TaskGroupingMode {
   try {
     const v = localStorage.getItem(TASK_GROUPING_STORAGE_KEY);
-    if (v === 'project' || v === 'time') return v;
+    if (v === 'none' || v === 'project' || v === 'time') return v;
   } catch {
     /* ignore */
   }
-  return 'project';
+  return 'none';
 }
 
 function saveGroupingMode(mode: TaskGroupingMode): void {
@@ -89,11 +93,8 @@ export const GlobalTaskList = ({
     globalTasksLoading,
     fetchAllTasks,
     projects,
-    activeProjectId,
     viewMode,
     repositoryGroups,
-    selectedRepositoryId,
-    selectedWorktreeId,
     teams,
   } = useStore(
     useShallow((s) => ({
@@ -101,11 +102,8 @@ export const GlobalTaskList = ({
       globalTasksLoading: s.globalTasksLoading,
       fetchAllTasks: s.fetchAllTasks,
       projects: s.projects,
-      activeProjectId: s.activeProjectId,
       viewMode: s.viewMode,
       repositoryGroups: s.repositoryGroups,
-      selectedRepositoryId: s.selectedRepositoryId,
-      selectedWorktreeId: s.selectedWorktreeId,
       teams: s.teams,
     }))
   );
@@ -122,6 +120,9 @@ export const GlobalTaskList = ({
   const hasFetchedRef = useRef(false);
   const readState = useReadStateSnapshot();
 
+  // Local project filter (independent from sessions tab)
+  const [localProjectFilter, setLocalProjectFilter] = useState<string | null>(null);
+
   const setGroupingMode = (mode: TaskGroupingMode): void => {
     setGroupingModeState(mode);
     saveGroupingMode(mode);
@@ -134,22 +135,34 @@ export const GlobalTaskList = ({
     }
   }, [fetchAllTasks]);
 
-  const selectedProjectPath = useMemo(() => {
-    if (viewMode === 'grouped') {
-      const repo = repositoryGroups.find((r) => r.id === selectedRepositoryId);
-      const worktree = repo?.worktrees.find((w) => w.id === selectedWorktreeId);
-      return worktree?.path ?? null;
-    }
-    const project = projects.find((p) => p.id === activeProjectId);
-    return project?.path ?? null;
-  }, [
-    viewMode,
-    repositoryGroups,
-    selectedRepositoryId,
-    selectedWorktreeId,
-    projects,
-    activeProjectId,
-  ]);
+  // Build project combobox options from available projects/repos
+  const projectFilterOptions = useMemo((): ComboboxOption[] => {
+    const items =
+      viewMode === 'grouped'
+        ? repositoryGroups
+            .filter((r) => r.totalSessions > 0)
+            .map((r) => ({
+              value: r.worktrees[0]?.path ?? r.id,
+              label: r.name,
+              path: r.worktrees[0]?.path,
+            }))
+        : projects
+            .filter((p) => p.sessions.length > 0)
+            .map((p) => ({
+              value: p.path,
+              label: p.name,
+              path: p.path,
+            }));
+
+    return items.map((item) => ({
+      value: item.value,
+      label: item.label,
+      description: item.path,
+    }));
+  }, [viewMode, repositoryGroups, projects]);
+
+  // Resolve local filter to a project path
+  const selectedProjectPath = localProjectFilter;
 
   const filtered = useMemo(() => {
     let result = globalTasks;
@@ -175,35 +188,32 @@ export const GlobalTaskList = ({
     readState,
   ]);
 
+  const sortedFlat = useMemo(() => sortTasksByFreshness(filtered), [filtered]);
   const grouped = useMemo(() => groupTasksByDate(filtered), [filtered]);
   const categories = useMemo(() => getNonEmptyTaskCategories(grouped), [grouped]);
   const projectGroups = useMemo(() => groupTasksByProject(filtered), [filtered]);
 
   const hasContent =
-    groupingMode === 'time' ? categories.length > 0 : projectGroups.some((g) => g.tasks.length > 0);
+    groupingMode === 'none'
+      ? sortedFlat.length > 0
+      : groupingMode === 'time'
+        ? categories.length > 0
+        : projectGroups.some((g) => g.tasks.length > 0);
 
   return (
     <div className="flex size-full min-w-0 flex-col">
       {!hideHeader && (
         <div
-          className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-1.5"
+          className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5"
           style={{ borderColor: 'var(--color-border)' }}
         >
           <span className="text-[12px] font-semibold text-text-secondary">Tasks</span>
-          <TaskFiltersPopover
-            open={filtersPopoverOpen}
-            onOpenChange={setFiltersPopoverOpen}
-            teams={teams.map((t) => ({ teamName: t.teamName, displayName: t.displayName }))}
-            filters={filters}
-            onFiltersChange={setFilters}
-            onApply={() => {}}
-          />
         </div>
       )}
 
       {/* Search bar */}
       <div
-        className="flex shrink-0 items-center gap-1.5 border-b px-2 py-1"
+        className="mb-[5px] flex shrink-0 items-center gap-1.5 border-b px-2 py-1"
         style={{ borderColor: 'var(--color-border)' }}
       >
         <Search className="size-3 shrink-0 text-text-muted" />
@@ -227,6 +237,29 @@ export const GlobalTaskList = ({
             <X className="size-3" />
           </button>
         )}
+        <TaskFiltersPopover
+          open={filtersPopoverOpen}
+          onOpenChange={setFiltersPopoverOpen}
+          teams={teams.map((t) => ({ teamName: t.teamName, displayName: t.displayName }))}
+          filters={filters}
+          onFiltersChange={setFilters}
+          onApply={() => {}}
+        />
+      </div>
+
+      {/* Project filter */}
+      <div className="shrink-0 px-2 py-1">
+        <Combobox
+          options={projectFilterOptions}
+          value={localProjectFilter ?? ''}
+          onValueChange={(v) => setLocalProjectFilter(v)}
+          placeholder="All Projects"
+          searchPlaceholder="Search projects..."
+          emptyMessage="No projects"
+          className="text-[11px]"
+          resetLabel="All Projects"
+          onReset={() => setLocalProjectFilter(null)}
+        />
       </div>
 
       {/* Grouping mode — compact segmented toggle */}
@@ -237,21 +270,24 @@ export const GlobalTaskList = ({
           role="group"
           aria-label="Group by"
         >
-          {(['project', 'time'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setGroupingMode(mode)}
-              className={cn(
-                'rounded px-2 py-0.5 transition-colors',
-                groupingMode === mode
-                  ? 'bg-surface-raised text-text shadow-sm'
-                  : 'text-text-muted hover:text-text-secondary'
-              )}
-            >
-              {mode === 'project' ? 'Project' : 'Time'}
-            </button>
-          ))}
+          {(['none', 'project', 'time'] as const).map((mode) => {
+            const label = mode === 'none' ? 'None' : mode === 'project' ? 'Project' : 'Time';
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setGroupingMode(mode)}
+                className={cn(
+                  'rounded px-2 py-0.5 transition-colors',
+                  groupingMode === mode
+                    ? 'bg-surface-raised text-text shadow-sm'
+                    : 'text-text-muted hover:text-text-secondary'
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -274,6 +310,11 @@ export const GlobalTaskList = ({
           </div>
         )}
 
+        {groupingMode === 'none' &&
+          sortedFlat.map((task) => (
+            <SidebarTaskItem key={`${task.teamName}-${task.id}`} task={task} showTeamName />
+          ))}
+
         {groupingMode === 'project' &&
           projectGroups.map((group) => {
             if (group.tasks.length === 0) return null;
@@ -281,10 +322,16 @@ export const GlobalTaskList = ({
             return (
               <div key={group.projectKey}>
                 <div
-                  className="sticky top-0 z-10 px-3 py-1.5 text-[11px] font-semibold text-text-secondary"
+                  className="sticky top-0 z-10 flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold"
                   style={{ backgroundColor: 'var(--color-surface-sidebar)' }}
                 >
-                  {group.projectLabel}
+                  <span
+                    className="inline-block size-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: projectColor(group.projectLabel).border }}
+                  />
+                  <span style={{ color: projectColor(group.projectLabel).text }}>
+                    {group.projectLabel}
+                  </span>
                 </div>
                 {group.tasks.map((task) => {
                   const showTeamHeader = task.teamName !== lastTeam;

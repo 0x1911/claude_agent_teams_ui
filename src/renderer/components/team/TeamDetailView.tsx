@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from '@renderer/api';
+import { confirm } from '@renderer/components/common/ConfirmDialog';
 import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
@@ -17,9 +18,11 @@ import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { formatProjectPath } from '@renderer/utils/pathDisplay';
 import { buildTaskCountsByOwner } from '@renderer/utils/pathNormalize';
+import { nameColorSet } from '@renderer/utils/projectColor';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import {
+  AlertTriangle,
   Bell,
   CheckCheck,
   FolderOpen,
@@ -177,6 +180,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     kanbanFilterQuery,
     clearKanbanFilter,
     softDeleteTask,
+    restoreTask,
     fetchDeletedTasks,
     deletedTasks,
   } = useStore(
@@ -214,6 +218,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       kanbanFilterQuery: s.kanbanFilterQuery,
       clearKanbanFilter: s.clearKanbanFilter,
       softDeleteTask: s.softDeleteTask,
+      restoreTask: s.restoreTask,
       fetchDeletedTasks: s.fetchDeletedTasks,
       deletedTasks: s.deletedTasks,
     }))
@@ -510,7 +515,18 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
 
   const handleDeleteTask = useCallback(
     (taskId: string) => {
-      void softDeleteTask(teamName, taskId);
+      void (async () => {
+        const confirmed = await confirm({
+          title: 'Delete task',
+          message: `Move task #${taskId} to trash?`,
+          confirmLabel: 'Delete',
+          cancelLabel: 'Cancel',
+          variant: 'danger',
+        });
+        if (confirmed) {
+          void softDeleteTask(teamName, taskId);
+        }
+      })();
     },
     [teamName, softDeleteTask]
   );
@@ -626,7 +642,9 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     );
   }
 
-  const headerColorSet = data.config.color ? getTeamColorSet(data.config.color) : null;
+  const headerColorSet = data.config.color
+    ? getTeamColorSet(data.config.color)
+    : nameColorSet(data.config.name);
 
   return (
     <div className="size-full overflow-auto p-4">
@@ -772,7 +790,10 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
 
       {!data.isAlive && !isTeamProvisioning ? (
         <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-          <span className="text-xs text-amber-200">Team is offline</span>
+          <span className="flex items-center gap-1.5 text-xs text-amber-200">
+            <AlertTriangle size={14} className="shrink-0 text-amber-400" />
+            Team is offline
+          </span>
           <Button
             variant="ghost"
             size="sm"
@@ -1392,7 +1413,14 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
         onDeleteTask={handleDeleteTask}
       />
 
-      <TrashDialog open={trashOpen} tasks={deletedTasks} onClose={() => setTrashOpen(false)} />
+      <TrashDialog
+        open={trashOpen}
+        tasks={deletedTasks}
+        onClose={() => setTrashOpen(false)}
+        onRestore={(taskId) => {
+          void restoreTask(teamName, taskId);
+        }}
+      />
 
       <ChangeReviewDialog
         open={reviewDialogState.open}

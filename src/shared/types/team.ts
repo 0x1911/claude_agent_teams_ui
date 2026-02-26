@@ -19,6 +19,8 @@ export interface TeamConfig {
   projectPathHistory?: string[];
   leadSessionId?: string;
   sessionHistory?: string[];
+  /** ISO timestamp — soft delete marker. If set, the team is considered deleted. */
+  deletedAt?: string;
 }
 
 export interface TeamUpdateConfigRequest {
@@ -47,6 +49,8 @@ export interface TeamSummary {
   projectPathHistory?: string[];
   leadSessionId?: string;
   sessionHistory?: string[];
+  /** Propagated from config.deletedAt — set when the team has been soft-deleted. */
+  deletedAt?: string;
 }
 
 export type TeamTaskStatus = 'pending' | 'in_progress' | 'completed' | 'deleted';
@@ -292,6 +296,8 @@ export interface GlobalTask extends TeamTaskWithKanban {
   teamName: string;
   teamDisplayName: string;
   projectPath?: string;
+  /** True when the parent team has been soft-deleted. */
+  teamDeleted?: boolean;
 }
 
 export interface MemberSubagentSummary {
@@ -331,10 +337,16 @@ export interface MemberLeadSessionLogSummary extends MemberLogSummaryBase {
 
 export type MemberLogSummary = MemberSubagentLogSummary | MemberLeadSessionLogSummary;
 
+export interface FileLineStats {
+  added: number;
+  removed: number;
+}
+
 export interface MemberFullStats {
   linesAdded: number;
   linesRemoved: number;
   filesTouched: string[];
+  fileStats: Record<string, FileLineStats>;
   toolUsage: Record<string, number>;
   inputTokens: number;
   outputTokens: number;

@@ -107,8 +107,11 @@ export interface TeamSlice {
   deletedTasks: TeamTask[];
   deletedTasksLoading: boolean;
   softDeleteTask: (teamName: string, taskId: string) => Promise<void>;
+  restoreTask: (teamName: string, taskId: string) => Promise<void>;
   fetchDeletedTasks: (teamName: string) => Promise<void>;
   deleteTeam: (teamName: string) => Promise<void>;
+  restoreTeam: (teamName: string) => Promise<void>;
+  permanentlyDeleteTeam: (teamName: string) => Promise<void>;
   createTeam: (request: TeamCreateRequest) => Promise<string>;
   launchTeam: (request: TeamLaunchRequest) => Promise<string>;
   cancelProvisioning: (runId: string) => Promise<void>;
@@ -516,6 +519,12 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     await get().fetchDeletedTasks(teamName);
   },
 
+  restoreTask: async (teamName: string, taskId: string) => {
+    await unwrapIpc('team:restoreTask', () => api.teams.restoreTask(teamName, taskId));
+    await get().refreshTeamData(teamName);
+    await get().fetchDeletedTasks(teamName);
+  },
+
   fetchDeletedTasks: async (teamName: string) => {
     set({ deletedTasksLoading: true });
     try {
@@ -531,11 +540,24 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
   deleteTeam: async (teamName: string) => {
     await unwrapIpc('team:deleteTeam', () => api.teams.deleteTeam(teamName));
+    await get().fetchTeams();
+    await get().fetchAllTasks();
+  },
+
+  restoreTeam: async (teamName: string) => {
+    await unwrapIpc('team:restoreTeam', () => api.teams.restoreTeam(teamName));
+    await get().fetchTeams();
+    await get().fetchAllTasks();
+  },
+
+  permanentlyDeleteTeam: async (teamName: string) => {
+    await unwrapIpc('team:permanentlyDeleteTeam', () => api.teams.permanentlyDeleteTeam(teamName));
     const state = get();
     if (state.selectedTeamName === teamName) {
       set({ selectedTeamName: null, selectedTeamData: null, selectedTeamError: null });
     }
     await get().fetchTeams();
+    await get().fetchAllTasks();
   },
 
   createTeam: async (request: TeamCreateRequest) => {

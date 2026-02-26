@@ -169,6 +169,27 @@ export class TeamTaskWriter {
     });
   }
 
+  async restoreTask(teamName: string, taskId: string): Promise<void> {
+    const taskPath = path.join(getTasksBasePath(), teamName, `${taskId}.json`);
+
+    await withTaskLock(taskPath, async () => {
+      let raw: string;
+      try {
+        raw = await fs.promises.readFile(taskPath, 'utf8');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw new Error(`Task not found: ${taskId}`);
+        }
+        throw error;
+      }
+
+      const task = JSON.parse(raw) as TeamTask;
+      task.status = 'pending';
+      delete task.deletedAt;
+      await atomicWriteAsync(taskPath, JSON.stringify(task, null, 2));
+    });
+  }
+
   async addComment(
     teamName: string,
     taskId: string,
