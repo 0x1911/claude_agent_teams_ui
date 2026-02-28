@@ -169,10 +169,21 @@ export class TeamDataService {
   }
 
   async getTeamData(teamName: string): Promise<TeamData> {
+    const startedAt = Date.now();
+    const marks: Record<string, number> = {};
+    const mark = (label: string): void => {
+      marks[label] = Date.now();
+    };
+    const msSince = (label: string): number => {
+      const t = marks[label];
+      return typeof t === 'number' ? t - startedAt : -1;
+    };
+
     const config = await this.configReader.getConfig(teamName);
     if (!config) {
       throw new Error(`Team not found: ${teamName}`);
     }
+    mark('config');
 
     const warnings: string[] = [];
 
@@ -184,6 +195,7 @@ export class TeamDataService {
       warnings.push('Tasks failed to load');
       tasksLoaded = false;
     }
+    mark('tasks');
 
     let inboxNames: string[] = [];
     try {
@@ -191,6 +203,7 @@ export class TeamDataService {
     } catch {
       warnings.push('Inboxes failed to load');
     }
+    mark('inboxNames');
 
     let messages: InboxMessage[] = [];
     try {
@@ -198,6 +211,7 @@ export class TeamDataService {
     } catch {
       warnings.push('Messages failed to load');
     }
+    mark('messages');
 
     try {
       const leadTexts = await this.extractLeadSessionTexts(config);
@@ -207,6 +221,7 @@ export class TeamDataService {
     } catch {
       warnings.push('Lead session texts failed to load');
     }
+    mark('leadTexts');
 
     try {
       const sentMessages = await this.sentMessagesStore.readMessages(teamName);
@@ -216,6 +231,7 @@ export class TeamDataService {
     } catch {
       warnings.push('Sent messages failed to load');
     }
+    mark('sentMessages');
 
     messages.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
 
@@ -225,6 +241,7 @@ export class TeamDataService {
     } catch {
       warnings.push('Member metadata failed to load');
     }
+    mark('metaMembers');
 
     let kanbanState: KanbanState = {
       teamName,
@@ -238,6 +255,7 @@ export class TeamDataService {
       warnings.push('Kanban state failed to load');
       canRunKanbanGc = false;
     }
+    mark('kanbanState');
 
     if (canRunKanbanGc && tasksLoaded) {
       try {
@@ -247,6 +265,7 @@ export class TeamDataService {
         warnings.push('Kanban state cleanup failed');
       }
     }
+    mark('kanbanGc');
 
     const tasksWithKanban: TeamTaskWithKanban[] = tasks.map((task) => {
       const col = kanbanState.tasks[task.id]?.column;
@@ -261,9 +280,11 @@ export class TeamDataService {
       tasksWithKanban,
       messages
     );
+    mark('resolveMembers');
 
     // Enrich members with git branch when it differs from lead's branch
     await this.enrichMemberBranches(members, config);
+    mark('enrichBranches');
 
     // Auto-sync: create comments from task-related inbox messages
     if (tasksLoaded && messages.length > 0) {
@@ -277,6 +298,7 @@ export class TeamDataService {
         warnings.push('Comment sync from messages failed');
       }
     }
+    mark('syncComments');
 
     const tasksToReturn: TeamTaskWithKanban[] = tasks.map((task) => {
       const col = kanbanState.tasks[task.id]?.column;
@@ -289,6 +311,22 @@ export class TeamDataService {
       processes = await this.readProcesses(teamName);
     } catch {
       warnings.push('Processes failed to load');
+    }
+    mark('processes');
+
+    const totalMs = Date.now() - startedAt;
+    if (totalMs >= 1500) {
+      logger.warn(
+        `[getTeamData] slow team=${teamName} total=${totalMs}ms config=${msSince('config')} tasks=${msSince('tasks')} inboxNames=${msSince(
+          'inboxNames'
+        )} messages=${msSince('messages')} leadTexts=${msSince('leadTexts')} sent=${msSince(
+          'sentMessages'
+        )} membersMeta=${msSince('metaMembers')} kanban=${msSince('kanbanState')} kanbanGc=${msSince(
+          'kanbanGc'
+        )} resolveMembers=${msSince('resolveMembers')} enrichBranches=${msSince(
+          'enrichBranches'
+        )} syncComments=${msSince('syncComments')} processes=${msSince('processes')}`
+      );
     }
 
     // Auto-track teams with alive processes for periodic health checks
@@ -484,20 +522,27 @@ export class TeamDataService {
       return;
     }
 
-    await Promise.all(
-      members.map(async (member) => {
-        if (!member.cwd || member.cwd === leadCwd) return;
-        try {
-          const branch = await gitIdentityResolver.getBranch(member.cwd);
-          if (branch && branch !== leadBranch) {
-            // eslint-disable-next-line no-param-reassign -- intentional in-place enrichment
-            member.gitBranch = branch;
+    const candidates = members.filter((m) => m.cwd && m.cwd !== leadCwd);
+    if (candidates.length === 0) return;
+
+    const concurrency = process.platform === 'win32' ? 4 : 8;
+    for (let i = 0; i < candidates.length; i += concurrency) {
+      const batch = candidates.slice(i, i + concurrency);
+      await Promise.all(
+        batch.map(async (member) => {
+          if (!member.cwd) return;
+          try {
+            const branch = await gitIdentityResolver.getBranch(member.cwd);
+            if (branch && branch !== leadBranch) {
+              // eslint-disable-next-line no-param-reassign -- intentional in-place enrichment
+              member.gitBranch = branch;
+            }
+          } catch {
+            // Member cwd may not be a git repo — skip silently
           }
-        } catch {
-          // Member cwd may not be a git repo — skip silently
-        }
-      })
-    );
+        })
+      );
+    }
   }
 
   async addMember(teamName: string, request: AddMemberRequest): Promise<void> {
@@ -909,6 +954,11 @@ export class TeamDataService {
     const TASK_ID_PATTERN = /#(\d+)/g;
     let synced = false;
 
+    const tasksById = new Map<string, TeamTask>();
+    for (const t of tasks) {
+      tasksById.set(t.id, t);
+    }
+
     // Dedup broadcasts: same sender + same text → process only once
     const processedTexts = new Set<string>();
 
@@ -927,7 +977,7 @@ export class TeamDataService {
       }
 
       for (const taskId of taskIds) {
-        const task = tasks.find((t) => t.id === taskId);
+        const task = tasksById.get(taskId);
         if (!task) continue;
 
         const commentId = `msg-${msg.messageId}`;

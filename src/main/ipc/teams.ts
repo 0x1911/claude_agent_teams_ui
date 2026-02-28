@@ -321,6 +321,8 @@ async function handleGetData(
     return { success: false, error: validated.error ?? 'Invalid teamName' };
   }
   const tn = validated.value!;
+  const startedAt = Date.now();
+  logger.info(`[teams:getData] start team=${tn}`);
   let data: TeamData;
   try {
     data = await getTeamDataService().getTeamData(tn);
@@ -334,6 +336,14 @@ async function handleGetData(
     }
     logger.error(`[teams:getData] ${message}`);
     return { success: false, error: message };
+  }
+  const getDataMs = Date.now() - startedAt;
+  if (getDataMs >= 1000) {
+    logger.warn(
+      `[teams:getData] slow team=${tn} ms=${getDataMs} tasks=${data.tasks.length} members=${data.members.length} messages=${data.messages.length}`
+    );
+  } else {
+    logger.info(`[teams:getData] done team=${tn} ms=${getDataMs}`);
   }
   const provisioning = getTeamProvisioningService();
   const isAlive = provisioning.isTeamAlive(tn);

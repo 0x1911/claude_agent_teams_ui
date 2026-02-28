@@ -7,6 +7,20 @@ import { getWorktreeNavigationState } from '../utils/stateResetHelpers';
 
 const logger = createLogger('teamSlice');
 
+const TEAM_GET_DATA_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Timeout after ${ms}ms: ${label}`));
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 import type { AppState } from '../types';
 import type {
   AddMemberRequest,
@@ -387,8 +401,18 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       return;
     }
 
+    const startedAt = Date.now();
+    const traceId = `${teamName}:${startedAt}`;
+    logger.info(
+      `[selectTeam] start trace=${traceId} skipProjectAutoSelect=${opts?.skipProjectAutoSelect === true}`
+    );
+
     try {
-      const data = await unwrapIpc('team:getData', () => api.teams.getData(teamName));
+      const data = await withTimeout(
+        unwrapIpc('team:getData', () => api.teams.getData(teamName)),
+        TEAM_GET_DATA_TIMEOUT_MS,
+        `team:getData(${teamName}) trace=${traceId}`
+      );
       // Stale check: user may have switched to another team during the async call
       if (get().selectedTeamName !== teamName) {
         return;
@@ -399,6 +423,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         selectedTeamLoading: false,
         selectedTeamError: null,
       });
+
+      logger.info(
+        `[selectTeam] done trace=${traceId} ms=${Date.now() - startedAt} tasks=${data.tasks.length} members=${data.members.length} messages=${data.messages.length}`
+      );
 
       // Sync tab label with the team's display name from config
       const displayName = data.config.name || teamName;
@@ -466,7 +494,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           : error instanceof Error
             ? error.message
             : 'Failed to fetch team data';
-      logger.error(`[team:getData] ${message}`);
+      logger.error(`[selectTeam] fail team=${teamName} ms=${Date.now() - startedAt} ${message}`);
       set({
         selectedTeamLoading: false,
         selectedTeamData: null,
