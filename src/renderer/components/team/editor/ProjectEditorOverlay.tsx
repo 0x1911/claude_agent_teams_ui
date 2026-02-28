@@ -66,7 +66,7 @@ export const ProjectEditorOverlay = ({
   const openEditor = useStore((s) => s.openEditor);
   const closeEditor = useStore((s) => s.closeEditor);
   const openFile = useStore((s) => s.openFile);
-  const closeTab = useStore((s) => s.closeTab);
+  const closeEditorTab = useStore((s) => s.closeEditorTab);
   const saveFile = useStore((s) => s.saveFile);
   const activeTabId = useStore((s) => s.editorActiveTabId);
   const openTabs = useStore((s) => s.editorOpenTabs);
@@ -284,10 +284,10 @@ export const ProjectEditorOverlay = ({
       if (modifiedFiles[tabId]) {
         setConfirmCloseTabId(tabId);
       } else {
-        closeTab(tabId);
+        closeEditorTab(tabId);
       }
     },
-    [modifiedFiles, closeTab]
+    [modifiedFiles, closeEditorTab]
   );
 
   // Listen for editor-close-tab custom events from keyboard shortcut hook
@@ -303,15 +303,15 @@ export const ProjectEditorOverlay = ({
   const handleSaveAndCloseTab = useCallback(async () => {
     if (!confirmCloseTabId) return;
     await saveFile(confirmCloseTabId);
-    closeTab(confirmCloseTabId);
+    closeEditorTab(confirmCloseTabId);
     setConfirmCloseTabId(null);
-  }, [confirmCloseTabId, saveFile, closeTab]);
+  }, [confirmCloseTabId, saveFile, closeEditorTab]);
 
   const handleDiscardAndCloseTab = useCallback(() => {
     if (!confirmCloseTabId) return;
-    closeTab(confirmCloseTabId);
+    closeEditorTab(confirmCloseTabId);
     setConfirmCloseTabId(null);
-  }, [confirmCloseTabId, closeTab]);
+  }, [confirmCloseTabId, closeEditorTab]);
 
   const handleCancelCloseTab = useCallback(() => {
     setConfirmCloseTabId(null);
@@ -579,7 +579,7 @@ export const ProjectEditorOverlay = ({
               </span>
               {externalChanges[activeTabId] === 'delete' ? (
                 <button
-                  onClick={() => closeTab(activeTabId)}
+                  onClick={() => closeEditorTab(activeTabId)}
                   className="ml-auto rounded px-2 py-0.5 text-text-muted transition-colors hover:bg-surface-raised hover:text-text"
                 >
                   Close tab

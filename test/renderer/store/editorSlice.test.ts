@@ -308,14 +308,14 @@ describe('editorSlice', () => {
     });
   });
 
-  describe('closeTab', () => {
+  describe('closeEditorTab', () => {
     it('removes tab and activates adjacent', () => {
       store.getState().openFile('/project/a.ts');
       store.getState().openFile('/project/b.ts');
       store.getState().openFile('/project/c.ts');
 
       // Active is c.ts, close it
-      store.getState().closeTab('/project/c.ts');
+      store.getState().closeEditorTab('/project/c.ts');
 
       const state = store.getState();
       expect(state.editorOpenTabs).toHaveLength(2);
@@ -325,16 +325,16 @@ describe('editorSlice', () => {
     it('activates first remaining tab when first is closed', () => {
       store.getState().openFile('/project/a.ts');
       store.getState().openFile('/project/b.ts');
-      store.getState().setActiveTab('/project/a.ts');
+      store.getState().setActiveEditorTab('/project/a.ts');
 
-      store.getState().closeTab('/project/a.ts');
+      store.getState().closeEditorTab('/project/a.ts');
 
       expect(store.getState().editorActiveTabId).toBe('/project/b.ts');
     });
 
     it('sets null when last tab is closed', () => {
       store.getState().openFile('/project/a.ts');
-      store.getState().closeTab('/project/a.ts');
+      store.getState().closeEditorTab('/project/a.ts');
 
       expect(store.getState().editorActiveTabId).toBeNull();
       expect(store.getState().editorOpenTabs).toHaveLength(0);
@@ -347,7 +347,7 @@ describe('editorSlice', () => {
         editorSaveError: { '/project/a.ts': 'Save failed' },
       });
 
-      store.getState().closeTab('/project/a.ts');
+      store.getState().closeEditorTab('/project/a.ts');
 
       expect(store.getState().editorModifiedFiles).toEqual({});
       expect(store.getState().editorSaveError).toEqual({});
@@ -358,20 +358,20 @@ describe('editorSlice', () => {
       store.getState().openFile('/project/b.ts');
       // b.ts is active
 
-      store.getState().closeTab('/project/a.ts');
+      store.getState().closeEditorTab('/project/a.ts');
 
       expect(store.getState().editorActiveTabId).toBe('/project/b.ts');
       expect(store.getState().editorOpenTabs).toHaveLength(1);
     });
   });
 
-  describe('setActiveTab', () => {
+  describe('setActiveEditorTab', () => {
     it('changes the active tab', () => {
       store.getState().openFile('/project/a.ts');
       store.getState().openFile('/project/b.ts');
       // b.ts is active
 
-      store.getState().setActiveTab('/project/a.ts');
+      store.getState().setActiveEditorTab('/project/a.ts');
 
       expect(store.getState().editorActiveTabId).toBe('/project/a.ts');
     });
@@ -582,7 +582,7 @@ describe('editorSlice', () => {
     });
   });
 
-  describe('closeTab clears disambiguation when names become unique', () => {
+  describe('closeEditorTab clears disambiguation when names become unique', () => {
     it('removes label after closing duplicate', () => {
       store.getState().openFile('/project/src/main/index.ts');
       store.getState().openFile('/project/src/renderer/index.ts');
@@ -591,7 +591,7 @@ describe('editorSlice', () => {
       expect(store.getState().editorOpenTabs[0].disambiguatedLabel).toBe('(main)');
 
       // Close one
-      store.getState().closeTab('/project/src/main/index.ts');
+      store.getState().closeEditorTab('/project/src/main/index.ts');
 
       // Remaining should lose its label
       const tabs = store.getState().editorOpenTabs;
@@ -600,10 +600,10 @@ describe('editorSlice', () => {
     });
   });
 
-  describe('closeTab calls editorBridge.deleteState', () => {
+  describe('closeEditorTab calls editorBridge.deleteState', () => {
     it('clears cached state for the closed tab', () => {
       store.getState().openFile('/project/a.ts');
-      store.getState().closeTab('/project/a.ts');
+      store.getState().closeEditorTab('/project/a.ts');
 
       expect(mockBridge.deleteState).toHaveBeenCalledWith('/project/a.ts');
     });

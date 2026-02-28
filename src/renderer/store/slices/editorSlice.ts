@@ -77,8 +77,8 @@ export interface EditorSlice {
   editorActiveTabId: string | null;
 
   openFile: (filePath: string) => void;
-  closeTab: (tabId: string) => void;
-  setActiveTab: (tabId: string) => void;
+  closeEditorTab: (tabId: string) => void;
+  setActiveEditorTab: (tabId: string) => void;
 
   // ═══════════════════════════════════════════════════════
   // Group 3: Content + Save
@@ -343,7 +343,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
     });
   },
 
-  closeTab: (tabId: string) => {
+  closeEditorTab: (tabId: string) => {
     const { editorOpenTabs, editorActiveTabId, editorModifiedFiles, editorSaveError } = get();
     const filtered = editorOpenTabs.filter((t) => t.id !== tabId);
 
@@ -383,7 +383,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
     });
   },
 
-  setActiveTab: (tabId: string) => {
+  setActiveEditorTab: (tabId: string) => {
     set({ editorActiveTabId: tabId });
   },
 
@@ -581,7 +581,7 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
         (t) => t.filePath === filePath || t.filePath.startsWith(filePath + '/')
       );
       for (const tab of tabsToClose) {
-        get().closeTab(tab.id);
+        get().closeEditorTab(tab.id);
       }
 
       // Refresh parent directory

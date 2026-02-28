@@ -44,7 +44,7 @@ function createMockDeps(overrides: Partial<EditorKeyHandlerDeps> = {}): EditorKe
         language: 'typescript',
       },
     ] as EditorFileTab[],
-    setActiveTab: vi.fn(),
+    setActiveEditorTab: vi.fn(),
     saveFile: vi.fn().mockResolvedValue(undefined),
     saveAllFiles: vi.fn().mockResolvedValue(undefined),
     hasUnsavedChanges: vi.fn().mockReturnValue(false),
@@ -207,27 +207,27 @@ describe('createEditorKeyHandler', () => {
     it('moves to next tab with Cmd+Shift+]', () => {
       const handler = createEditorKeyHandler(deps);
       handler(createKeyEvent(']', { shiftKey: true }));
-      expect(deps.setActiveTab).toHaveBeenCalledWith('/project/file2.ts');
+      expect(deps.setActiveEditorTab).toHaveBeenCalledWith('/project/file2.ts');
     });
 
     it('wraps to first tab when on last', () => {
       deps = createMockDeps({ activeTabId: '/project/file3.ts' });
       const handler = createEditorKeyHandler(deps);
       handler(createKeyEvent(']', { shiftKey: true }));
-      expect(deps.setActiveTab).toHaveBeenCalledWith('/project/file1.ts');
+      expect(deps.setActiveEditorTab).toHaveBeenCalledWith('/project/file1.ts');
     });
 
     it('moves to previous tab with Cmd+Shift+[', () => {
       deps = createMockDeps({ activeTabId: '/project/file2.ts' });
       const handler = createEditorKeyHandler(deps);
       handler(createKeyEvent('[', { shiftKey: true }));
-      expect(deps.setActiveTab).toHaveBeenCalledWith('/project/file1.ts');
+      expect(deps.setActiveEditorTab).toHaveBeenCalledWith('/project/file1.ts');
     });
 
     it('wraps to last tab when on first with Cmd+Shift+[', () => {
       const handler = createEditorKeyHandler(deps);
       handler(createKeyEvent('[', { shiftKey: true }));
-      expect(deps.setActiveTab).toHaveBeenCalledWith('/project/file3.ts');
+      expect(deps.setActiveEditorTab).toHaveBeenCalledWith('/project/file3.ts');
     });
   });
 
@@ -235,27 +235,27 @@ describe('createEditorKeyHandler', () => {
     it('moves to next tab', () => {
       const handler = createEditorKeyHandler(deps);
       handler(createKeyEvent('Tab', { metaKey: false, ctrlKey: true }));
-      expect(deps.setActiveTab).toHaveBeenCalledWith('/project/file2.ts');
+      expect(deps.setActiveEditorTab).toHaveBeenCalledWith('/project/file2.ts');
     });
 
     it('moves to previous tab with Shift', () => {
       deps = createMockDeps({ activeTabId: '/project/file2.ts' });
       const handler = createEditorKeyHandler(deps);
       handler(createKeyEvent('Tab', { metaKey: false, ctrlKey: true, shiftKey: true }));
-      expect(deps.setActiveTab).toHaveBeenCalledWith('/project/file1.ts');
+      expect(deps.setActiveEditorTab).toHaveBeenCalledWith('/project/file1.ts');
     });
 
     it('wraps forward on last tab', () => {
       deps = createMockDeps({ activeTabId: '/project/file3.ts' });
       const handler = createEditorKeyHandler(deps);
       handler(createKeyEvent('Tab', { metaKey: false, ctrlKey: true }));
-      expect(deps.setActiveTab).toHaveBeenCalledWith('/project/file1.ts');
+      expect(deps.setActiveEditorTab).toHaveBeenCalledWith('/project/file1.ts');
     });
 
     it('wraps backward on first tab', () => {
       const handler = createEditorKeyHandler(deps);
       handler(createKeyEvent('Tab', { metaKey: false, ctrlKey: true, shiftKey: true }));
-      expect(deps.setActiveTab).toHaveBeenCalledWith('/project/file3.ts');
+      expect(deps.setActiveEditorTab).toHaveBeenCalledWith('/project/file3.ts');
     });
   });
 
@@ -264,7 +264,7 @@ describe('createEditorKeyHandler', () => {
       deps = createMockDeps({ openTabs: [], activeTabId: null });
       const handler = createEditorKeyHandler(deps);
       handler(createKeyEvent(']', { shiftKey: true }));
-      expect(deps.setActiveTab).not.toHaveBeenCalled();
+      expect(deps.setActiveEditorTab).not.toHaveBeenCalled();
     });
 
     it('stopPropagation is called on handled shortcuts', () => {

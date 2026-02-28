@@ -30,7 +30,7 @@ export const EditorTabBar = ({
   const tabs = useStore((s) => s.editorOpenTabs);
   const activeTabId = useStore((s) => s.editorActiveTabId);
   const modifiedFiles = useStore((s) => s.editorModifiedFiles);
-  const setActiveTab = useStore((s) => s.setActiveTab);
+  const setActiveEditorTab = useStore((s) => s.setActiveEditorTab);
 
   if (tabs.length === 0) return null;
 
@@ -45,7 +45,7 @@ export const EditorTabBar = ({
           tab={tab}
           isActive={tab.id === activeTabId}
           isModified={!!modifiedFiles[tab.filePath]}
-          onActivate={() => setActiveTab(tab.id)}
+          onActivate={() => setActiveEditorTab(tab.id)}
           onClose={() => onRequestCloseTab(tab.id)}
         />
       ))}

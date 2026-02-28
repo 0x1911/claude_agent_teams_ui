@@ -28,7 +28,7 @@ interface UseEditorKeyboardShortcutsOptions {
 export interface EditorKeyHandlerDeps {
   activeTabId: string | null;
   openTabs: EditorFileTab[];
-  setActiveTab: (id: string) => void;
+  setActiveEditorTab: (id: string) => void;
   saveFile: (tabId: string) => Promise<void>;
   saveAllFiles: () => Promise<void>;
   hasUnsavedChanges: () => boolean;
@@ -127,9 +127,9 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
       e.stopPropagation();
       const idx = deps.openTabs.findIndex((t) => t.id === deps.activeTabId);
       if (idx !== -1 && idx < deps.openTabs.length - 1) {
-        deps.setActiveTab(deps.openTabs[idx + 1].id);
+        deps.setActiveEditorTab(deps.openTabs[idx + 1].id);
       } else if (deps.openTabs.length > 0) {
-        deps.setActiveTab(deps.openTabs[0].id); // wrap
+        deps.setActiveEditorTab(deps.openTabs[0].id); // wrap
       }
       return;
     }
@@ -140,9 +140,9 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
       e.stopPropagation();
       const idx = deps.openTabs.findIndex((t) => t.id === deps.activeTabId);
       if (idx > 0) {
-        deps.setActiveTab(deps.openTabs[idx - 1].id);
+        deps.setActiveEditorTab(deps.openTabs[idx - 1].id);
       } else if (deps.openTabs.length > 0) {
-        deps.setActiveTab(deps.openTabs[deps.openTabs.length - 1].id); // wrap
+        deps.setActiveEditorTab(deps.openTabs[deps.openTabs.length - 1].id); // wrap
       }
       return;
     }
@@ -154,10 +154,10 @@ export function createEditorKeyHandler(deps: EditorKeyHandlerDeps): (e: Keyboard
       const idx = deps.openTabs.findIndex((t) => t.id === deps.activeTabId);
       if (e.shiftKey) {
         const prev = idx > 0 ? idx - 1 : deps.openTabs.length - 1;
-        if (deps.openTabs[prev]) deps.setActiveTab(deps.openTabs[prev].id);
+        if (deps.openTabs[prev]) deps.setActiveEditorTab(deps.openTabs[prev].id);
       } else {
         const next = idx < deps.openTabs.length - 1 ? idx + 1 : 0;
-        if (deps.openTabs[next]) deps.setActiveTab(deps.openTabs[next].id);
+        if (deps.openTabs[next]) deps.setActiveEditorTab(deps.openTabs[next].id);
       }
     }
 
@@ -177,7 +177,7 @@ export function useEditorKeyboardShortcuts({
 }: UseEditorKeyboardShortcutsOptions): void {
   const openTabs = useStore((s) => s.editorOpenTabs);
   const activeTabId = useStore((s) => s.editorActiveTabId);
-  const setActiveTab = useStore((s) => s.setActiveTab);
+  const setActiveEditorTab = useStore((s) => s.setActiveEditorTab);
   const saveFile = useStore((s) => s.saveFile);
   const saveAllFiles = useStore((s) => s.saveAllFiles);
   const hasUnsavedChanges = useStore((s) => s.hasUnsavedChanges);
@@ -187,7 +187,7 @@ export function useEditorKeyboardShortcuts({
       const handler = createEditorKeyHandler({
         activeTabId,
         openTabs,
-        setActiveTab,
+        setActiveEditorTab,
         saveFile,
         saveAllFiles,
         hasUnsavedChanges,
@@ -201,7 +201,7 @@ export function useEditorKeyboardShortcuts({
     [
       activeTabId,
       openTabs,
-      setActiveTab,
+      setActiveEditorTab,
       saveFile,
       saveAllFiles,
       hasUnsavedChanges,
