@@ -8,7 +8,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { TabbedLayout } from './components/layout/TabbedLayout';
 import { useTheme } from './hooks/useTheme';
 import { api } from './api';
-import { initializeNotificationListeners, useStore } from './store';
+import { useStore } from './store';
 
 export const App = (): React.JSX.Element => {
   // Initialize theme on app load
@@ -21,14 +21,6 @@ export const App = (): React.JSX.Element => {
       splash.style.opacity = '0';
       setTimeout(() => splash.remove(), 300);
     }
-  }, []);
-
-  // Initialize IPC listeners and start sequential data fetch chain.
-  // No delay needed: UV_THREADPOOL_SIZE=16 prevents thread pool saturation,
-  // and the init chain fetches data sequentially to avoid concurrent I/O spikes.
-  useEffect(() => {
-    const cleanup = initializeNotificationListeners();
-    return cleanup;
   }, []);
 
   // Initialize context system lazily when SSH connection state changes.
