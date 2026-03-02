@@ -194,6 +194,15 @@ export const EditorFileTree = ({
     overscan: !dndReady ? 3 : draggedItem ? 20 : 10,
   });
 
+  // Scroll to file when selectedFilePath changes (e.g. from revealFileInEditor)
+  useEffect(() => {
+    if (!selectedFilePath) return;
+    const idx = flatItems.findIndex((fi) => fi.node.fullPath === selectedFilePath);
+    if (idx >= 0) {
+      virtualizer.scrollToIndex(idx, { align: 'center' });
+    }
+  }, [selectedFilePath, flatItems, virtualizer]);
+
   // Git status lookup: absolute path → status type
   const gitStatusMap = useMemo(() => {
     const t0 = performance.now();

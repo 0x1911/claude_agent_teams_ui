@@ -235,6 +235,14 @@ export interface EditorSlice {
   editorPendingGoToLine: number | null;
   setPendingGoToLine: (line: number | null) => void;
 
+  /** File path to reveal in editor (opens editor, expands dirs, opens tab, focuses in tree). */
+  editorPendingRevealFile: string | null;
+  /** Request to reveal a file in the editor. Opens editor overlay if needed. */
+  revealFileInEditor: (filePath: string) => void;
+  /** Process the pending reveal: expand parent dirs and open the file tab. */
+  revealAndOpenFile: (filePath: string) => Promise<void>;
+  clearPendingRevealFile: () => void;
+
   fetchGitStatus: () => Promise<void>;
   toggleWatcher: (enable: boolean) => Promise<void>;
   toggleLineWrap: () => void;
@@ -288,8 +296,57 @@ export const createEditorSlice: StateCreator<AppState, [], [], EditorSlice> = (s
   editorFileMtimes: {},
   editorConflictFile: null,
   editorPendingGoToLine: null,
+  editorPendingRevealFile: null,
 
   setPendingGoToLine: (line: number | null) => set({ editorPendingGoToLine: line }),
+
+  revealFileInEditor: (filePath: string) => {
+    set({ editorPendingRevealFile: filePath });
+  },
+
+  clearPendingRevealFile: () => {
+    set({ editorPendingRevealFile: null });
+  },
+
+  revealAndOpenFile: async (filePath: string) => {
+    const { editorProjectPath, editorFileTree, expandDirectory, openFile } = get();
+    if (!editorProjectPath) return;
+
+    // Guard: file tree must be loaded before we can reveal.
+    // If it's still null, bail out WITHOUT clearing pendingRevealFile
+    // so the caller effect can retry after the tree loads.
+    if (!editorFileTree) {
+      log.info('revealAndOpenFile: tree not loaded yet, deferring reveal');
+      return;
+    }
+
+    // Compute parent directories from projectRoot to the file.
+    // Normalize: strip trailing slash from project path to avoid double-slash.
+    const normalizedRoot = editorProjectPath.endsWith('/')
+      ? editorProjectPath.slice(0, -1)
+      : editorProjectPath;
+    const relative = filePath.startsWith(normalizedRoot + '/')
+      ? filePath.slice(normalizedRoot.length + 1)
+      : null;
+
+    if (relative) {
+      const segments = relative.split('/');
+      // Expand each parent directory sequentially (root → child → grandchild).
+      // Skip the last segment (the file name itself).
+      // Each expandDirectory call is awaited so that its children are merged
+      // into the tree before the next level is expanded.
+      let currentDir = normalizedRoot;
+      for (let i = 0; i < segments.length - 1; i++) {
+        currentDir = `${currentDir}/${segments[i]}`;
+        await expandDirectory(currentDir);
+      }
+    }
+
+    // Open the file as a tab
+    openFile(filePath);
+    // Clear reveal state
+    set({ editorPendingRevealFile: null });
+  },
 
   // ═══════════════════════════════════════════════════════
   // Group 1: File tree actions

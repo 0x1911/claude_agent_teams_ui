@@ -237,6 +237,9 @@ export const ProjectEditorOverlay = ({
   // Active tab save error
   const activeSaveError = activeTabId ? (saveErrors[activeTabId] ?? null) : null;
 
+  const pendingRevealFile = useStore((s) => s.editorPendingRevealFile);
+  const revealAndOpenFile = useStore((s) => s.revealAndOpenFile);
+
   // Initialize editor on mount
   useEffect(() => {
     void openEditor(projectPath);
@@ -244,6 +247,18 @@ export const ProjectEditorOverlay = ({
       closeEditor();
     };
   }, [projectPath, openEditor, closeEditor]);
+
+  // Process pending file reveal after editor initializes.
+  // Guard: wait until the file tree is actually loaded (not null) and not loading.
+  // Without the fileTree check, the effect fires on mount when fileTreeLoading is
+  // still at its initial `false` value — before openEditor sets it to `true`.
+  const fileTreeLoading = useStore((s) => s.editorFileTreeLoading);
+  const fileTreeLoaded = useStore((s) => s.editorFileTree !== null);
+  useEffect(() => {
+    if (pendingRevealFile && !fileTreeLoading && fileTreeLoaded) {
+      void revealAndOpenFile(pendingRevealFile);
+    }
+  }, [pendingRevealFile, fileTreeLoading, fileTreeLoaded, revealAndOpenFile]);
 
   // Keep container rect fresh for selection menu positioning (resize, sidebar toggle)
   useEffect(() => {

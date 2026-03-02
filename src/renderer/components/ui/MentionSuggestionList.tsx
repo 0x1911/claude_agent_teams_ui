@@ -100,9 +100,9 @@ export const MentionSuggestionList = ({
         role="option"
         aria-selected={isSelected}
         data-index={idx}
-        className={`flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs transition-colors ${
+        className={`flex cursor-pointer items-center gap-2 rounded-sm px-3 py-1.5 text-xs transition-colors ${
           isSelected
-            ? 'bg-[var(--color-surface-raised)] text-[var(--color-text)]'
+            ? 'bg-[var(--color-accent)]/15 ring-[var(--color-accent)]/30 text-[var(--color-text)] ring-1 ring-inset'
             : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-raised)]'
         }`}
         onMouseDown={(e) => {

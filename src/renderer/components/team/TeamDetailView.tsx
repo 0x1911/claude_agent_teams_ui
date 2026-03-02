@@ -266,6 +266,14 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
   });
   const [messagesFilterOpen, setMessagesFilterOpen] = useState(false);
 
+  // Open editor overlay when a file reveal is requested (e.g. from chip click)
+  const pendingRevealFile = useStore((s) => s.editorPendingRevealFile);
+  useEffect(() => {
+    if (pendingRevealFile && data?.config.projectPath) {
+      setEditorOpen(true);
+    }
+  }, [pendingRevealFile, data?.config.projectPath]);
+
   useEffect(() => {
     if (!teamName) {
       return;

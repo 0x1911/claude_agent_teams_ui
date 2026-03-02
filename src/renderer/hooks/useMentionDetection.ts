@@ -165,6 +165,9 @@ export function useMentionDetection({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition | null>(null);
   const triggerIndexRef = useRef<number>(-1);
+  // Track current query in a ref so detectTrigger can avoid resetting selectedIndex
+  // on redundant selectionchange events (e.g. after ArrowDown/Up keyboard navigation)
+  const queryRef = useRef('');
 
   const filteredSuggestions = useMemo(() => {
     if (!isOpen) return [];
@@ -179,6 +182,7 @@ export function useMentionDetection({
     setSelectedIndex(0);
     setDropdownPosition(null);
     triggerIndexRef.current = -1;
+    queryRef.current = '';
   }, []);
 
   const computeDropdownPosition = useCallback(
@@ -217,14 +221,28 @@ export function useMentionDetection({
     [value, query, onValueChange, textareaRef, dismiss]
   );
 
+  /**
+   * Detects whether cursor is inside an @-trigger region and opens/dismisses the dropdown.
+   *
+   * Called from handleSelect (selectionchange) — must NOT reset selectedIndex when
+   * the trigger is already active with the same query, otherwise ArrowDown/Up navigation
+   * gets immediately undone by the selectionchange event that follows keydown.
+   */
   const detectTrigger = useCallback(
     (cursorPos: number) => {
       const trigger = findMentionTrigger(value, cursorPos);
       if (trigger && (suggestions.length > 0 || enableTriggerAlways)) {
+        const sameQuery =
+          triggerIndexRef.current === trigger.triggerIndex && queryRef.current === trigger.query;
         triggerIndexRef.current = trigger.triggerIndex;
+        queryRef.current = trigger.query;
         setQuery(trigger.query);
         setIsOpen(true);
-        setSelectedIndex(0);
+        // Only reset selection when trigger/query actually changed —
+        // preserves keyboard navigation index across redundant selectionchange events
+        if (!sameQuery) {
+          setSelectedIndex(0);
+        }
         computeDropdownPosition(trigger.triggerIndex, value);
       } else {
         dismiss();
@@ -243,8 +261,10 @@ export function useMentionDetection({
       const trigger = findMentionTrigger(newValue, cursorPos);
       if (trigger && (suggestions.length > 0 || enableTriggerAlways)) {
         triggerIndexRef.current = trigger.triggerIndex;
+        queryRef.current = trigger.query;
         setQuery(trigger.query);
         setIsOpen(true);
+        // Text changed — always reset selection to first item
         setSelectedIndex(0);
         computeDropdownPosition(trigger.triggerIndex, newValue);
       } else {

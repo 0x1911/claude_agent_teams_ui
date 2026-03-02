@@ -16,10 +16,11 @@ import { EditorState } from '@codemirror/state';
 import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
 import { EditorView } from '@codemirror/view';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { useStore } from '@renderer/store';
 import { chipDisplayLabel } from '@renderer/types/inlineChip';
 import { calculateChipPositions } from '@renderer/utils/chipUtils';
 import { getSyncLanguageExtension } from '@renderer/utils/codemirrorLanguages';
-import { X } from 'lucide-react';
+import { ExternalLink, X } from 'lucide-react';
 
 import type { InlineChip } from '@renderer/types/inlineChip';
 import type { ChipPosition } from '@renderer/utils/chipUtils';
@@ -54,13 +55,33 @@ const chipPreviewTheme = EditorView.theme({
 const MAX_PREVIEW_LINES = 12;
 
 /** Simple tooltip for file-level mention chips (no code preview). */
-const ChipFilePreview = ({ chip }: { chip: InlineChip }): React.JSX.Element => {
+const ChipFilePreview = ({
+  chip,
+  onOpenInEditor,
+}: {
+  chip: InlineChip;
+  onOpenInEditor?: (filePath: string) => void;
+}): React.JSX.Element => {
   const displayPath = chip.displayPath ?? chip.filePath;
   return (
     <div className="max-w-md overflow-hidden rounded-md">
       <div className="flex items-center gap-2 bg-[var(--code-bg,#1e1e2e)] px-2.5 py-2">
         <span className="text-[11px] font-medium text-[var(--color-text)]">{chip.fileName}</span>
-        <span className="text-[10px] text-[var(--color-text-muted)]">{displayPath}</span>
+        <span className="flex-1 text-[10px] text-[var(--color-text-muted)]">{displayPath}</span>
+        {onOpenInEditor ? (
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenInEditor(chip.filePath);
+            }}
+          >
+            <ExternalLink size={10} />
+            Open
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -139,6 +160,7 @@ export const ChipInteractionLayer = ({
   onRemove,
 }: ChipInteractionLayerProps): React.JSX.Element | null => {
   const [positions, setPositions] = React.useState<ChipPosition[]>([]);
+  const revealFileInEditor = useStore((s) => s.revealFileInEditor);
 
   React.useLayoutEffect(() => {
     if (chips.length === 0) {
@@ -155,40 +177,52 @@ export const ChipInteractionLayer = ({
   return (
     <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
       <div style={{ transform: `translateY(-${scrollTop}px)` }}>
-        {positions.map((pos) => (
-          <Tooltip key={pos.chip.id}>
-            <TooltipTrigger asChild>
-              <div
-                className="group pointer-events-auto absolute cursor-default"
-                style={{
-                  top: pos.top,
-                  left: pos.left,
-                  width: pos.width,
-                  height: pos.height,
-                }}
-              >
-                <button
-                  type="button"
-                  className="absolute -right-1 -top-1.5 z-30 flex size-3.5 items-center justify-center rounded-full border border-[var(--color-border-emphasis)] bg-[var(--color-surface-raised)] opacity-0 transition-opacity group-hover:opacity-100"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onRemove(pos.chip.id);
+        {positions.map((pos) => {
+          const isFileChip = pos.chip.fromLine == null;
+          return (
+            <Tooltip key={pos.chip.id}>
+              <TooltipTrigger asChild>
+                <div
+                  className={`group pointer-events-auto absolute ${isFileChip ? 'cursor-pointer' : 'cursor-default'}`}
+                  style={{
+                    top: pos.top,
+                    left: pos.left,
+                    width: pos.width,
+                    height: pos.height,
                   }}
+                  onClick={
+                    isFileChip
+                      ? (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          revealFileInEditor(pos.chip.filePath);
+                        }
+                      : undefined
+                  }
                 >
-                  <X size={8} className="text-[var(--color-text-muted)]" />
-                </button>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-md p-0">
-              {pos.chip.fromLine == null ? (
-                <ChipFilePreview chip={pos.chip} />
-              ) : (
-                <ChipCodePreview chip={pos.chip} />
-              )}
-            </TooltipContent>
-          </Tooltip>
-        ))}
+                  <button
+                    type="button"
+                    className="absolute -right-1 -top-1.5 z-30 flex size-3.5 items-center justify-center rounded-full border border-[var(--color-border-emphasis)] bg-[var(--color-surface-raised)] opacity-0 transition-opacity group-hover:opacity-100"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onRemove(pos.chip.id);
+                    }}
+                  >
+                    <X size={8} className="text-[var(--color-text-muted)]" />
+                  </button>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-md p-0">
+                {isFileChip ? (
+                  <ChipFilePreview chip={pos.chip} onOpenInEditor={revealFileInEditor} />
+                ) : (
+                  <ChipCodePreview chip={pos.chip} />
+                )}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
       </div>
     </div>
   );
