@@ -17,6 +17,8 @@ export interface ProvisioningProgressBlockProps {
   title: string;
   /** Optional status message */
   message?: string | null;
+  /** Visual tone (e.g. highlight errors) */
+  tone?: 'default' | 'error';
   /** Index of the current step in STEP_ORDER (0-based), or -1 if unknown */
   currentStepIndex: number;
   /** Show spinner next to title */
@@ -66,6 +68,7 @@ function useElapsedTimer(startedAt?: string): string | null {
 export const ProvisioningProgressBlock = ({
   title,
   message,
+  tone = 'default',
   currentStepIndex,
   loading = false,
   onCancel,
@@ -78,6 +81,7 @@ export const ProvisioningProgressBlock = ({
   const elapsed = useElapsedTimer(startedAt);
   const [logsOpen, setLogsOpen] = useState(false);
   const outputScrollRef = useRef<HTMLDivElement>(null);
+  const isError = tone === 'error';
 
   // Auto-scroll assistant output
   useEffect(() => {
@@ -90,6 +94,7 @@ export const ProvisioningProgressBlock = ({
     <div
       className={cn(
         'rounded-md border border-[var(--color-border)] bg-[var(--color-surface-raised)] px-3 py-2',
+        isError && 'border-red-500/40 bg-red-500/10',
         className
       )}
     >
@@ -119,7 +124,16 @@ export const ProvisioningProgressBlock = ({
           </Button>
         ) : null}
       </div>
-      {message ? <p className="mt-1.5 text-xs text-[var(--color-text-muted)]">{message}</p> : null}
+      {message ? (
+        <p
+          className={cn(
+            'mt-1.5 text-xs',
+            isError ? 'text-red-200' : 'text-[var(--color-text-muted)]'
+          )}
+        >
+          {message}
+        </p>
+      ) : null}
       <div className="mt-2 flex items-center gap-1 overflow-x-auto pb-0.5">
         {STEP_ORDER.filter((s): s is ProvisioningStep => s !== 'ready').map((step, index) => {
           const isDone = currentStepIndex >= 0 && index < currentStepIndex;
@@ -155,7 +169,10 @@ export const ProvisioningProgressBlock = ({
           <p className="mb-1 text-[11px] font-medium text-[var(--color-text-muted)]">Live output</p>
           <div
             ref={outputScrollRef}
-            className="max-h-[400px] overflow-y-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-2"
+            className={cn(
+              'max-h-[400px] overflow-y-auto rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-2',
+              isError && 'border-red-500/40'
+            )}
           >
             <MarkdownViewer content={assistantOutput} bare maxHeight="max-h-none" />
           </div>

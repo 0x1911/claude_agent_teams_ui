@@ -277,10 +277,10 @@ jobs:
           DOWNLOAD_BASE="https://github.com/${REPO}/releases/download/v${VERSION}"
 
           declare -A FILES=(
-            ["Claude-Agent-Teams-UI-arm64.dmg"]="Claude-Agent-Teams-UI-${VERSION}-arm64.dmg"
-            ["Claude-Agent-Teams-UI-x64.dmg"]="Claude-Agent-Teams-UI-${VERSION}.dmg"
-            ["Claude-Agent-Teams-UI-Setup.exe"]="Claude-Agent-Teams-UI-Setup-${VERSION}.exe"
-            ["Claude-Agent-Teams-UI.AppImage"]="Claude-Agent-Teams-UI-${VERSION}.AppImage"
+            ["Claude-Agent-Teams-UI-arm64.dmg"]="Claude.Agent.Teams.UI-${VERSION}-arm64.dmg"
+            ["Claude-Agent-Teams-UI-x64.dmg"]="Claude.Agent.Teams.UI-${VERSION}.dmg"
+            ["Claude-Agent-Teams-UI-Setup.exe"]="Claude.Agent.Teams.UI.Setup.${VERSION}.exe"
+            ["Claude-Agent-Teams-UI.AppImage"]="Claude.Agent.Teams.UI-${VERSION}.AppImage"
             ["Claude-Agent-Teams-UI-amd64.deb"]="claude-agent-teams-ui_${VERSION}_amd64.deb"
             ["Claude-Agent-Teams-UI-x86_64.rpm"]="claude-agent-teams-ui-${VERSION}.x86_64.rpm"
             ["Claude-Agent-Teams-UI.pacman"]="claude-agent-teams-ui-${VERSION}.pacman"

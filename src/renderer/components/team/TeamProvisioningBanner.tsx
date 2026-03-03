@@ -87,16 +87,29 @@ export const TeamProvisioningBanner = ({
 
   if (isFailed) {
     return (
-      <div className="mb-3 flex items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2">
-        <p className="flex-1 text-xs text-red-200">{progress.message}</p>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-6 shrink-0 border-red-500/40 px-2 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-200"
-          onClick={() => setDismissed(true)}
-        >
-          <X size={12} />
-        </Button>
+      <div className="mb-3">
+        <div className="mb-2 flex items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2">
+          <p className="flex-1 text-xs text-red-200">{progress.message}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 shrink-0 border-red-500/40 px-2 text-xs text-red-300 hover:bg-red-500/10 hover:text-red-200"
+            onClick={() => setDismissed(true)}
+          >
+            <X size={12} />
+          </Button>
+        </div>
+        <ProvisioningProgressBlock
+          title="Launch failed"
+          message={progress.error ?? null}
+          tone="error"
+          currentStepIndex={progressStepIndex >= 0 ? progressStepIndex : -1}
+          startedAt={progress.startedAt}
+          pid={progress.pid}
+          cliLogsTail={progress.cliLogsTail}
+          assistantOutput={progress.assistantOutput}
+          onCancel={null}
+        />
       </div>
     );
   }

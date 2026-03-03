@@ -58,6 +58,7 @@ const LOG_PROGRESS_THROTTLE_MS = 300;
 const UI_LOGS_TAIL_LIMIT = 128 * 1024;
 const SHELL_ENV_TIMEOUT_MS = 12000;
 const CLI_PREPARE_TIMEOUT_MS = 10000;
+const PROBE_CACHE_TTL_MS = 60_000;
 const PREFLIGHT_TIMEOUT_MS = 30000;
 const PREFLIGHT_AUTH_RETRY_DELAY_MS = 2000;
 const PREFLIGHT_AUTH_MAX_RETRIES = 2;
@@ -565,6 +566,7 @@ Constraints:
 - Do NOT use TodoWrite.
 - Do NOT send shutdown_request messages (SendMessage type: "shutdown_request" is FORBIDDEN).
 - Do NOT shut down, terminate, or clean up the team or its members.
+- Do NOT spawn or create a member named "user". "user" is a reserved system name for the human operator — it is NOT a teammate.
 - Keep assistant text minimal.
 - NEVER send duplicate messages to the same member. One SendMessage per member per topic is enough.
 - Keep the task board high-signal: avoid creating tasks for trivial micro-items.
@@ -683,6 +685,7 @@ Constraints:
 - Do NOT use TodoWrite.
 - Do NOT send shutdown_request messages (SendMessage type: "shutdown_request" is FORBIDDEN).
 - Do NOT shut down, terminate, or clean up the team or its members.
+- Do NOT spawn or create a member named "user". "user" is a reserved system name for the human operator — it is NOT a teammate.
 - Keep assistant text minimal.
 - NEVER send duplicate messages to the same member. One SendMessage per member per topic is enough.
 - Keep the task board high-signal: avoid creating tasks for trivial micro-items.
@@ -795,7 +798,12 @@ function buildCliExitError(code: number | null, stdoutText: string, stderrText: 
   const trimmed = buildCombinedLogs(stdoutText, stderrText).trim();
   if (trimmed.length > 0) {
     if (trimmed.toLowerCase().includes('please run /login')) {
-      return 'CLI output indicates that `-p` mode is not authenticated. `claude -p` typically requires `ANTHROPIC_API_KEY` (Agent SDK). `/login` is interactive-only and does not fix `-p`.';
+      return (
+        'Claude CLI reports it is not authenticated ("Please run /login"). ' +
+        'Run `claude auth login` (or start `claude` and run `/login`) to authenticate, then retry. ' +
+        'For automation/headless use, prefer `claude setup-token` and export `CLAUDE_CODE_OAUTH_TOKEN`, ' +
+        'or set `ANTHROPIC_API_KEY` for `-p` mode.'
+      );
     }
     return trimmed.slice(-4000);
   }
@@ -809,9 +817,9 @@ function buildCliExitError(code: number | null, stdoutText: string, stderrText: 
 
 interface CachedProbeResult {
   claudePath: string;
-  env: NodeJS.ProcessEnv;
   authSource: ProvisioningAuthSource;
   warning?: string;
+  cachedAtMs: number;
 }
 
 let cachedProbeResult: CachedProbeResult | null = null;
@@ -860,12 +868,21 @@ export class TeamProvisioningService {
 
   async warmup(): Promise<void> {
     try {
+      if (cachedProbeResult && Date.now() - cachedProbeResult.cachedAtMs < PROBE_CACHE_TTL_MS) {
+        return;
+      }
       const claudePath = await ClaudeBinaryResolver.resolve();
       if (!claudePath) return;
       const { env, authSource } = await this.buildProvisioningEnv();
       const cwd = process.cwd();
       const probe = await this.probeClaudeRuntime(claudePath, cwd, env);
-      cachedProbeResult = { claudePath, env, authSource, warning: probe.warning };
+      const warning = probe.warning;
+      if (warning && this.isAuthFailureWarning(warning)) {
+        // Don't pin auth failures in cache — user may log in after startup.
+        cachedProbeResult = null;
+      } else {
+        cachedProbeResult = { claudePath, authSource, warning, cachedAtMs: Date.now() };
+      }
       logger.info('CLI warmup completed');
     } catch (error) {
       logger.warn(`CLI warmup failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -880,15 +897,21 @@ export class TeamProvisioningService {
     }
 
     if (cachedProbeResult) {
-      const { warning, authSource } = cachedProbeResult;
-      const warnings: string[] = [];
-      if (warning) warnings.push(warning);
-      const isAuthFailure = warning ? this.isAuthFailureWarning(warning) : false;
-      return {
-        ready: !warning || authSource !== 'none' || !isAuthFailure,
-        message: 'CLI is warmed up and ready to launch',
-        warnings: warnings.length > 0 ? warnings : undefined,
-      };
+      const ageMs = Date.now() - cachedProbeResult.cachedAtMs;
+      if (ageMs >= PROBE_CACHE_TTL_MS) {
+        cachedProbeResult = null;
+      } else {
+        const { warning, authSource } = cachedProbeResult;
+        const warnings: string[] = [];
+        if (warning) warnings.push(warning);
+        const isAuthFailure = warning ? this.isAuthFailureWarning(warning) : false;
+        const ready = !warning || authSource !== 'none' || !isAuthFailure;
+        return {
+          ready,
+          message: ready ? 'CLI is warmed up and ready to launch' : warning || 'CLI is not ready',
+          warnings: warnings.length > 0 ? warnings : undefined,
+        };
+      }
     }
 
     const claudePath = await ClaudeBinaryResolver.resolve();
@@ -948,6 +971,19 @@ export class TeamProvisioningService {
       warnings.push(probe.warning);
     }
 
+    // Cache successful/non-auth-failure results so dialogs don't rerun preflight repeatedly.
+    // Avoid caching auth failures — user may authenticate externally and retry without app restart.
+    if (!probe.warning || !this.isAuthFailureWarning(probe.warning)) {
+      cachedProbeResult = {
+        claudePath,
+        authSource,
+        warning: probe.warning,
+        cachedAtMs: Date.now(),
+      };
+    } else {
+      cachedProbeResult = null;
+    }
+
     return {
       ready: true,
       message: 'CLI is warmed up and ready to launch',
@@ -957,12 +993,15 @@ export class TeamProvisioningService {
 
   private isAuthFailureWarning(text: string): boolean {
     const lower = text.toLowerCase();
+    const has401 = /(^|\D)401(\D|$)/.test(lower);
     return (
       lower.includes('not authenticated') ||
       lower.includes('not logged in') ||
       lower.includes('please run /login') ||
       lower.includes('missing api key') ||
-      lower.includes('invalid api key')
+      lower.includes('invalid api key') ||
+      lower.includes('unauthorized') ||
+      has401
     );
   }
 
@@ -988,8 +1027,8 @@ export class TeamProvisioningService {
       killProcessTree(run.child);
       const progress = updateProgress(run, 'failed', 'Authentication failed — CLI requires login', {
         error:
-          'Claude CLI is not authenticated. Run `claude` in a terminal to complete login, ' +
-          'or set ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN and try again.',
+          'Claude CLI is not authenticated. Run `claude auth login` (or start `claude` and run `/login`) ' +
+          'to authenticate, or set ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN and try again.',
         cliLogsTail: extractLogsTail(run.stdoutBuffer, run.stderrBuffer),
       });
       run.onProgress(progress);
@@ -2138,6 +2177,9 @@ export class TeamProvisioningService {
         .map((part) => part.text as string);
       if (textParts.length > 0) {
         const text = textParts.join('');
+        // Auth failures sometimes show up as assistant text (e.g. "401", "Please run /login")
+        // rather than stderr or a result.subtype=error. Detect early to avoid false "ready".
+        this.handleAuthFailureInOutput(run, text, 'assistant');
         logger.debug(`[${run.teamName}] assistant: ${text.slice(0, 200)}`);
         // During provisioning (before provisioningComplete), accumulate for live UI preview.
         // Emission is handled by the throttled emitLogsProgress() in the stdout data handler.
@@ -2269,6 +2311,21 @@ export class TeamProvisioningService {
     // Guard: must be set synchronously BEFORE any await to prevent
     // double-invocation from filesystem monitor + stream-json racing.
     if (run.provisioningComplete || run.cancelRequested) return;
+
+    // Prevent false "ready" when auth failure was printed as assistant text or logs
+    // but the filesystem monitor observed files on disk.
+    const authFailureText = [
+      buildCombinedLogs(run.stdoutBuffer, run.stderrBuffer),
+      run.provisioningOutputParts.length > 0 ? run.provisioningOutputParts.join('\n') : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    if (authFailureText && this.isAuthFailureWarning(authFailureText)) {
+      this.handleAuthFailureInOutput(run, authFailureText, 'pre-complete');
+      return;
+    }
+
     run.provisioningComplete = true;
     this.setLeadActivity(run, 'idle');
 
@@ -3441,26 +3498,16 @@ export class TeamProvisioningService {
     cwd: string,
     env: NodeJS.ProcessEnv
   ): Promise<{ warning?: string }> {
-    // Stage 1 + Stage 2 attempt #1 in parallel.
-    // Rationale: both are independent process spawns and the combined wall time
-    // is dominated by startup/IO. We still prioritize the stage-1 error message.
-    const versionProbePromise = this.spawnProbe(
+    // Stage 1: verify binary works (awaited first for clearer errors)
+    // Important: keep this sequential with Stage 2 to avoid auth/credential-store races
+    // when multiple `claude` processes start simultaneously (most visible on Windows).
+    const versionProbe = await this.spawnProbe(
       claudePath,
       ['--version'],
       cwd,
       env,
       CLI_PREPARE_TIMEOUT_MS
     );
-    const pingAttempt1Promise = this.spawnProbe(
-      claudePath,
-      ['-p', 'Reply with the single word PONG and nothing else', '--output-format', 'text'],
-      cwd,
-      env,
-      PREFLIGHT_TIMEOUT_MS
-    );
-
-    // Stage 1: verify binary works (awaited first for clearer errors)
-    const versionProbe = await versionProbePromise;
     if (versionProbe.exitCode !== 0) {
       const errorText =
         buildCombinedLogs(versionProbe.stdout, versionProbe.stderr) ||
@@ -3472,21 +3519,13 @@ export class TeamProvisioningService {
     for (let attempt = 1; attempt <= PREFLIGHT_AUTH_MAX_RETRIES; attempt++) {
       let pingProbe: { exitCode: number | null; stdout: string; stderr: string } | null = null;
       try {
-        pingProbe =
-          attempt === 1
-            ? await pingAttempt1Promise
-            : await this.spawnProbe(
-                claudePath,
-                [
-                  '-p',
-                  'Reply with the single word PONG and nothing else',
-                  '--output-format',
-                  'text',
-                ],
-                cwd,
-                env,
-                PREFLIGHT_TIMEOUT_MS
-              );
+        pingProbe = await this.spawnProbe(
+          claudePath,
+          ['-p', 'Reply with the single word PONG and nothing else', '--output-format', 'text'],
+          cwd,
+          env,
+          PREFLIGHT_TIMEOUT_MS
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (attempt < PREFLIGHT_AUTH_MAX_RETRIES) {
@@ -3524,11 +3563,22 @@ export class TeamProvisioningService {
       if (isAuthFailure || pingProbe.exitCode !== 0) {
         const hint = isAuthFailure
           ? 'Claude CLI `-p` mode is not authenticated. ' +
-            'Set ANTHROPIC_API_KEY, or run `claude setup-token` to generate a long-lived OAuth token, ' +
-            'then export it as CLAUDE_CODE_OAUTH_TOKEN.' +
+            'Run `claude auth login` (or start `claude` and run `/login`) to authenticate. ' +
+            'For automation/headless use, set ANTHROPIC_API_KEY or run `claude setup-token` ' +
+            'and export CLAUDE_CODE_OAUTH_TOKEN.' +
             (attempt > 1 ? ` (failed after ${attempt} attempts)` : '')
           : `Claude CLI preflight check failed (exit code ${pingProbe.exitCode ?? 'unknown'}).`;
         return { warning: hint };
+      }
+
+      const pongCandidate = pingProbe.stdout.trim() || pingProbe.stderr.trim();
+      const isPong = pongCandidate.toUpperCase() === 'PONG';
+      if (!isPong) {
+        return {
+          warning:
+            'Preflight ping completed but did not return the expected PONG. ' +
+            `Output: ${combinedOutput || '(empty)'}`,
+        };
       }
 
       if (attempt > 1) {

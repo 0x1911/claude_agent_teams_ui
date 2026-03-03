@@ -40,4 +40,29 @@ describe('TeamMemberResolver', () => {
     expect(lead?.role).toBe('lead');
     expect(lead?.agentType).toBe('team-lead');
   });
+
+  it('filters out "user" pseudo-member even when present in config, meta, or inboxNames', () => {
+    const resolver = new TeamMemberResolver();
+    const config: TeamConfig = {
+      name: 'Team',
+      members: [
+        { name: 'team-lead', agentType: 'team-lead', role: 'lead' },
+        { name: 'user', agentType: 'general-purpose' },
+      ],
+    };
+    const metaMembers: TeamConfig['members'] = [
+      { name: 'user', agentType: 'general-purpose' },
+      { name: 'alice', role: 'dev', agentType: 'general-purpose' },
+    ];
+    const inboxNames = ['user', 'alice'];
+    const tasks: TeamTask[] = [];
+    const messages: InboxMessage[] = [];
+
+    const members = resolver.resolveMembers(config, metaMembers, inboxNames, tasks, messages);
+    const names = members.map((m) => m.name);
+
+    expect(names).not.toContain('user');
+    expect(names).toContain('team-lead');
+    expect(names).toContain('alice');
+  });
 });

@@ -67,23 +67,23 @@ EOF
 <table>
 <tr>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude-Agent-Teams-UI-<VERSION>-arm64.dmg">
+  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude.Agent.Teams.UI-<VERSION>-arm64.dmg">
     <img src="https://img.shields.io/badge/macOS_Apple_Silicon-.dmg-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Apple Silicon" />
   </a>
   <br />
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude-Agent-Teams-UI-<VERSION>.dmg">
+  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude.Agent.Teams.UI-<VERSION>.dmg">
     <img src="https://img.shields.io/badge/macOS_Intel-.dmg-434343?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Intel" />
   </a>
 </td>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude-Agent-Teams-UI-Setup-<VERSION>.exe">
+  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude.Agent.Teams.UI.Setup.<VERSION>.exe">
     <img src="https://img.shields.io/badge/Windows-Download_.exe-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
   </a>
   <br />
   <sub>May trigger SmartScreen — click "More info" → "Run anyway"</sub>
 </td>
 <td align="center">
-  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude-Agent-Teams-UI-<VERSION>.AppImage">
+  <a href="https://github.com/777genius/claude_agent_teams_ui/releases/download/v<VERSION>/Claude.Agent.Teams.UI-<VERSION>.AppImage">
     <img src="https://img.shields.io/badge/Linux-Download_.AppImage-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux AppImage" />
   </a>
   <br />
@@ -123,12 +123,12 @@ electron-builder generates these artifacts per platform:
 
 | Platform         | Versioned Name                                   | Stable Name (for /latest/download)         |
 |------------------|--------------------------------------------------|--------------------------------------------|
-| macOS arm64 DMG  | `Claude-Agent-Teams-UI-<VER>-arm64.dmg`          | `Claude-Agent-Teams-UI-arm64.dmg`          |
-| macOS x64 DMG    | `Claude-Agent-Teams-UI-<VER>.dmg`                | `Claude-Agent-Teams-UI-x64.dmg`            |
-| macOS arm64 ZIP  | `Claude-Agent-Teams-UI-<VER>-arm64-mac.zip`      | —                                          |
-| macOS x64 ZIP    | `Claude-Agent-Teams-UI-<VER>-mac.zip`            | —                                          |
-| Windows          | `Claude-Agent-Teams-UI-Setup-<VER>.exe`          | `Claude-Agent-Teams-UI-Setup.exe`          |
-| Linux AppImage   | `Claude-Agent-Teams-UI-<VER>.AppImage`           | `Claude-Agent-Teams-UI.AppImage`           |
+| macOS arm64 DMG  | `Claude.Agent.Teams.UI-<VER>-arm64.dmg`          | `Claude-Agent-Teams-UI-arm64.dmg`          |
+| macOS x64 DMG    | `Claude.Agent.Teams.UI-<VER>.dmg`                | `Claude-Agent-Teams-UI-x64.dmg`            |
+| macOS arm64 ZIP  | `Claude.Agent.Teams.UI-<VER>-arm64-mac.zip`      | —                                          |
+| macOS x64 ZIP    | `Claude.Agent.Teams.UI-<VER>-mac.zip`            | —                                          |
+| Windows          | `Claude.Agent.Teams.UI.Setup.<VER>.exe`          | `Claude-Agent-Teams-UI-Setup.exe`          |
+| Linux AppImage   | `Claude.Agent.Teams.UI-<VER>.AppImage`           | `Claude-Agent-Teams-UI.AppImage`           |
 | Linux deb        | `claude-agent-teams-ui_<VER>_amd64.deb`          | `Claude-Agent-Teams-UI-amd64.deb`          |
 | Linux rpm        | `claude-agent-teams-ui-<VER>.x86_64.rpm`         | `Claude-Agent-Teams-UI-x86_64.rpm`         |
 | Linux pacman     | `claude-agent-teams-ui-<VER>.pacman`              | `Claude-Agent-Teams-UI.pacman`             |
