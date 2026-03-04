@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { ReplyQuoteBlock } from '@renderer/components/team/activity/ReplyQuoteBlock';
@@ -19,6 +19,7 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  Loader2,
   MessageSquare,
   Reply,
   Send,
@@ -26,7 +27,12 @@ import {
 } from 'lucide-react';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
-import type { ResolvedTeamMember, TaskComment } from '@shared/types';
+import type {
+  AttachmentMediaType,
+  ResolvedTeamMember,
+  TaskAttachmentMeta,
+  TaskComment,
+} from '@shared/types';
 
 /**
  * Convert literal backslash-n sequences to real newlines.
@@ -62,6 +68,19 @@ function linkifyTaskIdsInMarkdown(text: string): string {
   return text.replace(/#(\d+)/g, '[#$1](task://$1)');
 }
 
+/** Convert `@memberName` to markdown links with mention:// protocol for colored badge rendering. */
+function linkifyMentionsInMarkdown(text: string, memberColorMap: Map<string, string>): string {
+  if (memberColorMap.size === 0) return text;
+  const names = [...memberColorMap.keys()].sort((a, b) => b.length - a.length);
+  const escaped = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = new RegExp(`(^|\\s)@(${escaped.join('|')})(?=[\\s,.:;!?)\\]}-]|$)`, 'gi');
+  return text.replace(pattern, (match, prefix: string, name: string) => {
+    const canonical = names.find((n) => n.toLowerCase() === name.toLowerCase()) ?? name;
+    const color = memberColorMap.get(canonical) ?? '';
+    return `${prefix}[@${canonical}](mention://${encodeURIComponent(color)}/${encodeURIComponent(canonical)})`;
+  });
+}
+
 export const TaskCommentsSection = ({
   teamName,
   taskId,
@@ -79,6 +98,7 @@ export const TaskCommentsSection = ({
   const [replyTo, setReplyTo] = useState<{ author: string; text: string } | null>(null);
   const [expandedCommentIds, setExpandedCommentIds] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COMMENTS);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
   // Reset local state when team/task changes (React-recommended pattern for
   // adjusting state based on props without using effects or refs during render)
@@ -278,9 +298,12 @@ export const TaskCommentsSection = ({
                           }
                         >
                           <MarkdownViewer
-                            content={
-                              onTaskIdClick ? linkifyTaskIdsInMarkdown(displayText) : displayText
-                            }
+                            content={(() => {
+                              let t = displayText;
+                              if (onTaskIdClick) t = linkifyTaskIdsInMarkdown(t);
+                              if (colorMap.size > 0) t = linkifyMentionsInMarkdown(t, colorMap);
+                              return t;
+                            })()}
                             maxHeight={
                               needsExpandCollapse && !expanded ? collapsedHeight : 'max-h-none'
                             }
@@ -328,6 +351,14 @@ export const TaskCommentsSection = ({
                   </div>
                 );
               })()}
+              {comment.attachments && comment.attachments.length > 0 ? (
+                <CommentAttachments
+                  attachments={comment.attachments}
+                  teamName={teamName}
+                  taskId={taskId}
+                  onPreview={setPreviewImageUrl}
+                />
+              ) : null}
             </div>
           ))}
 
@@ -344,6 +375,24 @@ export const TaskCommentsSection = ({
               </button>
             </div>
           ) : null}
+        </div>
+      ) : null}
+
+      {/* Full-size image preview overlay */}
+      {previewImageUrl ? (
+        <div className="relative mb-3 rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-2">
+          <button
+            type="button"
+            className="absolute right-2 top-2 rounded p-0.5 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text)]"
+            onClick={() => setPreviewImageUrl(null)}
+          >
+            <X size={14} />
+          </button>
+          <img
+            src={previewImageUrl}
+            alt="Attachment preview"
+            className="max-h-[400px] max-w-full rounded object-contain"
+          />
         </div>
       ) : null}
 
@@ -418,6 +467,95 @@ export const TaskCommentsSection = ({
     </div>
   );
 };
+
+// ---------------------------------------------------------------------------
+// Comment attachment thumbnail (read-only, no delete)
+// ---------------------------------------------------------------------------
+
+interface CommentAttachmentThumbnailProps {
+  attachment: TaskAttachmentMeta;
+  teamName: string;
+  taskId: string;
+  onPreview: (dataUrl: string) => void;
+}
+
+const CommentAttachmentThumbnail = ({
+  attachment,
+  teamName,
+  taskId,
+  onPreview,
+}: CommentAttachmentThumbnailProps): React.JSX.Element => {
+  const getTaskAttachmentData = useStore((s) => s.getTaskAttachmentData);
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const base64 = await getTaskAttachmentData(
+          teamName,
+          taskId,
+          attachment.id,
+          attachment.mimeType
+        );
+        if (!cancelled && base64) {
+          setThumbUrl(`data:${attachment.mimeType};base64,${base64}`);
+        }
+      } catch {
+        // ignore — thumbnail simply won't render
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [teamName, taskId, attachment.id, attachment.mimeType, getTaskAttachmentData]);
+
+  return (
+    <div
+      className="group relative flex size-14 cursor-pointer items-center justify-center overflow-hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] transition-colors hover:border-[var(--color-border-emphasis)]"
+      onClick={() => thumbUrl && onPreview(thumbUrl)}
+    >
+      {thumbUrl ? (
+        <img src={thumbUrl} alt={attachment.filename} className="size-full object-cover" />
+      ) : (
+        <Loader2 size={12} className="animate-spin text-[var(--color-text-muted)]" />
+      )}
+      <div className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-0.5 py-px text-center text-[7px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+        {attachment.filename}
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Comment attachments grid
+// ---------------------------------------------------------------------------
+
+interface CommentAttachmentsProps {
+  attachments: TaskAttachmentMeta[];
+  teamName: string;
+  taskId: string;
+  onPreview: (dataUrl: string) => void;
+}
+
+const CommentAttachments = ({
+  attachments,
+  teamName,
+  taskId,
+  onPreview,
+}: CommentAttachmentsProps): React.JSX.Element => (
+  <div className="mt-1.5 flex flex-wrap gap-1.5">
+    {attachments.map((att) => (
+      <CommentAttachmentThumbnail
+        key={att.id}
+        attachment={att}
+        teamName={teamName}
+        taskId={taskId}
+        onPreview={onPreview}
+      />
+    ))}
+  </div>
+);
 
 function teamIdKey(teamName: string, taskId: string): string {
   return `${teamName}::${taskId}`;

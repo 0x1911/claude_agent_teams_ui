@@ -196,6 +196,21 @@ export class TeamTaskReader {
                   type: (['regular', 'review_request', 'review_approved'] as const).includes(c.type)
                     ? c.type
                     : ('regular' as const),
+                  attachments: Array.isArray(c.attachments)
+                    ? (c.attachments as unknown[]).filter(
+                        (a): a is TaskAttachmentMeta =>
+                          Boolean(a) &&
+                          typeof a === 'object' &&
+                          typeof (a as Record<string, unknown>).id === 'string' &&
+                          typeof (a as Record<string, unknown>).filename === 'string' &&
+                          typeof (a as Record<string, unknown>).mimeType === 'string' &&
+                          VALID_ATTACHMENT_MIME_TYPES.has(
+                            (a as Record<string, unknown>).mimeType as string
+                          ) &&
+                          typeof (a as Record<string, unknown>).size === 'number' &&
+                          typeof (a as Record<string, unknown>).addedAt === 'string'
+                      )
+                    : undefined,
                 }))
             : undefined,
           needsClarification: (['lead', 'user'] as const).includes(

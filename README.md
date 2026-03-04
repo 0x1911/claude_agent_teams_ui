@@ -203,6 +203,9 @@ pnpm dist            # macOS + Windows + Linux
 ## TODO
 
 - [ ] CLI runtime: Run not only on a local PC but in any headless/console environment (web UI), e.g. VPS, remote server, etc.
+- [ ] Visual workflow editor ([@xyflow/react](https://github.com/xyflow/xyflow)) for building and orchestrating agent pipelines with drag & drop
+- [ ] Context management: control and curate what context each agent sees (files, docs, MCP servers, skills)
+- [ ] Multi-model support: proxy layer to use other popular LLMs (GPT, Gemini, DeepSeek, Llama, etc.), including offline/local models
 
 ---
 

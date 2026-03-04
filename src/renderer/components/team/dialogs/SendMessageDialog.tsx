@@ -48,6 +48,7 @@ interface QuotedMessage {
 
 interface SendMessageDialogProps {
   open: boolean;
+  teamName: string;
   members: ResolvedTeamMember[];
   defaultRecipient?: string;
   /** Pre-filled message text (e.g. from editor selection action) */
@@ -72,6 +73,7 @@ const NO_MEMBER = '__none__';
 
 export const SendMessageDialog = ({
   open,
+  teamName,
   members,
   defaultRecipient,
   defaultText,
@@ -108,7 +110,7 @@ export const SendMessageDialog = ({
     clearAttachments,
     handlePaste,
     handleDrop,
-  } = useAttachments({ persistenceKey: 'sendMessage:attachments' });
+  } = useAttachments({ persistenceKey: `sendMessage:${teamName}:attachments` });
 
   const selectedMember = members.find((m) => m.name === member);
   const isLeadRecipient = selectedMember?.role === 'lead' || selectedMember?.name === 'team-lead';

@@ -325,6 +325,9 @@ export const TEAM_KILL_PROCESS = 'team:killProcess';
 /** Get lead process activity state (active/idle/offline) */
 export const TEAM_LEAD_ACTIVITY = 'team:leadActivity';
 
+/** Get lead process context window usage */
+export const TEAM_LEAD_CONTEXT = 'team:leadContext';
+
 /** Soft-delete a task (set status to 'deleted' with deletedAt timestamp) */
 export const TEAM_SOFT_DELETE_TASK = 'team:softDeleteTask';
 

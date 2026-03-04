@@ -1498,6 +1498,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
 
         <SendMessageDialog
           open={sendDialogOpen}
+          teamName={teamName}
           members={activeMembers}
           defaultRecipient={sendDialogRecipient}
           defaultText={sendDialogDefaultText}

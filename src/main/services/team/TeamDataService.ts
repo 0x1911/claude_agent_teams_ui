@@ -983,8 +983,15 @@ export class TeamDataService {
     await this.taskWriter.removeRelationship(teamName, taskId, targetId, type);
   }
 
-  async addTaskComment(teamName: string, taskId: string, text: string): Promise<TaskComment> {
-    const comment = await this.taskWriter.addComment(teamName, taskId, text);
+  async addTaskComment(
+    teamName: string,
+    taskId: string,
+    text: string,
+    attachments?: import('@shared/types').TaskAttachmentMeta[]
+  ): Promise<TaskComment> {
+    const comment = await this.taskWriter.addComment(teamName, taskId, text, {
+      attachments,
+    });
 
     try {
       const [tasks, toolPath, config] = await Promise.all([

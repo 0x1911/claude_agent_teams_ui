@@ -521,7 +521,13 @@ export class TeamTaskWriter {
     teamName: string,
     taskId: string,
     text: string,
-    options?: { id?: string; author?: string; createdAt?: string; type?: TaskCommentType }
+    options?: {
+      id?: string;
+      author?: string;
+      createdAt?: string;
+      type?: TaskCommentType;
+      attachments?: TaskAttachmentMeta[];
+    }
   ): Promise<TaskComment> {
     const taskPath = path.join(getTasksBasePath(), teamName, `${taskId}.json`);
     const comment: TaskComment = {
@@ -530,6 +536,9 @@ export class TeamTaskWriter {
       text,
       createdAt: options?.createdAt ?? new Date().toISOString(),
       type: options?.type ?? 'regular',
+      ...(options?.attachments && options.attachments.length > 0
+        ? { attachments: options.attachments }
+        : {}),
     };
 
     await withTaskLock(taskPath, async () => {

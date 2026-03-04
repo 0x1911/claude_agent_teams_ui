@@ -69,6 +69,7 @@ import type {
   GlobalTask,
   KanbanColumnId,
   LeadActivityState,
+  LeadContextUsage,
   SendMessageRequest,
   SendMessageResult,
   TaskComment,
@@ -256,6 +257,7 @@ export interface TeamSlice {
    */
   provisioningStartedAtFloorByTeam: Record<string, string>;
   leadActivityByTeam: Record<string, LeadActivityState>;
+  leadContextByTeam: Record<string, LeadContextUsage>;
   activeProvisioningRunId: string | null;
   provisioningError: string | null;
   clearProvisioningError: () => void;
@@ -288,7 +290,12 @@ export interface TeamSlice {
   ) => Promise<void>;
   addingComment: boolean;
   addCommentError: string | null;
-  addTaskComment: (teamName: string, taskId: string, text: string) => Promise<TaskComment>;
+  addTaskComment: (
+    teamName: string,
+    taskId: string,
+    text: string,
+    attachments?: import('@shared/types').CommentAttachmentPayload[]
+  ) => Promise<TaskComment>;
   addMember: (teamName: string, request: AddMemberRequest) => Promise<void>;
   removeMember: (teamName: string, memberName: string) => Promise<void>;
   updateMemberRole: (
@@ -369,6 +376,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   provisioningRuns: {},
   provisioningStartedAtFloorByTeam: {},
   leadActivityByTeam: {},
+  leadContextByTeam: {},
   activeProvisioningRunId: null,
   provisioningError: null,
   clearProvisioningError: () => set({ provisioningError: null }),
@@ -848,11 +856,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     );
   },
 
-  addTaskComment: async (teamName, taskId, text) => {
+  addTaskComment: async (teamName, taskId, text, attachments) => {
     set({ addingComment: true, addCommentError: null });
     try {
       const comment = await unwrapIpc('team:addTaskComment', () =>
-        api.teams.addTaskComment(teamName, taskId, text)
+        api.teams.addTaskComment(teamName, taskId, text, attachments)
       );
       set({ addingComment: false });
       await get().refreshTeamData(teamName);

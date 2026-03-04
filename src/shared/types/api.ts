@@ -31,10 +31,12 @@ import type {
   AddMemberRequest,
   AttachmentFileData,
   AttachmentMediaType,
+  CommentAttachmentPayload,
   CreateTaskRequest,
   GlobalTask,
   KanbanColumnId,
   LeadActivityState,
+  LeadContextUsage,
   MemberFullStats,
   MemberLogSummary,
   ReplaceMembersRequest,
@@ -450,7 +452,12 @@ export interface TeamsAPI {
     memberName: string,
     role: string | undefined
   ) => Promise<void>;
-  addTaskComment: (teamName: string, taskId: string, text: string) => Promise<TaskComment>;
+  addTaskComment: (
+    teamName: string,
+    taskId: string,
+    text: string,
+    attachments?: CommentAttachmentPayload[]
+  ) => Promise<TaskComment>;
   setTaskClarification: (
     teamName: string,
     taskId: string,
@@ -460,6 +467,7 @@ export interface TeamsAPI {
   getAttachments: (teamName: string, messageId: string) => Promise<AttachmentFileData[]>;
   killProcess: (teamName: string, pid: number) => Promise<void>;
   getLeadActivity: (teamName: string) => Promise<LeadActivityState>;
+  getLeadContext: (teamName: string) => Promise<LeadContextUsage | null>;
   softDeleteTask: (teamName: string, taskId: string) => Promise<void>;
   restoreTask: (teamName: string, taskId: string) => Promise<void>;
   getDeletedTasks: (teamName: string) => Promise<TeamTask[]>;

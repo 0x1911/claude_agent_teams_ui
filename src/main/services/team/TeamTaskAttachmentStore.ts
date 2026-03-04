@@ -18,13 +18,28 @@ const ALLOWED_MIME_TYPES: ReadonlySet<string> = new Set<AttachmentMediaType>([
 ]);
 
 export class TeamTaskAttachmentStore {
+  private assertSafePathSegment(label: string, value: string): void {
+    if (
+      value.length === 0 ||
+      value.includes('/') ||
+      value.includes('\\') ||
+      value.includes('..') ||
+      value.includes('\0')
+    ) {
+      throw new Error(`Invalid ${label}`);
+    }
+  }
+
   /** Returns the directory for a specific task's attachments. */
   private getTaskDir(teamName: string, taskId: string): string {
+    this.assertSafePathSegment('teamName', teamName);
+    this.assertSafePathSegment('taskId', taskId);
     return path.join(getTeamsBasePath(), teamName, TASK_ATTACHMENTS_DIR, taskId);
   }
 
   /** Returns the file path for a specific attachment. */
   private getFilePath(teamName: string, taskId: string, attachmentId: string, ext: string): string {
+    this.assertSafePathSegment('attachmentId', attachmentId);
     return path.join(this.getTaskDir(teamName, taskId), `${attachmentId}${ext}`);
   }
 
@@ -58,7 +73,18 @@ export class TeamTaskAttachmentStore {
       throw new Error(`Unsupported MIME type: ${mimeType}`);
     }
 
-    const buffer = Buffer.from(base64Data, 'base64');
+    const trimmed = base64Data.trim();
+    // Avoid allocating huge Buffers for obviously too-large payloads.
+    // Base64 decoded size is roughly 3/4 of the string length minus padding.
+    const padding = trimmed.endsWith('==') ? 2 : trimmed.endsWith('=') ? 1 : 0;
+    const estimatedBytes = Math.max(0, Math.floor((trimmed.length * 3) / 4) - padding);
+    if (estimatedBytes > MAX_ATTACHMENT_SIZE) {
+      throw new Error(
+        `Attachment too large: ${(estimatedBytes / (1024 * 1024)).toFixed(1)} MB (max ${MAX_ATTACHMENT_SIZE / (1024 * 1024)} MB)`
+      );
+    }
+
+    const buffer = Buffer.from(trimmed, 'base64');
     if (buffer.length > MAX_ATTACHMENT_SIZE) {
       throw new Error(
         `Attachment too large: ${(buffer.length / (1024 * 1024)).toFixed(1)} MB (max ${MAX_ATTACHMENT_SIZE / (1024 * 1024)} MB)`
