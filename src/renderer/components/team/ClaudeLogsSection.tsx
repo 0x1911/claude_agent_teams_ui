@@ -5,19 +5,18 @@ import { Button } from '@renderer/components/ui/button';
 import { cn } from '@renderer/lib/utils';
 import { Search, Terminal, X } from 'lucide-react';
 
-import { CollapsibleTeamSection } from './CollapsibleTeamSection';
+import { ClaudeLogsFilterPopover, DEFAULT_CLAUDE_LOGS_FILTER } from './ClaudeLogsFilterPopover';
 import { CliLogsRichView } from './CliLogsRichView';
-import {
-  ClaudeLogsFilterPopover,
-  DEFAULT_CLAUDE_LOGS_FILTER,
-} from './ClaudeLogsFilterPopover';
+import { CollapsibleTeamSection } from './CollapsibleTeamSection';
 
-import type { TeamClaudeLogsResponse } from '@shared/types';
 import type { ClaudeLogsFilterState } from './ClaudeLogsFilterPopover';
+import type { TeamClaudeLogsResponse } from '@shared/types';
 
 const PAGE_SIZE = 100;
 const POLL_MS = 2000;
 const ONLINE_WINDOW_MS = 10_000;
+
+type StreamType = 'stdout' | 'stderr';
 
 interface ClaudeLogsSectionProps {
   teamName: string;
@@ -37,9 +36,9 @@ function normalizeToStreamJsonText(linesNewestFirst: string[]): string {
   const chronological = [...linesNewestFirst].reverse();
 
   const out: string[] = [];
-  let lastStream: 'stdout' | 'stderr' | null = null;
+  let lastStream: StreamType | null = null;
 
-  const pushMarker = (stream: 'stdout' | 'stderr'): void => {
+  const pushMarker = (stream: StreamType): void => {
     if (lastStream === stream) return;
     lastStream = stream;
     out.push(stream === 'stdout' ? '[stdout]' : '[stderr]');
@@ -84,8 +83,8 @@ function filterStreamJsonText(
   const q = queryRaw.trim().toLowerCase();
   const chronological = normalizeToStreamJsonText(linesNewestFirst).split('\n');
 
-  let currentStream: 'stdout' | 'stderr' | null = null;
-  let lastEmittedStream: 'stdout' | 'stderr' | null = null;
+  let currentStream: StreamType | null = null;
+  let lastEmittedStream: StreamType | null = null;
   const out: string[] = [];
 
   const emitMarker = (): void => {
@@ -108,7 +107,10 @@ function filterStreamJsonText(
     return null;
   };
 
-  const writeBlocks = (parsed: Record<string, unknown>, blocks: AssistantContentBlock[]): Record<string, unknown> => {
+  const writeBlocks = (
+    parsed: Record<string, unknown>,
+    blocks: AssistantContentBlock[]
+  ): Record<string, unknown> => {
     if (Array.isArray(parsed.content)) {
       return { ...parsed, content: blocks };
     }
@@ -233,12 +235,16 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
   useEffect(() => {
     let cancelled = false;
 
-    const computeNewCount = (committed: TeamClaudeLogsResponse, latest: TeamClaudeLogsResponse): number => {
+    const computeNewCount = (
+      committed: TeamClaudeLogsResponse,
+      latest: TeamClaudeLogsResponse
+    ): number => {
       if (committed.lines.length === 0) return latest.lines.length;
       const marker = committed.lines[0];
       const idx = latest.lines.indexOf(marker);
       if (idx >= 0) return idx;
-      const diff = (latest.total ?? latest.lines.length) - (committed.total ?? committed.lines.length);
+      const diff =
+        (latest.total ?? latest.lines.length) - (committed.total ?? committed.lines.length);
       return Math.max(0, diff);
     };
 
@@ -386,12 +392,7 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
         </div>
       </div>
 
-      <div
-        className={cn(
-          'rounded',
-          loading && 'opacity-80'
-        )}
-      >
+      <div className={cn('rounded', loading && 'opacity-80')}>
         {error ? <p className="p-2 text-xs text-red-300">{error}</p> : null}
         {!error && filteredText.trim().length > 0 ? (
           <CliLogsRichView
@@ -418,12 +419,9 @@ export const ClaudeLogsSection = ({ teamName }: ClaudeLogsSectionProps): React.J
           </p>
         ) : null}
         {!error && data.lines.length > 0 && filteredText.trim().length === 0 ? (
-          <p className="p-2 text-xs text-[var(--color-text-muted)]">
-            No matching logs.
-          </p>
+          <p className="p-2 text-xs text-[var(--color-text-muted)]">No matching logs.</p>
         ) : null}
       </div>
     </CollapsibleTeamSection>
   );
 };
-

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { parseStructuredAgentMessage } from '@renderer/utils/agentMessageFormatting';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 
 import { ActivityItem, isNoiseMessage } from './ActivityItem';

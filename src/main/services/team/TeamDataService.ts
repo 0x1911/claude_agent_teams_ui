@@ -43,6 +43,7 @@ import type {
   ResolvedTeamMember,
   SendMessageRequest,
   SendMessageResult,
+  TaskAttachmentMeta,
   TaskComment,
   TeamConfig,
   TeamCreateConfigRequest,
@@ -933,7 +934,7 @@ export class TeamDataService {
         summary: `Task #${task.id} started`,
       });
     } catch (error) {
-      logger.warn(`[TeamDataService] notifyLeadOnTeammateTaskStart failed: ${error}`);
+      logger.warn(`[TeamDataService] notifyLeadOnTeammateTaskStart failed: ${String(error)}`);
     }
   }
 
@@ -964,7 +965,7 @@ export class TeamDataService {
   async addTaskAttachment(
     teamName: string,
     taskId: string,
-    meta: import('@shared/types').TaskAttachmentMeta
+    meta: TaskAttachmentMeta
   ): Promise<void> {
     await this.taskWriter.addAttachment(teamName, taskId, meta);
   }
@@ -1007,7 +1008,7 @@ export class TeamDataService {
     teamName: string,
     taskId: string,
     text: string,
-    attachments?: import('@shared/types').TaskAttachmentMeta[]
+    attachments?: TaskAttachmentMeta[]
   ): Promise<TaskComment> {
     const comment = await this.taskWriter.addComment(teamName, taskId, text, {
       attachments,
@@ -1022,8 +1023,6 @@ export class TeamDataService {
       const task = tasks.find((t) => t.id === taskId);
       const leadName = this.resolveLeadNameFromConfig(config);
       const owner = task?.owner?.trim() || null;
-      const normalizedOwner = owner?.toLowerCase() ?? null;
-
       // Auto-clear needsClarification: "user" on UI comment
       // UI comments always have author "user" (TeamTaskWriter default)
       if (task?.needsClarification === 'user') {
@@ -1214,7 +1213,8 @@ export class TeamDataService {
         name: (() => {
           const name = member.name.trim();
           if (!name) throw new Error('Member name cannot be empty');
-          if (name.toLowerCase() === 'team-lead') throw new Error('Member name "team-lead" is reserved');
+          if (name.toLowerCase() === 'team-lead')
+            throw new Error('Member name "team-lead" is reserved');
           const suffixInfo = parseNumericSuffixName(name);
           if (suffixInfo && suffixInfo.suffix >= 2) {
             throw new Error(

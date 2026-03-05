@@ -71,50 +71,45 @@ export const TaskCommentInput = ({
     trimmed.length <= MAX_COMMENT_LENGTH &&
     !addingComment;
 
-  const addFiles = useCallback(
-    (files: FileList | File[]) => {
-      setAttachError(null);
-      const fileArray = Array.from(files);
-      for (const file of fileArray) {
-        if (!ACCEPTED_TYPES.has(file.type)) {
-          setAttachError(`Unsupported type: ${file.type}`);
-          continue;
-        }
-        if (file.size > MAX_FILE_SIZE) {
-          setAttachError(
-            `File too large: ${(file.size / (1024 * 1024)).toFixed(1)} MB (max 20 MB)`
-          );
-          continue;
-        }
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          const base64 = result.split(',')[1];
-          if (!base64) return;
-          const id = crypto.randomUUID();
-          setPendingAttachments((prev) => {
-            if (prev.length >= MAX_ATTACHMENTS) {
-              setAttachError(`Maximum ${MAX_ATTACHMENTS} attachments per comment`);
-              return prev;
-            }
-            return [
-              ...prev,
-              {
-                id,
-                filename: file.name,
-                mimeType: file.type,
-                base64Data: base64,
-                previewUrl: result,
-                size: file.size,
-              },
-            ];
-          });
-        };
-        reader.readAsDataURL(file);
+  const addFiles = useCallback((files: FileList | File[]) => {
+    setAttachError(null);
+    const fileArray = Array.from(files);
+    for (const file of fileArray) {
+      if (!ACCEPTED_TYPES.has(file.type)) {
+        setAttachError(`Unsupported type: ${file.type}`);
+        continue;
       }
-    },
-    []
-  );
+      if (file.size > MAX_FILE_SIZE) {
+        setAttachError(`File too large: ${(file.size / (1024 * 1024)).toFixed(1)} MB (max 20 MB)`);
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1];
+        if (!base64) return;
+        const id = crypto.randomUUID();
+        setPendingAttachments((prev) => {
+          if (prev.length >= MAX_ATTACHMENTS) {
+            setAttachError(`Maximum ${MAX_ATTACHMENTS} attachments per comment`);
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id,
+              filename: file.name,
+              mimeType: file.type,
+              base64Data: base64,
+              previewUrl: result,
+              size: file.size,
+            },
+          ];
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  }, []);
 
   const removeAttachment = useCallback((id: string) => {
     setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
@@ -131,7 +126,7 @@ export const TaskCommentInput = ({
           ? pendingAttachments.map((a) => ({
               id: a.id,
               filename: a.filename,
-              mimeType: a.mimeType as CommentAttachmentPayload['mimeType'],
+              mimeType: a.mimeType,
               base64Data: a.base64Data,
             }))
           : undefined;
@@ -245,6 +240,7 @@ export const TaskCommentInput = ({
           className="hidden"
           onChange={(e) => {
             if (e.target.files) addFiles(e.target.files);
+            // eslint-disable-next-line no-param-reassign -- reset file input to allow re-selecting same file
             e.target.value = '';
           }}
         />

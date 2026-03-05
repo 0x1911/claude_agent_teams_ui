@@ -152,14 +152,17 @@ export const MemberLogsTab = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intervalsKey drives refresh; deps intentionally minimal to avoid refetch loops
   }, [teamName, memberName, taskId, taskOwner, taskStatus, intervalsKey]);
 
-  const fetchDetailForLog = useCallback(async (log: MemberLogSummary): Promise<EnhancedChunk[] | null> => {
-    if (log.kind === 'subagent') {
-      const d = await api.getSubagentDetail(log.projectId, log.sessionId, log.subagentId);
-      return (d?.chunks ?? null) as EnhancedChunk[] | null;
-    }
-    const d = await api.getSessionDetail(log.projectId, log.sessionId);
-    return (d?.chunks ?? null) as unknown as EnhancedChunk[] | null;
-  }, []);
+  const fetchDetailForLog = useCallback(
+    async (log: MemberLogSummary): Promise<EnhancedChunk[] | null> => {
+      if (log.kind === 'subagent') {
+        const d = await api.getSubagentDetail(log.projectId, log.sessionId, log.subagentId);
+        return d?.chunks ?? null;
+      }
+      const d = await api.getSessionDetail(log.projectId, log.sessionId);
+      return (d?.chunks ?? null) as unknown as EnhancedChunk[] | null;
+    },
+    []
+  );
 
   useEffect(() => {
     const shouldAutoRefreshSummary = taskId != null && taskStatus === 'in_progress';
@@ -250,12 +253,8 @@ export const MemberLogsTab = ({
           key={getRowId(log)}
           log={log}
           expanded={expandedId === getRowId(log)}
-          detailChunks={
-            expandedId === getRowId(log) ? detailChunks : null
-          }
-          detailLoading={
-            expandedId === getRowId(log) && detailLoading
-          }
+          detailChunks={expandedId === getRowId(log) ? detailChunks : null}
+          detailLoading={expandedId === getRowId(log) && detailLoading}
           onToggle={() => void handleExpand(log)}
         />
       ))}

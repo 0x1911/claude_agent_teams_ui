@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { RoleSelect } from '@renderer/components/team/RoleSelect';
 import { Button } from '@renderer/components/ui/button';
 import { Input } from '@renderer/components/ui/input';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
-import { RoleSelect } from '@renderer/components/team/RoleSelect';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { useFileListCacheWarmer } from '@renderer/hooks/useFileListCacheWarmer';
@@ -144,7 +144,7 @@ export const MemberDraftRow = ({
           onCustomRoleChange={(customRole) => onCustomRoleChange(member.id, customRole)}
           triggerClassName="h-8 text-xs"
           inputClassName="h-8 text-xs"
-/>
+        />
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
         {showWorkflow && onWorkflowChange ? (

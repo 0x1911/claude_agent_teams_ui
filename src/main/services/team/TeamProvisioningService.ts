@@ -1008,8 +1008,11 @@ interface CachedProbeResult {
 }
 
 let cachedProbeResult: CachedProbeResult | null = null;
-let probeInFlight: Promise<{ claudePath: string; authSource: ProvisioningAuthSource; warning?: string } | null> | null =
-  null;
+let probeInFlight: Promise<{
+  claudePath: string;
+  authSource: ProvisioningAuthSource;
+  warning?: string;
+} | null> | null = null;
 
 export class TeamProvisioningService {
   private static readonly CLAUDE_LOG_LINES_LIMIT = 50_000;
@@ -1046,7 +1049,9 @@ export class TeamProvisioningService {
     const offsetRaw = query?.offset ?? 0;
     const limitRaw = query?.limit ?? 100;
     const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.floor(offsetRaw)) : 0;
-    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(1000, Math.floor(limitRaw))) : 100;
+    const limit = Number.isFinite(limitRaw)
+      ? Math.max(1, Math.min(1000, Math.floor(limitRaw)))
+      : 100;
 
     const total = run.claudeLogLines.length;
     if (total === 0) {
@@ -1057,15 +1062,17 @@ export class TeamProvisioningService {
     const oldestInclusive = Math.max(0, newestExclusive - limit);
     const normalizeLine = (line: string): string => {
       // Back-compat: older builds prefixed every line with "[stdout] " / "[stderr] "
-      if (line.startsWith('[stdout] ') && line !== '[stdout]') return line.slice('[stdout] '.length);
-      if (line.startsWith('[stderr] ') && line !== '[stderr]') return line.slice('[stderr] '.length);
+      if (line.startsWith('[stdout] ') && line !== '[stdout]')
+        return line.slice('[stdout] '.length);
+      if (line.startsWith('[stderr] ') && line !== '[stderr]')
+        return line.slice('[stderr] '.length);
       return line;
     };
 
-    const windowOldestToNewest = run.claudeLogLines
+    const lines = run.claudeLogLines
       .slice(oldestInclusive, newestExclusive)
-      .map(normalizeLine);
-    const lines = windowOldestToNewest.reverse();
+      .map(normalizeLine)
+      .toReversed();
     return {
       lines,
       total,
@@ -1201,7 +1208,8 @@ export class TeamProvisioningService {
 
   async warmup(): Promise<void> {
     try {
-      if (cachedProbeResult && Date.now() - cachedProbeResult.cachedAtMs < PROBE_CACHE_TTL_MS) return;
+      if (cachedProbeResult && Date.now() - cachedProbeResult.cachedAtMs < PROBE_CACHE_TTL_MS)
+        return;
       const result = await this.getCachedOrProbeResult(process.cwd());
       if (!result) return;
       logger.info('CLI warmup completed');
@@ -1287,7 +1295,11 @@ export class TeamProvisioningService {
   ): Promise<{ claudePath: string; authSource: ProvisioningAuthSource; warning?: string } | null> {
     const cached = this.getFreshCachedProbeResult();
     if (cached) {
-      return { claudePath: cached.claudePath, authSource: cached.authSource, warning: cached.warning };
+      return {
+        claudePath: cached.claudePath,
+        authSource: cached.authSource,
+        warning: cached.warning,
+      };
     }
 
     if (probeInFlight) {
@@ -1300,7 +1312,11 @@ export class TeamProvisioningService {
 
       const { env, authSource } = await this.buildProvisioningEnv();
       const probe = await this.probeClaudeRuntime(claudePath, cwd, env);
-      const result = { claudePath, authSource, ...(probe.warning ? { warning: probe.warning } : {}) };
+      const result = {
+        claudePath,
+        authSource,
+        ...(probe.warning ? { warning: probe.warning } : {}),
+      };
 
       if (!probe.warning || !this.isAuthFailureWarning(probe.warning)) {
         cachedProbeResult = { ...result, cachedAtMs: Date.now() };
@@ -1340,12 +1356,13 @@ export class TeamProvisioningService {
   private sanitizeCliSnippet(text: string): string {
     // Remove control characters that often show up as binary noise in CLI error payloads.
     // Preserve newlines/tabs for readability.
-    return text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+    // eslint-disable-next-line no-control-regex, sonarjs/no-control-regex -- intentionally stripping control chars
+    return text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
   }
 
   private extractApiErrorSnippet(text: string): string | null {
     const match = /api error:\s*\d{3}\b/i.exec(text) ?? /invalid_request_error/i.exec(text);
-    if (!match || match.index === undefined) return null;
+    if (match?.index === undefined) return null;
     const start = Math.max(0, match.index - 200);
     const end = Math.min(text.length, match.index + 4000);
     const raw = text.slice(start, end).trim();
@@ -2505,7 +2522,7 @@ export class TeamProvisioningService {
         void this.sentMessagesStore
           .appendMessage(teamName, relayMsg)
           .catch((e: unknown) =>
-            logger.warn(`[${teamName}] sentMessagesStore persist failed: ${e}`)
+            logger.warn(`[${teamName}] sentMessagesStore persist failed: ${String(e)}`)
           );
         this.teamChangeEmitter?.({
           type: 'inbox',
@@ -2726,7 +2743,7 @@ export class TeamProvisioningService {
         .appendMessage(run.teamName, msg)
         .catch((e: unknown) =>
           logger.warn(
-            `[${run.teamName}] sentMessagesStore persist (SendMessage capture) failed: ${e}`
+            `[${run.teamName}] sentMessagesStore persist (SendMessage capture) failed: ${String(e)}`
           )
         );
       this.teamChangeEmitter?.({
@@ -2831,7 +2848,10 @@ export class TeamProvisioningService {
             run.leadTextPushedInCurrentTurn = true;
 
             const now = Date.now();
-            if (now - run.lastLeadTextEmitMs >= TeamProvisioningService.LEAD_TEXT_EMIT_THROTTLE_MS) {
+            if (
+              now - run.lastLeadTextEmitMs >=
+              TeamProvisioningService.LEAD_TEXT_EMIT_THROTTLE_MS
+            ) {
               run.lastLeadTextEmitMs = now;
               this.teamChangeEmitter?.({
                 type: 'inbox',
@@ -3030,7 +3050,7 @@ export class TeamProvisioningService {
               void this.sentMessagesStore
                 .appendMessage(run.teamName, replyMsg)
                 .catch((e: unknown) =>
-                  logger.warn(`[${run.teamName}] sentMessagesStore persist failed: ${e}`)
+                  logger.warn(`[${run.teamName}] sentMessagesStore persist failed: ${String(e)}`)
                 );
               this.teamChangeEmitter?.({
                 type: 'inbox',
@@ -3053,7 +3073,7 @@ export class TeamProvisioningService {
               void this.sentMessagesStore
                 .appendMessage(run.teamName, fallbackMsg)
                 .catch((e: unknown) =>
-                  logger.warn(`[${run.teamName}] sentMessagesStore persist failed: ${e}`)
+                  logger.warn(`[${run.teamName}] sentMessagesStore persist failed: ${String(e)}`)
                 );
               this.teamChangeEmitter?.({
                 type: 'inbox',
@@ -3121,14 +3141,10 @@ export class TeamProvisioningService {
         }
 
         // Extract compact metadata for the system message
-        const meta = (msg as Record<string, unknown>).compact_metadata as
-          | Record<string, unknown>
-          | undefined;
+        const meta = msg.compact_metadata as Record<string, unknown> | undefined;
         const trigger = typeof meta?.trigger === 'string' ? meta.trigger : 'auto';
         const preTokens = typeof meta?.pre_tokens === 'number' ? meta.pre_tokens : null;
-        const tokenInfo = preTokens
-          ? ` (was ~${(preTokens / 1000).toFixed(0)}k tokens)`
-          : '';
+        const tokenInfo = preTokens ? ` (was ~${(preTokens / 1000).toFixed(0)}k tokens)` : '';
 
         const compactMsg: InboxMessage = {
           from: 'system',
@@ -3160,7 +3176,12 @@ export class TeamProvisioningService {
   private async handleProvisioningTurnComplete(run: ProvisioningRun): Promise<void> {
     // Guard: must be set synchronously BEFORE any await to prevent
     // double-invocation from filesystem monitor + stream-json racing.
-    if (run.provisioningComplete || run.cancelRequested || run.processKilled || run.progress.state === 'failed')
+    if (
+      run.provisioningComplete ||
+      run.cancelRequested ||
+      run.processKilled ||
+      run.progress.state === 'failed'
+    )
       return;
 
     // Prevent false "ready" when auth failure was printed as assistant text or logs
@@ -3172,7 +3193,11 @@ export class TeamProvisioningService {
       .filter(Boolean)
       .join('\n')
       .trim();
-    if (preCompleteText && this.hasApiError(preCompleteText) && !this.isAuthFailureWarning(preCompleteText)) {
+    if (
+      preCompleteText &&
+      this.hasApiError(preCompleteText) &&
+      !this.isAuthFailureWarning(preCompleteText)
+    ) {
       this.failProvisioningWithApiError(run, preCompleteText);
       return;
     }
@@ -3235,7 +3260,7 @@ export class TeamProvisioningService {
 
       // Pick up any direct messages that arrived before/while reconnecting.
       void this.relayLeadInboxMessages(run.teamName).catch((e: unknown) =>
-        logger.warn(`[${run.teamName}] post-reconnect relay failed: ${e}`)
+        logger.warn(`[${run.teamName}] post-reconnect relay failed: ${String(e)}`)
       );
 
       // Solo teams have no teammate processes to resume work; kick off task execution
@@ -3320,7 +3345,7 @@ export class TeamProvisioningService {
 
     // Pick up any direct messages that arrived during provisioning.
     void this.relayLeadInboxMessages(run.teamName).catch((e: unknown) =>
-      logger.warn(`[${run.teamName}] post-provisioning relay failed: ${e}`)
+      logger.warn(`[${run.teamName}] post-provisioning relay failed: ${String(e)}`)
     );
   }
 
@@ -3962,7 +3987,7 @@ export class TeamProvisioningService {
   private async cleanupCliAutoSuffixedMembers(teamName: string): Promise<void> {
     const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
 
-    let removedFromConfig: string[] = [];
+    const removedFromConfig: string[] = [];
     try {
       const raw = await tryReadRegularFileUtf8(configPath, {
         timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
@@ -3976,7 +4001,9 @@ export class TeamProvisioningService {
         if (membersRaw.length > 0) {
           const teammateNames = membersRaw
             .map((m) => (typeof m.name === 'string' ? m.name.trim() : ''))
-            .filter((n) => n.length > 0 && n.toLowerCase() !== 'team-lead' && n.toLowerCase() !== 'user');
+            .filter(
+              (n) => n.length > 0 && n.toLowerCase() !== 'team-lead' && n.toLowerCase() !== 'user'
+            );
 
           const keepName = createCliAutoSuffixNameGuard(teammateNames);
           const nextMembers: Record<string, unknown>[] = [];
@@ -4008,14 +4035,16 @@ export class TeamProvisioningService {
       // best-effort
     }
 
-    let activeNamesForInboxCleanup: Set<string> = new Set();
+    let activeNamesForInboxCleanup = new Set<string>();
     try {
       const metaMembers = await this.membersMetaStore.getMembers(teamName);
       if (metaMembers.length > 0) {
         const activeNames = metaMembers
           .filter((m) => !m.removedAt)
           .map((m) => m.name.trim())
-          .filter((n) => n.length > 0 && n.toLowerCase() !== 'team-lead' && n.toLowerCase() !== 'user');
+          .filter(
+            (n) => n.length > 0 && n.toLowerCase() !== 'team-lead' && n.toLowerCase() !== 'user'
+          );
 
         const keepName = createCliAutoSuffixNameGuard(activeNames);
         const removedFromMeta: string[] = [];
@@ -4042,7 +4071,9 @@ export class TeamProvisioningService {
           nextMeta
             .filter((m) => !m.removedAt)
             .map((m) => m.name.trim())
-            .filter((n) => n.length > 0 && n.toLowerCase() !== 'team-lead' && n.toLowerCase() !== 'user')
+            .filter(
+              (n) => n.length > 0 && n.toLowerCase() !== 'team-lead' && n.toLowerCase() !== 'user'
+            )
         );
       }
     } catch {

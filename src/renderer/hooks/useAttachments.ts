@@ -54,7 +54,9 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<{ key: string; value: AttachmentPayload[] } | null>(null);
   const keyRef = useRef(persistenceKey);
-  keyRef.current = persistenceKey;
+  useEffect(() => {
+    keyRef.current = persistenceKey;
+  }, [persistenceKey]);
 
   // Sync ref with state
   const updateAttachments = useCallback((next: AttachmentPayload[]) => {
@@ -112,6 +114,7 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
     flushPending();
     // Clear stale attachments from previous persistenceKey before loading
     attachmentsRef.current = [];
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync reset before async load
     setAttachments([]);
     void (async () => {
       const raw = await draftStorage.loadDraft(persistenceKey);
@@ -195,7 +198,6 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
         schedulePersist(next);
         return next;
       });
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- schedulePersist is stable
     },
     [schedulePersist]
   );
@@ -209,7 +211,6 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
         return next;
       });
       setError(null);
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- schedulePersist is stable
     },
     [schedulePersist]
   );
