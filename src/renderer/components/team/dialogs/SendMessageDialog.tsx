@@ -92,8 +92,8 @@ export const SendMessageDialog = ({
   const [quote, setQuote] = useState<QuotedMessage | undefined>(undefined);
   const [quoteExpanded, setQuoteExpanded] = useState(false);
   const [member, setMember] = useState('');
-  const textDraft = useDraftPersistence({ key: 'sendMessage:text' });
-  const chipDraft = useChipDraftPersistence('sendMessage:chips');
+  const textDraft = useDraftPersistence({ key: `sendMessage:${teamName}:text` });
+  const chipDraft = useChipDraftPersistence(`sendMessage:${teamName}:chips`);
   const [summary, setSummary] = useState('');
   const prevOpenRef = useRef(false);
   const prevResultRef = useRef<SendMessageResult | null>(null);
@@ -115,7 +115,8 @@ export const SendMessageDialog = ({
 
   const selectedMember = members.find((m) => m.name === member);
   const isLeadRecipient = selectedMember?.role === 'lead' || selectedMember?.name === 'team-lead';
-  const canAttach = isLeadRecipient && isTeamAlive && canAddMore;
+  const supportsAttachments = isLeadRecipient && !!isTeamAlive;
+  const canAttach = supportsAttachments && canAddMore;
 
   const [pendingAutoClose, setPendingAutoClose] = useState(false);
   // Reset form on open transition (avoid setState in render)
@@ -174,7 +175,7 @@ export const SendMessageDialog = ({
     [members, colorMap]
   );
 
-  const attachmentsBlocked = attachments.length > 0 && !isLeadRecipient;
+  const attachmentsBlocked = attachments.length > 0 && !supportsAttachments;
 
   const canSend =
     member.trim().length > 0 &&
@@ -363,7 +364,7 @@ export const SendMessageDialog = ({
               onRemove={removeAttachment}
               error={attachmentError}
               disabled={attachmentsBlocked}
-              disabledHint="Image attachments are only supported when sending to team lead. Remove attachments or switch recipient."
+              disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
             />
 
             <div className={quote ? 'flex flex-col' : 'contents'}>

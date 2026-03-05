@@ -152,8 +152,9 @@ export const MessageComposer = ({
   const leadContext = useStore((s) =>
     isLeadAgentRecipient ? s.leadContextByTeam[teamName] : undefined
   );
-  const canAttach = isLeadRecipient && isTeamAlive && canAddMore;
-  const attachmentsBlocked = attachments.length > 0 && !isLeadRecipient;
+  const supportsAttachments = isLeadRecipient && !!isTeamAlive;
+  const canAttach = supportsAttachments && canAddMore;
+  const attachmentsBlocked = attachments.length > 0 && !supportsAttachments;
   const canSend =
     recipient.length > 0 &&
     trimmed.length > 0 &&
@@ -399,7 +400,7 @@ export const MessageComposer = ({
         onRemove={removeAttachment}
         error={attachmentError}
         disabled={attachmentsBlocked}
-        disabledHint="Image attachments are only supported when sending to team lead. Remove attachments or switch recipient."
+        disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
       />
 
       <MentionableTextarea

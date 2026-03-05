@@ -52,7 +52,7 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
 
   const attachmentsRef = useRef<AttachmentPayload[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingRef = useRef<AttachmentPayload[] | null>(null);
+  const pendingRef = useRef<{ key: string; value: AttachmentPayload[] } | null>(null);
   const keyRef = useRef(persistenceKey);
   keyRef.current = persistenceKey;
 
@@ -67,7 +67,7 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
     const key = keyRef.current;
     if (!key) return;
 
-    pendingRef.current = nextAttachments;
+    pendingRef.current = { key, value: nextAttachments };
 
     if (timerRef.current != null) {
       clearTimeout(timerRef.current);
@@ -79,10 +79,10 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
       pendingRef.current = null;
       if (pending == null) return;
 
-      if (pending.length === 0) {
-        void draftStorage.deleteDraft(key);
+      if (pending.value.length === 0) {
+        void draftStorage.deleteDraft(pending.key);
       } else {
-        void draftStorage.saveDraft(key, JSON.stringify(pending));
+        void draftStorage.saveDraft(pending.key, JSON.stringify(pending.value));
       }
     }, DEBOUNCE_MS);
   }, []);
@@ -93,14 +93,12 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
       timerRef.current = null;
     }
     if (pendingRef.current != null) {
-      const val = pendingRef.current;
-      const key = keyRef.current;
+      const pending = pendingRef.current;
       pendingRef.current = null;
-      if (!key) return;
-      if (val.length === 0) {
-        void draftStorage.deleteDraft(key);
+      if (pending.value.length === 0) {
+        void draftStorage.deleteDraft(pending.key);
       } else {
-        void draftStorage.saveDraft(key, JSON.stringify(val));
+        void draftStorage.saveDraft(pending.key, JSON.stringify(pending.value));
       }
     }
   }, []);
@@ -110,6 +108,8 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
     if (!persistenceKey) return;
 
     let cancelled = false;
+    // Flush any pending debounced save for the previous key before switching.
+    flushPending();
     // Clear stale attachments from previous persistenceKey before loading
     attachmentsRef.current = [];
     setAttachments([]);
@@ -136,7 +136,7 @@ export function useAttachments(options?: UseAttachmentsOptions): UseAttachmentsR
     return () => {
       cancelled = true;
     };
-  }, [persistenceKey]);
+  }, [persistenceKey, flushPending]);
 
   // Flush on unmount
   useEffect(() => {

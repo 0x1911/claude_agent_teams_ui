@@ -53,10 +53,42 @@ export const MemberLogsTab = ({
   const [detailChunks, setDetailChunks] = useState<EnhancedChunk[] | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  const getRowId = useCallback((log: MemberLogSummary): string => {
+    return log.kind === 'subagent'
+      ? `subagent:${log.sessionId}:${log.subagentId}`
+      : `lead:${log.sessionId}`;
+  }, []);
+
+  const sortedLogs = useMemo(() => {
+    const withIndex = logs.map((log, index) => ({ log, index }));
+    withIndex.sort((a, b) => {
+      const aTime = new Date(a.log.startTime).getTime();
+      const bTime = new Date(b.log.startTime).getTime();
+      if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return bTime - aTime;
+      if (Number.isFinite(aTime) && !Number.isFinite(bTime)) return -1;
+      if (!Number.isFinite(aTime) && Number.isFinite(bTime)) return 1;
+      return a.index - b.index;
+    });
+    return withIndex.map((x) => x.log);
+  }, [logs]);
+
+  const expandedLogSummary = useMemo(() => {
+    if (!expandedId) return null;
+    return logs.find((log) => getRowId(log) === expandedId) ?? null;
+  }, [expandedId, getRowId, logs]);
+
   useEffect(() => {
     onRefreshingChange?.(refreshing);
     return () => onRefreshingChange?.(false);
   }, [refreshing, onRefreshingChange]);
+
+  useEffect(() => {
+    if (!expandedId) return;
+    if (expandedLogSummary) return;
+    setExpandedId(null);
+    setDetailChunks(null);
+    setDetailLoading(false);
+  }, [expandedId, expandedLogSummary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,7 +116,7 @@ export const MemberLogsTab = ({
               })
             : await api.teams.getMemberLogs(teamName, memberName!);
         if (!cancelled) {
-          setLogs(result);
+          setLogs(Array.isArray(result) ? [...result] : []);
           hasLoadedRef.current = true;
         }
       } catch (e) {
@@ -110,12 +142,42 @@ export const MemberLogsTab = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intervalsKey drives refresh; deps intentionally minimal to avoid refetch loops
   }, [teamName, memberName, taskId, taskOwner, taskStatus, intervalsKey]);
 
+  const fetchDetailForLog = useCallback(async (log: MemberLogSummary): Promise<EnhancedChunk[] | null> => {
+    if (log.kind === 'subagent') {
+      const d = await api.getSubagentDetail(log.projectId, log.sessionId, log.subagentId);
+      return (d?.chunks ?? null) as EnhancedChunk[] | null;
+    }
+    const d = await api.getSessionDetail(log.projectId, log.sessionId);
+    return (d?.chunks ?? null) as unknown as EnhancedChunk[] | null;
+  }, []);
+
+  useEffect(() => {
+    const shouldAutoRefreshSummary = taskId != null && taskStatus === 'in_progress';
+    if (!expandedLogSummary) return;
+    if (!shouldAutoRefreshSummary && !expandedLogSummary.isOngoing) return;
+
+    let cancelled = false;
+
+    const interval = setInterval(async () => {
+      try {
+        const next = await fetchDetailForLog(expandedLogSummary);
+        if (cancelled) return;
+        // Ensure new reference so memoized transforms update.
+        setDetailChunks(next ? [...next] : null);
+      } catch {
+        // Keep last successful data; avoid flicker during transient errors.
+      }
+    }, 5000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [expandedLogSummary, fetchDetailForLog, taskId, taskStatus]);
+
   const handleExpand = useCallback(
     async (log: MemberLogSummary) => {
-      const rowId =
-        log.kind === 'subagent'
-          ? `subagent:${log.sessionId}:${log.subagentId}`
-          : `lead:${log.sessionId}`;
+      const rowId = getRowId(log);
 
       if (expandedId === rowId) {
         setExpandedId(null);
@@ -126,20 +188,15 @@ export const MemberLogsTab = ({
       setDetailChunks(null);
       setDetailLoading(true);
       try {
-        if (log.kind === 'subagent') {
-          const d = await api.getSubagentDetail(log.projectId, log.sessionId, log.subagentId);
-          setDetailChunks(d?.chunks ?? null);
-        } else {
-          const d = await api.getSessionDetail(log.projectId, log.sessionId);
-          setDetailChunks((d?.chunks ?? null) as unknown as EnhancedChunk[] | null);
-        }
+        const chunks = await fetchDetailForLog(log);
+        setDetailChunks(chunks ? [...chunks] : null);
       } catch {
         setDetailChunks(null);
       } finally {
         setDetailLoading(false);
       }
     },
-    [expandedId]
+    [expandedId, fetchDetailForLog, getRowId]
   );
 
   if (loading && logs.length === 0) {
@@ -178,31 +235,16 @@ export const MemberLogsTab = ({
 
   return (
     <div className="w-full min-w-0 space-y-1.5">
-      {logs.map((log) => (
+      {sortedLogs.map((log) => (
         <LogCard
-          key={
-            log.kind === 'subagent' ? `${log.sessionId}-${log.subagentId}` : `lead-${log.sessionId}`
-          }
+          key={getRowId(log)}
           log={log}
-          expanded={
-            expandedId ===
-            (log.kind === 'subagent'
-              ? `subagent:${log.sessionId}:${log.subagentId}`
-              : `lead:${log.sessionId}`)
-          }
+          expanded={expandedId === getRowId(log)}
           detailChunks={
-            expandedId ===
-            (log.kind === 'subagent'
-              ? `subagent:${log.sessionId}:${log.subagentId}`
-              : `lead:${log.sessionId}`)
-              ? detailChunks
-              : null
+            expandedId === getRowId(log) ? detailChunks : null
           }
           detailLoading={
-            expandedId ===
-              (log.kind === 'subagent'
-                ? `subagent:${log.sessionId}:${log.subagentId}`
-                : `lead:${log.sessionId}`) && detailLoading
+            expandedId === getRowId(log) && detailLoading
           }
           onToggle={() => void handleExpand(log)}
         />
