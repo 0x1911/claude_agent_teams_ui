@@ -60,10 +60,20 @@ export const MemberLogsTab = ({
   }, []);
 
   const sortedLogs = useMemo(() => {
+    const nowMs = Date.now();
+    const getLastActivityMs = (log: MemberLogSummary): number => {
+      const startMs = new Date(log.startTime).getTime();
+      if (!Number.isFinite(startMs)) return Number.NaN;
+      const durationMs = Number.isFinite(log.durationMs) ? Math.max(0, log.durationMs) : 0;
+      const endMs = startMs + durationMs;
+      // Keep actively-updating logs at the top even if duration lags slightly.
+      return log.isOngoing ? Math.max(endMs, nowMs) : endMs;
+    };
+
     const withIndex = logs.map((log, index) => ({ log, index }));
     withIndex.sort((a, b) => {
-      const aTime = new Date(a.log.startTime).getTime();
-      const bTime = new Date(b.log.startTime).getTime();
+      const aTime = getLastActivityMs(a.log);
+      const bTime = getLastActivityMs(b.log);
       if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return bTime - aTime;
       if (Number.isFinite(aTime) && !Number.isFinite(bTime)) return -1;
       if (!Number.isFinite(aTime) && Number.isFinite(bTime)) return 1;

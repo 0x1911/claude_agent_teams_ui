@@ -12,6 +12,7 @@ import { killProcessByPid } from '@main/utils/processKill';
 import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 import { getMemberColor } from '@shared/constants/memberColors';
 import { createLogger } from '@shared/utils/logger';
+import { parseNumericSuffixName } from '@shared/utils/teamMemberName';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -619,18 +620,29 @@ export class TeamDataService {
   }
 
   async addMember(teamName: string, request: AddMemberRequest): Promise<void> {
+    const name = request.name.trim();
+    if (!name) {
+      throw new Error('Member name cannot be empty');
+    }
+    const suffixInfo = parseNumericSuffixName(name);
+    if (suffixInfo && suffixInfo.suffix >= 2) {
+      throw new Error(
+        `Member name "${name}" is not allowed (reserved for Claude CLI auto-suffix). Use "${suffixInfo.base}" instead.`
+      );
+    }
+
     const members = await this.membersMetaStore.getMembers(teamName);
-    const existing = members.find((m) => m.name.toLowerCase() === request.name.toLowerCase());
+    const existing = members.find((m) => m.name.toLowerCase() === name.toLowerCase());
 
     if (existing) {
       if (existing.removedAt) {
-        throw new Error(`Name "${request.name}" was previously used by a removed member`);
+        throw new Error(`Name "${name}" was previously used by a removed member`);
       }
-      throw new Error(`Member "${request.name}" already exists`);
+      throw new Error(`Member "${name}" already exists`);
     }
 
     const newMember: TeamMember = {
-      name: request.name,
+      name,
       role: request.role?.trim() || undefined,
       workflow: request.workflow?.trim() || undefined,
       agentType: 'general-purpose',
@@ -679,6 +691,12 @@ export class TeamDataService {
       if (!name) throw new Error('Member name cannot be empty');
       if (name.toLowerCase() === 'team-lead') {
         throw new Error('Member name "team-lead" is reserved');
+      }
+      const suffixInfo = parseNumericSuffixName(name);
+      if (suffixInfo && suffixInfo.suffix >= 2) {
+        throw new Error(
+          `Member name "${name}" is not allowed (reserved for Claude CLI auto-suffix). Use "${suffixInfo.base}" instead.`
+        );
       }
       nextByName.add(name.toLowerCase());
       const prev = existingByName.get(name.toLowerCase());
@@ -1193,7 +1211,18 @@ export class TeamDataService {
     await this.membersMetaStore.writeMembers(
       request.teamName,
       request.members.map((member, index) => ({
-        name: member.name,
+        name: (() => {
+          const name = member.name.trim();
+          if (!name) throw new Error('Member name cannot be empty');
+          if (name.toLowerCase() === 'team-lead') throw new Error('Member name "team-lead" is reserved');
+          const suffixInfo = parseNumericSuffixName(name);
+          if (suffixInfo && suffixInfo.suffix >= 2) {
+            throw new Error(
+              `Member name "${name}" is not allowed (reserved for Claude CLI auto-suffix). Use "${suffixInfo.base}" instead.`
+            );
+          }
+          return name;
+        })(),
         role: member.role?.trim() || undefined,
         agentType: 'general-purpose',
         color: getMemberColor(index),

@@ -21,6 +21,7 @@ import { getMemberColor } from '@shared/constants/memberColors';
 import { resolveLanguageName } from '@shared/utils/agentLanguage';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { createLogger } from '@shared/utils/logger';
+import { createCliAutoSuffixNameGuard } from '@shared/utils/teamMemberName';
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
@@ -1924,12 +1925,19 @@ export class TeamProvisioningService {
 
       // IMPORTANT: The CLI auto-suffixes teammate names when they already exist in config.json.
       // Normalize config.json to keep only the team-lead before spawning the CLI, so we get stable names.
-      await this.normalizeTeamConfigForLaunch(request.teamName, configRaw);
+      try {
+        await this.normalizeTeamConfigForLaunch(request.teamName, configRaw);
+        await this.assertConfigLeadOnlyForLaunch(request.teamName);
 
-      // Update projectPath in config IMMEDIATELY so TeamDetailView shows the correct path
-      // even if provisioning is interrupted or the user stops the team early.
-      // If launch fails, restorePrelaunchConfig() will revert to the backup (old projectPath).
-      await this.updateConfigProjectPath(request.teamName, request.cwd);
+        // Update projectPath in config IMMEDIATELY so TeamDetailView shows the correct path
+        // even if provisioning is interrupted or the user stops the team early.
+        // If launch fails, restorePrelaunchConfig() will revert to the backup (old projectPath).
+        await this.updateConfigProjectPath(request.teamName, request.cwd);
+      } catch (error) {
+        // Restore pre-launch backup so config.json is not left in normalized (lead-only) state.
+        await this.restorePrelaunchConfig(request.teamName);
+        throw error;
+      }
 
       let claudePath: string | null;
       try {
@@ -3138,6 +3146,10 @@ export class TeamProvisioningService {
       await this.updateConfigPostLaunch(run.teamName, run.request.cwd, run.detectedSessionId);
       await this.cleanupPrelaunchBackup(run.teamName);
 
+      // Defense in depth: if the CLI (or a stale config) produced auto-suffixed members (alice-2),
+      // clean them up so they don't persist and reappear in the UI.
+      await this.cleanupCliAutoSuffixedMembers(run.teamName);
+
       // Best-effort: detect CLI-suffixed member names (alice-2, bob-2) that indicate
       // a stale config.json was present during launch (double-launch race).
       try {
@@ -3898,6 +3910,106 @@ export class TeamProvisioningService {
     }
   }
 
+  private async cleanupCliAutoSuffixedMembers(teamName: string): Promise<void> {
+    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+
+    let removedFromConfig: string[] = [];
+    try {
+      const raw = await tryReadRegularFileUtf8(configPath, {
+        timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
+        maxBytes: TEAM_CONFIG_MAX_BYTES,
+      });
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const membersRaw = Array.isArray(parsed.members)
+          ? (parsed.members as Record<string, unknown>[])
+          : [];
+        if (membersRaw.length > 0) {
+          const teammateNames = membersRaw
+            .map((m) => (typeof m.name === 'string' ? m.name.trim() : ''))
+            .filter((n) => n.length > 0 && n.toLowerCase() !== 'team-lead' && n.toLowerCase() !== 'user');
+
+          const keepName = createCliAutoSuffixNameGuard(teammateNames);
+          const nextMembers: Record<string, unknown>[] = [];
+          for (const m of membersRaw) {
+            const name = typeof m.name === 'string' ? m.name.trim() : '';
+            const agentType = typeof m.agentType === 'string' ? m.agentType : '';
+            if (!name) continue;
+            if (agentType === 'team-lead' || name === 'team-lead' || name === 'user') {
+              nextMembers.push(m);
+              continue;
+            }
+            if (!keepName(name)) {
+              removedFromConfig.push(name);
+              continue;
+            }
+            nextMembers.push(m);
+          }
+
+          if (removedFromConfig.length > 0) {
+            parsed.members = nextMembers;
+            await atomicWriteAsync(configPath, JSON.stringify(parsed, null, 2));
+            logger.warn(
+              `[${teamName}] Removed CLI auto-suffixed members from config.json: ${removedFromConfig.join(', ')}`
+            );
+          }
+        }
+      }
+    } catch {
+      // best-effort
+    }
+
+    let activeNamesForInboxCleanup: Set<string> = new Set();
+    try {
+      const metaMembers = await this.membersMetaStore.getMembers(teamName);
+      if (metaMembers.length > 0) {
+        const activeNames = metaMembers
+          .filter((m) => !m.removedAt)
+          .map((m) => m.name.trim())
+          .filter((n) => n.length > 0 && n.toLowerCase() !== 'team-lead' && n.toLowerCase() !== 'user');
+
+        const keepName = createCliAutoSuffixNameGuard(activeNames);
+        const removedFromMeta: string[] = [];
+        const nextMeta = metaMembers.filter((m) => {
+          const name = m.name?.trim() ?? '';
+          if (!name) return false;
+          const lower = name.toLowerCase();
+          if (lower === 'team-lead' || lower === 'user' || m.agentType === 'team-lead') return true;
+          if (!m.removedAt && !keepName(name)) {
+            removedFromMeta.push(name);
+            return false;
+          }
+          return true;
+        });
+
+        if (removedFromMeta.length > 0) {
+          await this.membersMetaStore.writeMembers(teamName, nextMeta);
+          logger.warn(
+            `[${teamName}] Removed CLI auto-suffixed members from members.meta.json: ${removedFromMeta.join(', ')}`
+          );
+        }
+
+        activeNamesForInboxCleanup = new Set(
+          nextMeta
+            .filter((m) => !m.removedAt)
+            .map((m) => m.name.trim())
+            .filter((n) => n.length > 0 && n.toLowerCase() !== 'team-lead' && n.toLowerCase() !== 'user')
+        );
+      }
+    } catch {
+      // best-effort
+    }
+
+    // Also attempt inbox cleanup (merge alice-2.json into alice.json).
+    if (activeNamesForInboxCleanup.size > 0) {
+      try {
+        await this.mergeAndRemoveDuplicateInboxes(teamName, activeNamesForInboxCleanup);
+      } catch {
+        // best-effort
+      }
+    }
+  }
+
   /**
    * Fallback: scan the project directory for the newest JSONL file
    * that isn't already in sessionHistory. Returns the session ID or null.
@@ -3930,6 +4042,55 @@ export class TeamProvisioningService {
       return newest?.id ?? null;
     } catch {
       return null;
+    }
+  }
+
+  private async assertConfigLeadOnlyForLaunch(teamName: string): Promise<void> {
+    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
+    const raw = await tryReadRegularFileUtf8(configPath, {
+      timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
+      maxBytes: TEAM_CONFIG_MAX_BYTES,
+    });
+    if (!raw) {
+      throw new Error('config.json unreadable');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      throw new Error('config.json could not be parsed');
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('config.json has invalid shape');
+    }
+
+    const config = parsed as Record<string, unknown>;
+    const members = Array.isArray(config.members)
+      ? (config.members as Record<string, unknown>[])
+      : [];
+    if (members.length === 0) return;
+
+    for (const member of members) {
+      const name = typeof member.name === 'string' ? member.name.trim() : '';
+      if (!name) continue;
+      const lower = name.toLowerCase();
+      const agentType = typeof member.agentType === 'string' ? member.agentType : '';
+
+      if (agentType === 'team-lead' || lower === 'team-lead' || lower === 'user') continue;
+
+      const leadAgentId = config.leadAgentId;
+      if (
+        typeof leadAgentId === 'string' &&
+        typeof member.agentId === 'string' &&
+        member.agentId === leadAgentId
+      ) {
+        continue;
+      }
+
+      throw new Error(
+        `Refusing to launch: config.json still contains teammates (e.g. "${name}"), which can trigger CLI auto-suffixes like "${name}-2".`
+      );
     }
   }
 
@@ -4287,6 +4448,14 @@ export class TeamProvisioningService {
           });
         }
       }
+      // Defense: ignore CLI auto-suffixed duplicates (alice-2) when base name exists.
+      const allNames = Array.from(byName.keys());
+      const keepName = createCliAutoSuffixNameGuard(allNames);
+      for (const name of allNames) {
+        if (!keepName(name)) {
+          byName.delete(name);
+        }
+      }
       const members = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
       if (members.length > 0) {
         return { members, source: 'members-meta' };
@@ -4385,6 +4554,14 @@ export class TeamProvisioningService {
         const name = rawName;
         if (!name) continue;
         byName.set(name, { name });
+      }
+      // Defense: ignore CLI auto-suffixed duplicates (alice-2) when base name exists.
+      const allNames = Array.from(byName.keys());
+      const keepName = createCliAutoSuffixNameGuard(allNames);
+      for (const name of allNames) {
+        if (!keepName(name)) {
+          byName.delete(name);
+        }
       }
       return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
     } catch {
