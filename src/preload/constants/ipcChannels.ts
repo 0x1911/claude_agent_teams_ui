@@ -358,6 +358,12 @@ export const TEAM_GET_TASK_ATTACHMENT = 'team:getTaskAttachment';
 /** Delete an attachment from a task */
 export const TEAM_DELETE_TASK_ATTACHMENT = 'team:deleteTaskAttachment';
 
+/** Push event: tool approval request or dismissal (main → renderer) */
+export const TEAM_TOOL_APPROVAL_EVENT = 'team:toolApprovalEvent';
+
+/** Invoke: respond to a tool approval request (renderer → main) */
+export const TEAM_TOOL_APPROVAL_RESPOND = 'team:toolApprovalRespond';
+
 // =============================================================================
 // CLI Installer API Channels
 // =============================================================================

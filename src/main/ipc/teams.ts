@@ -48,6 +48,7 @@ import {
   TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
   TEAM_STOP,
+  TEAM_TOOL_APPROVAL_RESPOND,
   TEAM_UPDATE_CONFIG,
   TEAM_UPDATE_KANBAN,
   TEAM_UPDATE_KANBAN_COLUMN_ORDER,
@@ -247,6 +248,7 @@ export function registerTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(TEAM_SAVE_TASK_ATTACHMENT, handleSaveTaskAttachment);
   ipcMain.handle(TEAM_GET_TASK_ATTACHMENT, handleGetTaskAttachment);
   ipcMain.handle(TEAM_DELETE_TASK_ATTACHMENT, handleDeleteTaskAttachment);
+  ipcMain.handle(TEAM_TOOL_APPROVAL_RESPOND, handleToolApprovalRespond);
   logger.info('Team handlers registered');
 }
 
@@ -301,6 +303,7 @@ export function removeTeamHandlers(ipcMain: IpcMain): void {
   ipcMain.removeHandler(TEAM_SAVE_TASK_ATTACHMENT);
   ipcMain.removeHandler(TEAM_GET_TASK_ATTACHMENT);
   ipcMain.removeHandler(TEAM_DELETE_TASK_ATTACHMENT);
+  ipcMain.removeHandler(TEAM_TOOL_APPROVAL_RESPOND);
 }
 
 function getTeamDataService(): TeamDataService {
@@ -642,6 +645,8 @@ async function validateProvisioningRequest(
       cwd,
       prompt: typeof payload.prompt === 'string' ? payload.prompt.trim() || undefined : undefined,
       model: typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined,
+      skipPermissions:
+        typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
     },
   };
 }
@@ -747,6 +752,8 @@ async function handleLaunchTeam(
         prompt: typeof payload.prompt === 'string' ? payload.prompt.trim() || undefined : undefined,
         model: typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined,
         clearContext: payload.clearContext === true ? true : undefined,
+        skipPermissions:
+          typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
       },
       (progress) => {
         try {
@@ -2238,4 +2245,36 @@ async function handleDeleteTaskAttachment(
     // Remove metadata from task JSON
     await getTeamDataService().removeTaskAttachment(vTeam.value!, vTask.value!, safeAttId);
   });
+}
+
+async function handleToolApprovalRespond(
+  _event: IpcMainInvokeEvent,
+  teamName: unknown,
+  runId: unknown,
+  requestId: unknown,
+  allow: unknown,
+  message?: unknown
+): Promise<IpcResult<void>> {
+  const validated = validateTeamName(teamName);
+  if (!validated.valid) {
+    return { success: false, error: validated.error ?? 'Invalid teamName' };
+  }
+  if (typeof runId !== 'string' || runId.trim().length === 0) {
+    return { success: false, error: 'runId must be a non-empty string' };
+  }
+  if (typeof requestId !== 'string' || requestId.trim().length === 0) {
+    return { success: false, error: 'requestId must be a non-empty string' };
+  }
+  if (typeof allow !== 'boolean') {
+    return { success: false, error: 'allow must be a boolean' };
+  }
+  return wrapTeamHandler('toolApprovalRespond', () =>
+    getTeamProvisioningService().respondToToolApproval(
+      validated.value!,
+      runId,
+      requestId,
+      allow,
+      typeof message === 'string' ? message : undefined
+    )
+  );
 }

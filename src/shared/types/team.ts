@@ -303,6 +303,8 @@ export interface TeamLaunchRequest {
   model?: string;
   /** When true, skip --resume and start a fresh session (clears context memory). */
   clearContext?: boolean;
+  /** When false, run WITHOUT --dangerously-skip-permissions (manual tool approval). Default: true. */
+  skipPermissions?: boolean;
 }
 
 export interface TeamLaunchResponse {
@@ -383,6 +385,8 @@ export interface TeamCreateRequest {
   cwd: string;
   prompt?: string;
   model?: string;
+  /** When false, run WITHOUT --dangerously-skip-permissions (manual tool approval). Default: true. */
+  skipPermissions?: boolean;
 }
 
 export interface TeamCreateConfigRequest {
@@ -519,3 +523,34 @@ export interface TeamMessageNotificationData {
   /** Optional sender color for visual context. */
   color?: string;
 }
+
+// =============================================================================
+// Tool Approval (control_request / control_response protocol)
+// =============================================================================
+
+/** A pending tool approval request from the CLI control_request protocol. */
+export interface ToolApprovalRequest {
+  requestId: string;
+  /** Run ID — prevents stale approvals after stop→launch race. */
+  runId: string;
+  teamName: string;
+  /** Which process sent this (e.g. 'lead'). */
+  source: string;
+  /** Tool name: 'Bash', 'Edit', 'Write', 'Read', etc. */
+  toolName: string;
+  /** Tool input parameters (e.g. { command: "ls" } for Bash). */
+  toolInput: Record<string, unknown>;
+  /** ISO timestamp when the request was received. */
+  receivedAt: string;
+}
+
+/** Dismissal event — process died, all pending approvals for this team+run should be removed. */
+export interface ToolApprovalDismiss {
+  dismissed: true;
+  teamName: string;
+  /** Only dismiss approvals from this specific run. */
+  runId: string;
+}
+
+/** Union of approval events pushed from main to renderer. */
+export type ToolApprovalEvent = ToolApprovalRequest | ToolApprovalDismiss;

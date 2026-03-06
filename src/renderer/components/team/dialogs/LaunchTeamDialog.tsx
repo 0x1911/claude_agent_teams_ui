@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import { api } from '@renderer/api';
 import { ExtendedContextCheckbox } from '@renderer/components/team/dialogs/ExtendedContextCheckbox';
+import { SkipPermissionsCheckbox } from '@renderer/components/team/dialogs/SkipPermissionsCheckbox';
 import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import {
@@ -78,6 +79,9 @@ export const LaunchTeamDialog = ({
   const [extendedContext, setExtendedContextRaw] = useState(
     () => localStorage.getItem('team:lastExtendedContext') === 'true'
   );
+  const [skipPermissions, setSkipPermissionsRaw] = useState(
+    () => localStorage.getItem('team:lastSkipPermissions') !== 'false'
+  );
   const [clearContext, setClearContext] = useState(false);
   const [conflictDismissed, setConflictDismissed] = useState(false);
 
@@ -89,6 +93,11 @@ export const LaunchTeamDialog = ({
   const setExtendedContext = (value: boolean): void => {
     setExtendedContextRaw(value);
     localStorage.setItem('team:lastExtendedContext', String(value));
+  };
+
+  const setSkipPermissions = (value: boolean): void => {
+    setSkipPermissionsRaw(value);
+    localStorage.setItem('team:lastSkipPermissions', String(value));
   };
 
   const resetFormState = (): void => {
@@ -283,6 +292,7 @@ export const LaunchTeamDialog = ({
           prompt: promptDraft.value.trim() || undefined,
           model: computeEffectiveTeamModel(selectedModel, extendedContext),
           clearContext: clearContext || undefined,
+          skipPermissions,
         });
         resetFormState();
         onClose();
@@ -430,6 +440,11 @@ export const LaunchTeamDialog = ({
               checked={extendedContext}
               onCheckedChange={setExtendedContext}
               disabled={selectedModel === 'haiku'}
+            />
+            <SkipPermissionsCheckbox
+              id="launch-skip-permissions"
+              checked={skipPermissions}
+              onCheckedChange={setSkipPermissions}
             />
           </div>
 

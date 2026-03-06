@@ -81,6 +81,7 @@ import type {
   TeamSummary,
   TeamTask,
   TeamTaskStatus,
+  ToolApprovalRequest,
   UpdateKanbanPatch,
 } from '@shared/types';
 import type { StateCreator } from 'zustand';
@@ -353,6 +354,14 @@ export interface TeamSlice {
   onProvisioningProgress: (progress: TeamProvisioningProgress) => void;
   subscribeProvisioningProgress: () => void;
   unsubscribeProvisioningProgress: () => void;
+  pendingApprovals: ToolApprovalRequest[];
+  respondToToolApproval: (
+    teamName: string,
+    runId: string,
+    requestId: string,
+    allow: boolean,
+    message?: string
+  ) => Promise<void>;
 }
 
 export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, get) => ({
@@ -394,6 +403,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   provisioningProgressUnsubscribe: null,
   deletedTasks: [],
   deletedTasksLoading: false,
+  pendingApprovals: [],
 
   fetchBranches: async (paths: string[]) => {
     const results: Record<string, string | null> = {};
@@ -1156,6 +1166,21 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       get().onProvisioningProgress(progress);
     });
     set({ provisioningProgressUnsubscribe: unsubscribe });
+  },
+
+  respondToToolApproval: async (teamName, runId, requestId, allow, message) => {
+    try {
+      await api.teams.respondToToolApproval(teamName, runId, requestId, allow, message);
+      // Remove ONLY after successful IPC, by runId+requestId pair
+      set((s) => ({
+        pendingApprovals: s.pendingApprovals.filter(
+          (a) => !(a.runId === runId && a.requestId === requestId)
+        ),
+      }));
+    } catch {
+      // IPC failed — approval stays in UI, user can retry
+      // Do NOT modify pendingApprovals — nothing was removed, nothing to rollback
+    }
   },
 
   unsubscribeProvisioningProgress: () => {

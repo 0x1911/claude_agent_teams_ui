@@ -32,6 +32,7 @@ import { AlertTriangle, CheckCircle2, Info, Loader2, X } from 'lucide-react';
 
 import { ExtendedContextCheckbox } from './ExtendedContextCheckbox';
 import { ProjectPathSelector } from './ProjectPathSelector';
+import { SkipPermissionsCheckbox } from './SkipPermissionsCheckbox';
 import { computeEffectiveTeamModel, TeamModelSelector } from './TeamModelSelector';
 
 import type { MemberDraft } from '@renderer/components/team/members/membersEditorTypes';
@@ -233,6 +234,9 @@ export const CreateTeamDialog = ({
   const [extendedContext, setExtendedContextRaw] = useState(
     () => localStorage.getItem('team:lastExtendedContext') === 'true'
   );
+  const [skipPermissions, setSkipPermissionsRaw] = useState(
+    () => localStorage.getItem('team:lastSkipPermissions') !== 'false'
+  );
 
   const setSelectedModel = (value: string): void => {
     setSelectedModelRaw(value);
@@ -242,6 +246,11 @@ export const CreateTeamDialog = ({
   const setExtendedContext = (value: boolean): void => {
     setExtendedContextRaw(value);
     localStorage.setItem('team:lastExtendedContext', String(value));
+  };
+
+  const setSkipPermissions = (value: boolean): void => {
+    setSkipPermissionsRaw(value);
+    localStorage.setItem('team:lastSkipPermissions', String(value));
   };
 
   const resetUIState = (): void => {
@@ -473,6 +482,7 @@ export const CreateTeamDialog = ({
       cwd: effectiveCwd,
       prompt: prompt.trim() || undefined,
       model: effectiveModel,
+      skipPermissions,
     }),
     [
       sanitizedTeamName,
@@ -483,6 +493,7 @@ export const CreateTeamDialog = ({
       effectiveCwd,
       prompt,
       effectiveModel,
+      skipPermissions,
     ]
   );
 
@@ -801,6 +812,13 @@ export const CreateTeamDialog = ({
                     onCheckedChange={setExtendedContext}
                     disabled={selectedModel === 'haiku'}
                   />
+                  {launchTeam && (
+                    <SkipPermissionsCheckbox
+                      id="create-skip-permissions"
+                      checked={skipPermissions}
+                      onCheckedChange={setSkipPermissions}
+                    />
+                  )}
                 </div>
 
                 {canCreate && (prepareState === 'idle' || prepareState === 'loading') ? (

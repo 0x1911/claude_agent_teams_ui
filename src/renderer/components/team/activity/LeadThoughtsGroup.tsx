@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
@@ -86,6 +86,8 @@ interface LeadThoughtsGroupRowProps {
   canBeLive?: boolean;
   /** When true, apply a subtle lighter background for zebra-striped lists. */
   zebraShade?: boolean;
+  /** When true, collapse the thought body — show only the header with expand chevron. */
+  forceCollapsed?: boolean;
 }
 
 function formatTime(timestamp: string): string {
@@ -343,6 +345,7 @@ export const LeadThoughtsGroupRow = ({
   onVisible,
   canBeLive,
   zebraShade,
+  forceCollapsed,
 }: LeadThoughtsGroupRowProps): React.JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -406,6 +409,17 @@ export const LeadThoughtsGroupRow = ({
   const [isLive, setIsLive] = useState(computeIsLive);
   const [expanded, setExpanded] = useState(false);
   const [needsTruncation, setNeedsTruncation] = useState(false);
+  const [isBodyVisible, setIsBodyVisible] = useState(!forceCollapsed);
+
+  // Sync body visibility when the global collapse mode toggles (skip initial mount)
+  const isFirstRenderRef = useRef(false);
+  useEffect(() => {
+    if (!isFirstRenderRef.current) {
+      isFirstRenderRef.current = true;
+      return;
+    }
+    setIsBodyVisible(!forceCollapsed);
+  }, [forceCollapsed]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional immediate sync to avoid 1s stale gap
@@ -505,7 +519,36 @@ export const LeadThoughtsGroupRow = ({
         }}
       >
         {/* Header */}
-        <div className="flex select-none items-center gap-2 px-3 py-1.5">
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- role=button + tabIndex + onKeyDown below; nested tooltips prevent native button */}
+        <div
+          role={forceCollapsed === true ? 'button' : undefined}
+          tabIndex={forceCollapsed === true ? 0 : undefined}
+          className={[
+            'flex select-none items-center gap-2 px-3 py-1.5',
+            forceCollapsed === true ? 'cursor-pointer' : '',
+          ].join(' ')}
+          onClick={forceCollapsed === true ? () => setIsBodyVisible((v) => !v) : undefined}
+          onKeyDown={
+            forceCollapsed === true
+              ? (e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setIsBodyVisible((v) => !v);
+                  }
+                }
+              : undefined
+          }
+        >
+          {/* Chevron for collapse mode */}
+          {forceCollapsed === true ? (
+            <ChevronRight
+              className="size-3 shrink-0 transition-transform duration-150"
+              style={{
+                color: CARD_ICON_MUTED,
+                transform: isBodyVisible ? 'rotate(90deg)' : undefined,
+              }}
+            />
+          ) : null}
           {/* Live / offline indicator */}
           {isLive ? (
             <span className="pointer-events-none relative inline-flex size-2 shrink-0">
@@ -542,34 +585,36 @@ export const LeadThoughtsGroupRow = ({
         </div>
 
         {/* Scrollable body — live thoughts follow bottom unless user scrolls up */}
-        <div
-          ref={scrollRef}
-          className="border-t"
-          style={{
-            borderColor: 'var(--color-border-subtle)',
-            maxHeight: expanded || !needsTruncation ? 'none' : `${COLLAPSED_THOUGHTS_HEIGHT}px`,
-            overflowY: expanded ? 'visible' : needsTruncation ? 'auto' : 'hidden',
-            scrollbarWidth: expanded || !needsTruncation ? undefined : 'thin',
-            scrollbarColor:
-              expanded || !needsTruncation ? undefined : 'var(--scrollbar-thumb) transparent',
-            overflowAnchor: 'none',
-            overscrollBehavior: 'contain',
-          }}
-          onScroll={handleScroll}
-        >
-          <div ref={contentRef}>
-            {chronologicalThoughts.map((thought, idx) => (
-              <LeadThoughtItem
-                key={thought.messageId ?? idx}
-                thought={thought}
-                showDivider={idx > 0}
-                shouldAnimate={isLive && idx === chronologicalThoughts.length - 1}
-              />
-            ))}
+        {isBodyVisible ? (
+          <div
+            ref={scrollRef}
+            className="border-t"
+            style={{
+              borderColor: 'var(--color-border-subtle)',
+              maxHeight: expanded || !needsTruncation ? 'none' : `${COLLAPSED_THOUGHTS_HEIGHT}px`,
+              overflowY: expanded ? 'visible' : needsTruncation ? 'auto' : 'hidden',
+              scrollbarWidth: expanded || !needsTruncation ? undefined : 'thin',
+              scrollbarColor:
+                expanded || !needsTruncation ? undefined : 'var(--scrollbar-thumb) transparent',
+              overflowAnchor: 'none',
+              overscrollBehavior: 'contain',
+            }}
+            onScroll={handleScroll}
+          >
+            <div ref={contentRef}>
+              {chronologicalThoughts.map((thought, idx) => (
+                <LeadThoughtItem
+                  key={thought.messageId ?? idx}
+                  thought={thought}
+                  showDivider={idx > 0}
+                  shouldAnimate={isLive && idx === chronologicalThoughts.length - 1}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
       </article>
-      {!expanded && needsTruncation ? (
+      {isBodyVisible && !expanded && needsTruncation ? (
         <div className="flex justify-center pt-1" style={{ transform: 'translateY(-20px)' }}>
           <button
             type="button"
@@ -584,7 +629,7 @@ export const LeadThoughtsGroupRow = ({
           </button>
         </div>
       ) : null}
-      {expanded && needsTruncation ? (
+      {isBodyVisible && expanded && needsTruncation ? (
         <div
           className="sticky bottom-0 z-10 flex justify-center pb-1 pt-2"
           style={{ transform: 'translateY(-20px)' }}

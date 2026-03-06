@@ -50,6 +50,8 @@ import type {
   TeamProvisioningProgress,
   TeamProvisioningState,
   TeamTask,
+  ToolApprovalEvent,
+  ToolApprovalRequest,
   ToolCallMeta,
 } from '@shared/types';
 
@@ -201,6 +203,8 @@ interface ProvisioningRun {
     env: NodeJS.ProcessEnv;
     prompt: string;
   } | null;
+  /** Pending tool approval requests awaiting user response (control_request protocol). */
+  pendingApprovals: Map<string, ToolApprovalRequest>;
 }
 
 type LeadActivityState = 'active' | 'idle' | 'offline';
@@ -1163,6 +1167,16 @@ export class TeamProvisioningService {
     this.teamChangeEmitter = emitter;
   }
 
+  private toolApprovalEventEmitter: ((event: ToolApprovalEvent) => void) | null = null;
+
+  setToolApprovalEventEmitter(emitter: (event: ToolApprovalEvent) => void): void {
+    this.toolApprovalEventEmitter = emitter;
+  }
+
+  private emitToolApprovalEvent(event: ToolApprovalEvent): void {
+    this.toolApprovalEventEmitter?.(event);
+  }
+
   getLiveLeadProcessMessages(teamName: string): InboxMessage[] {
     return [...(this.liveLeadProcessMessages.get(teamName) ?? [])];
   }
@@ -1759,6 +1773,7 @@ export class TeamProvisioningService {
         authFailureRetried: false,
         authRetryInProgress: false,
         spawnContext: null,
+        pendingApprovals: new Map(),
         progress: {
           runId,
           teamName: request.teamName,
@@ -1787,7 +1802,7 @@ export class TeamProvisioningService {
         'user,project,local',
         '--disallowedTools',
         'TeamDelete,TodoWrite',
-        '--dangerously-skip-permissions',
+        ...(request.skipPermissions !== false ? ['--dangerously-skip-permissions'] : []),
         ...(request.model ? ['--model', request.model] : []),
       ];
       try {
@@ -2018,6 +2033,7 @@ export class TeamProvisioningService {
         teamName: request.teamName,
         members: expectedMemberSpecs,
         cwd: request.cwd,
+        skipPermissions: request.skipPermissions,
       };
 
       const run: ProvisioningRun = {
@@ -2059,6 +2075,7 @@ export class TeamProvisioningService {
         authFailureRetried: false,
         authRetryInProgress: false,
         spawnContext: null,
+        pendingApprovals: new Map(),
         progress: {
           runId,
           teamName: request.teamName,
@@ -2109,7 +2126,7 @@ export class TeamProvisioningService {
         'user,project,local',
         '--disallowedTools',
         'TeamDelete,TodoWrite',
-        '--dangerously-skip-permissions',
+        ...(request.skipPermissions !== false ? ['--dangerously-skip-permissions'] : []),
       ];
       if (previousSessionId) {
         launchArgs.push('--resume', previousSessionId);
@@ -3033,6 +3050,12 @@ export class TeamProvisioningService {
       }
     }
 
+    // Handle control_request — tool approval protocol (only when --dangerously-skip-permissions is NOT set)
+    if (msg.type === 'control_request') {
+      this.handleControlRequest(run, msg);
+      return;
+    }
+
     if (msg.type === 'result') {
       const subtype =
         typeof msg.subtype === 'string'
@@ -3195,6 +3218,107 @@ export class TeamProvisioningService {
         );
       }
     }
+  }
+
+  /**
+   * Handles a control_request message from CLI stream-json output.
+   * Only `can_use_tool` subtype is processed — others are logged and ignored.
+   */
+  private handleControlRequest(run: ProvisioningRun, msg: Record<string, unknown>): void {
+    const requestId = typeof msg.request_id === 'string' ? msg.request_id : null;
+    if (!requestId) {
+      logger.warn(`[${run.teamName}] control_request missing request_id, ignoring`);
+      return;
+    }
+
+    const request = msg.request as Record<string, unknown> | undefined;
+    const subtype = request?.subtype;
+    if (subtype !== 'can_use_tool') {
+      logger.debug(
+        `[${run.teamName}] control_request subtype=${String(subtype)}, ignoring (only can_use_tool supported)`
+      );
+      return;
+    }
+
+    const toolName = typeof request?.tool_name === 'string' ? request.tool_name : 'Unknown';
+    const toolInput = (request?.input ?? {}) as Record<string, unknown>;
+
+    const approval: ToolApprovalRequest = {
+      requestId,
+      runId: run.runId,
+      teamName: run.teamName,
+      source: 'lead',
+      toolName,
+      toolInput,
+      receivedAt: new Date().toISOString(),
+    };
+
+    run.pendingApprovals.set(requestId, approval);
+    this.emitToolApprovalEvent(approval);
+  }
+
+  /**
+   * Respond to a pending tool approval — sends control_response to CLI stdin.
+   * Validates runId match and requestId existence before writing.
+   */
+  async respondToToolApproval(
+    teamName: string,
+    runId: string,
+    requestId: string,
+    allow: boolean,
+    message?: string
+  ): Promise<void> {
+    const currentRunId = this.activeByTeam.get(teamName);
+    if (!currentRunId) throw new Error(`No active process for team "${teamName}"`);
+    const run = this.runs.get(currentRunId);
+    if (!run) throw new Error(`Run not found for team "${teamName}"`);
+
+    if (run.runId !== runId) {
+      throw new Error(`Stale approval: runId mismatch (expected ${run.runId}, got ${runId})`);
+    }
+
+    if (!run.pendingApprovals.has(requestId)) {
+      throw new Error(`No pending approval with requestId "${requestId}"`);
+    }
+
+    if (!run.child?.stdin?.writable) {
+      throw new Error(`Team "${teamName}" process stdin is not writable`);
+    }
+
+    // IMPORTANT: request_id is NESTED inside response, NOT top-level
+    // (asymmetry with control_request — confirmed by Python SDK, Elixir SDK and issue #29991)
+    const response = allow
+      ? {
+          type: 'control_response',
+          response: {
+            subtype: 'success',
+            request_id: requestId,
+            response: { behavior: 'allow' },
+          },
+        }
+      : {
+          type: 'control_response',
+          response: {
+            subtype: 'success',
+            request_id: requestId,
+            response: { behavior: 'deny', message: message ?? 'User denied' },
+          },
+        };
+
+    const stdin = run.child.stdin;
+    await new Promise<void>((resolve, reject) => {
+      stdin.write(JSON.stringify(response) + '\n', (err) => {
+        if (err) {
+          logger.error(`[${teamName}] Failed to write control_response: ${err.message}`);
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    // Only delete AFTER successful write
+    run.pendingApprovals.delete(requestId);
   }
 
   /**
@@ -3402,6 +3526,11 @@ export class TeamProvisioningService {
     this.relayedLeadInboxMessageIds.delete(run.teamName);
     this.relayedLeadInboxFallbackKeys.delete(run.teamName);
     this.liveLeadProcessMessages.delete(run.teamName);
+    // Dismiss any pending tool approvals for this run
+    if (run.pendingApprovals.size > 0) {
+      this.emitToolApprovalEvent({ dismissed: true, teamName: run.teamName, runId: run.runId });
+      run.pendingApprovals.clear();
+    }
     // Remove from runs Map to free memory (stdoutBuffer, stderrBuffer, claudeLogLines)
     this.runs.delete(run.runId);
   }

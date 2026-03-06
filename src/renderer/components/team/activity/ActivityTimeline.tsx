@@ -315,6 +315,7 @@ export const ActivityTimeline = ({
               isNew={newItemKeys.has(itemKey)}
               onVisible={onMessageVisible}
               zebraShade={zebraShadeSet.has(0)}
+              forceCollapsed={allCollapsed}
             />
           );
         })()}
@@ -357,6 +358,7 @@ export const ActivityTimeline = ({
                 isNew={newItemKeys.has(itemKey)}
                 onVisible={onMessageVisible}
                 zebraShade={zebraShadeSet.has(realIndex)}
+                forceCollapsed={allCollapsed}
               />
             </React.Fragment>
           );

@@ -6,6 +6,7 @@ import { ConfirmDialog } from './components/common/ConfirmDialog';
 import { ContextSwitchOverlay } from './components/common/ContextSwitchOverlay';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { TabbedLayout } from './components/layout/TabbedLayout';
+import { ToolApprovalSheet } from './components/team/ToolApprovalSheet';
 import { useTheme } from './hooks/useTheme';
 import { api } from './api';
 import { useStore } from './store';
@@ -40,6 +41,7 @@ export const App = (): React.JSX.Element => {
         <ContextSwitchOverlay />
         <TabbedLayout />
         <ConfirmDialog />
+        <ToolApprovalSheet />
       </TooltipProvider>
     </ErrorBoundary>
   );

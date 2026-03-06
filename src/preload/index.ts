@@ -103,6 +103,8 @@ import {
   TEAM_SOFT_DELETE_TASK,
   TEAM_START_TASK,
   TEAM_STOP,
+  TEAM_TOOL_APPROVAL_EVENT,
+  TEAM_TOOL_APPROVAL_RESPOND,
   TEAM_UPDATE_CONFIG,
   TEAM_UPDATE_KANBAN,
   TEAM_UPDATE_KANBAN_COLUMN_ORDER,
@@ -214,6 +216,7 @@ import type {
   TeamTask,
   TeamTaskStatus,
   TeamUpdateConfigRequest,
+  ToolApprovalEvent,
   TriggerTestResult,
   UpdateKanbanPatch,
   WslClaudeRootCandidate,
@@ -971,6 +974,36 @@ const electronAPI: ElectronAPI = {
       return (): void => {
         ipcRenderer.removeListener(
           TEAM_PROVISIONING_PROGRESS,
+          callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
+        );
+      };
+    },
+    respondToToolApproval: async (
+      teamName: string,
+      runId: string,
+      requestId: string,
+      allow: boolean,
+      message?: string
+    ) => {
+      return invokeIpcWithResult<void>(
+        TEAM_TOOL_APPROVAL_RESPOND,
+        teamName,
+        runId,
+        requestId,
+        allow,
+        message
+      );
+    },
+    onToolApprovalEvent: (
+      callback: (event: unknown, data: ToolApprovalEvent) => void
+    ): (() => void) => {
+      ipcRenderer.on(
+        TEAM_TOOL_APPROVAL_EVENT,
+        callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
+      );
+      return (): void => {
+        ipcRenderer.removeListener(
+          TEAM_TOOL_APPROVAL_EVENT,
           callback as (event: Electron.IpcRendererEvent, ...args: unknown[]) => void
         );
       };

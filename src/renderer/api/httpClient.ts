@@ -884,6 +884,12 @@ export class HttpAPIClient implements ElectronAPI {
     ): (() => void) => {
       return () => {};
     },
+    respondToToolApproval: async (): Promise<void> => {
+      throw new Error('Tool approval not available in browser mode');
+    },
+    onToolApprovalEvent: (): (() => void) => {
+      return () => {};
+    },
   };
 
   // Review API stubs

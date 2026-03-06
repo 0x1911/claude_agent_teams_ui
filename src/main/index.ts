@@ -24,6 +24,7 @@ import {
   CONTEXT_CHANGED,
   SSH_STATUS,
   TEAM_CHANGE,
+  TEAM_TOOL_APPROVAL_EVENT,
   WINDOW_FULLSCREEN_CHANGED,
   // eslint-disable-next-line boundaries/element-types -- IPC channel constants shared between main and preload
 } from '@preload/constants/ipcChannels';
@@ -633,6 +634,12 @@ function initializeServices(): void {
     httpServer?.broadcast('team-change', event);
   };
   teamProvisioningService.setTeamChangeEmitter(teamChangeEmitter);
+
+  teamProvisioningService.setToolApprovalEventEmitter((event) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(TEAM_TOOL_APPROVAL_EVENT, event);
+    }
+  });
 
   // startProcessHealthPolling() is deferred to after window creation
   // (did-finish-load handler) to avoid thread pool contention at startup.

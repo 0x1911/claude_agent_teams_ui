@@ -60,6 +60,7 @@ import type {
   TeamTask,
   TeamTaskStatus,
   TeamUpdateConfigRequest,
+  ToolApprovalEvent,
   UpdateKanbanPatch,
 } from './team';
 import type { TerminalAPI } from './terminal';
@@ -510,6 +511,14 @@ export interface TeamsAPI {
   onProvisioningProgress: (
     callback: (event: unknown, data: TeamProvisioningProgress) => void
   ) => () => void;
+  respondToToolApproval: (
+    teamName: string,
+    runId: string,
+    requestId: string,
+    allow: boolean,
+    message?: string
+  ) => Promise<void>;
+  onToolApprovalEvent: (callback: (event: unknown, data: ToolApprovalEvent) => void) => () => void;
 }
 
 // =============================================================================
