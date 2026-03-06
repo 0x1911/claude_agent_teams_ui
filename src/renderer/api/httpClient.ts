@@ -249,11 +249,15 @@ export class HttpAPIClient implements ElectronAPI {
   getSessionDetail = (
     projectId: string,
     sessionId: string,
-    _options?: { bypassCache?: boolean }
-  ): Promise<SessionDetail | null> =>
-    this.get<SessionDetail | null>(
-      `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}`
+    options?: { bypassCache?: boolean }
+  ): Promise<SessionDetail | null> => {
+    const params = new URLSearchParams();
+    if (options?.bypassCache) params.set('bypassCache', 'true');
+    const qs = params.toString();
+    return this.get<SessionDetail | null>(
+      `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}${qs ? `?${qs}` : ''}`
     );
+  };
 
   getSessionMetrics = (projectId: string, sessionId: string): Promise<SessionMetrics | null> =>
     this.get<SessionMetrics | null>(
@@ -269,11 +273,15 @@ export class HttpAPIClient implements ElectronAPI {
     projectId: string,
     sessionId: string,
     subagentId: string,
-    _options?: { bypassCache?: boolean }
-  ): Promise<SubagentDetail | null> =>
-    this.get<SubagentDetail | null>(
-      `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}`
+    options?: { bypassCache?: boolean }
+  ): Promise<SubagentDetail | null> => {
+    const params = new URLSearchParams();
+    if (options?.bypassCache) params.set('bypassCache', 'true');
+    const qs = params.toString();
+    return this.get<SubagentDetail | null>(
+      `/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(subagentId)}${qs ? `?${qs}` : ''}`
     );
+  };
 
   getSessionGroups = (projectId: string, sessionId: string): Promise<ConversationGroup[]> =>
     this.get<ConversationGroup[]>(

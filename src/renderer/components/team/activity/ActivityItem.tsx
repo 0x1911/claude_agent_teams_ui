@@ -157,8 +157,8 @@ const AUTH_ERROR_PATTERNS = [
 // ---------------------------------------------------------------------------
 
 /** Convert `#<digits>` in plain text to markdown links with task:// protocol. */
-function linkifyTaskIdsInMarkdown(text: string): string {
-  return text.replace(/#(\d+)/g, '[#$1](task://$1)');
+export function linkifyTaskIdsInMarkdown(text: string): string {
+  return text.replace(/#(\d+)\b/g, '[#$1](task://$1)');
 }
 
 /**
@@ -166,7 +166,10 @@ function linkifyTaskIdsInMarkdown(text: string): string {
  * Encodes color in the URL so MarkdownViewer can render colored badges without extra context.
  * Greedy match: longer names are tried first to avoid partial matches.
  */
-function linkifyMentionsInMarkdown(text: string, memberColorMap: Map<string, string>): string {
+export function linkifyMentionsInMarkdown(
+  text: string,
+  memberColorMap: Map<string, string>
+): string {
   if (memberColorMap.size === 0) return text;
   // Sort by name length descending for greedy matching
   const names = [...memberColorMap.keys()].sort((a, b) => b.length - a.length);
@@ -182,7 +185,7 @@ function linkifyMentionsInMarkdown(text: string, memberColorMap: Map<string, str
 }
 /** Render `#<digits>` in plain text as clickable inline elements with TaskTooltip. */
 function linkifyTaskIds(text: string, onClick: (taskId: string) => void): React.ReactNode[] {
-  return text.split(/(#\d+)/g).map((part, i) => {
+  return text.split(/(#\d+\b)/g).map((part, i) => {
     const match = /^#(\d+)$/.exec(part);
     if (!match) return <span key={i}>{part}</span>;
     const taskId = match[1];

@@ -76,7 +76,6 @@ export const MemberLogsTab = ({
   const refreshHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const expandedIdRef = useRef<string | null>(null);
   const [detailChunks, setDetailChunks] = useState<EnhancedChunk[] | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [previewChunks, setPreviewChunks] = useState<EnhancedChunk[] | null>(null);
@@ -91,10 +90,6 @@ export const MemberLogsTab = ({
       }
     };
   }, []);
-
-  useEffect(() => {
-    expandedIdRef.current = expandedId;
-  }, [expandedId]);
 
   const beginRefreshing = useCallback((): void => {
     if (refreshCountRef.current === 0) {
@@ -282,16 +277,6 @@ export const MemberLogsTab = ({
           setLogs(nextLogs);
           hasLoadedRef.current = true;
         }
-
-        // Keep expanded session details in sync with the same refresh
-        // cadence as the summary (counts/titles) while "Updating..." is shown.
-        if (!cancelled && didBeginRefreshing) {
-          try {
-            await refreshExpandedDetailFromLogs(nextLogs);
-          } catch {
-            // Keep last successful detail view; avoid flicker on transient failures.
-          }
-        }
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'Unknown error');
@@ -333,26 +318,6 @@ export const MemberLogsTab = ({
       return d ? asEnhancedChunkArray(d.chunks) : null;
     },
     []
-  );
-
-  const refreshExpandedDetailFromLogs = useCallback(
-    async (nextLogs: MemberLogSummary[]): Promise<void> => {
-      const rowId = expandedIdRef.current;
-      if (!rowId) return;
-      if (!isMountedRef.current) return;
-
-      const nextExpanded = nextLogs.find((log) => getRowId(log) === rowId);
-      if (!nextExpanded) return;
-
-      const shouldAutoRefreshSummary = taskId != null && taskStatus === 'in_progress';
-      if (!shouldAutoRefreshSummary && !nextExpanded.isOngoing) return;
-
-      const next = await fetchDetailForLog(nextExpanded, { bypassCache: true });
-      if (!isMountedRef.current) return;
-      // Ensure new reference so memoized transforms update.
-      setDetailChunks(next ? [...next] : null);
-    },
-    [fetchDetailForLog, getRowId, taskId, taskStatus]
   );
 
   useEffect(() => {
@@ -419,10 +384,7 @@ export const MemberLogsTab = ({
   useEffect(() => {
     const shouldAutoRefreshSummary = taskId != null && taskStatus === 'in_progress';
     if (!expandedLogSummary) return;
-    // When task logs are auto-refreshing, the summary refresh loop also refreshes
-    // expanded details to keep everything in sync (and avoid duplicate requests).
-    if (shouldAutoRefreshSummary) return;
-    if (!expandedLogSummary.isOngoing) return;
+    if (!shouldAutoRefreshSummary && !expandedLogSummary.isOngoing) return;
 
     let cancelled = false;
 
@@ -440,6 +402,7 @@ export const MemberLogsTab = ({
       }
     };
 
+    void refreshDetail();
     const interval = setInterval(() => void refreshDetail(), 5000);
 
     return () => {

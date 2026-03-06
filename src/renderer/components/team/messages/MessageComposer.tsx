@@ -250,7 +250,7 @@ export const MessageComposer = ({
     >
       <DropZoneOverlay active={isDragOver && !!canAttach} />
 
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-1 flex items-center gap-2">
         {isLeadRecipient ? (
           <>
             <input
@@ -266,7 +266,7 @@ export const MessageComposer = ({
                 <button
                   type="button"
                   className={cn(
-                    'inline-flex items-center gap-1 rounded p-1 transition-colors',
+                    'inline-flex shrink-0 items-center gap-1 rounded p-1 transition-colors',
                     canAttach
                       ? 'text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'
                       : 'text-[var(--color-text-muted)] opacity-40'
@@ -285,10 +285,29 @@ export const MessageComposer = ({
                     : 'Attach images (paste or drag & drop)'}
               </TooltipContent>
             </Tooltip>
+            <div className="min-w-0 flex-1">
+              <AttachmentPreviewList
+                attachments={draft.attachments}
+                onRemove={draft.removeAttachment}
+                error={draft.attachmentError}
+                onDismissError={draft.clearAttachmentError}
+                disabled={attachmentsBlocked}
+                disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
+              />
+            </div>
           </>
-        ) : null}
+        ) : (
+          <AttachmentPreviewList
+            attachments={draft.attachments}
+            onRemove={draft.removeAttachment}
+            error={draft.attachmentError}
+            onDismissError={draft.clearAttachmentError}
+            disabled={attachmentsBlocked}
+            disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
+          />
+        )}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {!isTeamAlive ? (
             <span className="text-[10px]" style={{ color: 'var(--warning-text)' }}>
               Team offline
@@ -394,15 +413,6 @@ export const MessageComposer = ({
           </Popover>
         </div>
       </div>
-
-      <AttachmentPreviewList
-        attachments={draft.attachments}
-        onRemove={draft.removeAttachment}
-        error={draft.attachmentError}
-        onDismissError={draft.clearAttachmentError}
-        disabled={attachmentsBlocked}
-        disabledHint="Image attachments are only supported when sending to the team lead while the team is online. Remove attachments or switch recipient."
-      />
 
       <MentionableTextarea
         id={`compose-${teamName}`}

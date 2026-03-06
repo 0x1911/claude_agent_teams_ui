@@ -16,6 +16,7 @@ import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useStore } from '@renderer/store';
 import { formatToolSummary, parseToolSummary } from '@shared/utils/toolSummary';
 
+import { linkifyMentionsInMarkdown, linkifyTaskIdsInMarkdown } from './ActivityItem';
 import { isManagedCollapseState } from './collapseState';
 
 import type { ActivityCollapseState } from './collapseState';
@@ -97,6 +98,10 @@ interface LeadThoughtsGroupRowProps {
   zebraShade?: boolean;
   /** Explicit collapse state for timeline-controlled collapsed mode. */
   collapseState?: ActivityCollapseState;
+  /** Called when a task ID link (e.g. #10) is clicked in thought text. */
+  onTaskIdClick?: (taskId: string) => void;
+  /** Map of member name → color name for @mention badge rendering. */
+  memberColorMap?: Map<string, string>;
 }
 
 function formatTime(timestamp: string): string {
@@ -179,18 +184,31 @@ interface LeadThoughtItemProps {
   thought: InboxMessage;
   showDivider: boolean;
   shouldAnimate: boolean;
+  onTaskIdClick?: (taskId: string) => void;
+  memberColorMap?: Map<string, string>;
 }
 
 const LeadThoughtItem = ({
   thought,
   showDivider,
   shouldAnimate,
+  onTaskIdClick,
+  memberColorMap,
 }: LeadThoughtItemProps): JSX.Element => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const previousHeightRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const cleanupTimerRef = useRef<number | null>(null);
+
+  const displayContent = useMemo(() => {
+    let text = thought.text.replace(/\n/g, '  \n');
+    text = linkifyTaskIdsInMarkdown(text);
+    if (memberColorMap && memberColorMap.size > 0) {
+      text = linkifyMentionsInMarkdown(text, memberColorMap);
+    }
+    return text;
+  }, [thought.text, memberColorMap]);
 
   const clearPendingAnimation = useCallback(() => {
     if (animationFrameRef.current !== null) {
@@ -313,11 +331,25 @@ const LeadThoughtItem = ({
         )}
         <div className="flex text-[11px]">
           <div className="min-w-0 flex-1 [&_>div>div]:p-0" style={{ color: CARD_TEXT_LIGHT }}>
-            <MarkdownViewer
-              content={thought.text.replace(/\n/g, '  \n')}
-              maxHeight="max-h-none"
-              bare
-            />
+            <span
+              onClickCapture={
+                onTaskIdClick
+                  ? (e) => {
+                      const link = (e.target as HTMLElement).closest<HTMLAnchorElement>(
+                        'a[href^="task://"]'
+                      );
+                      if (link) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const taskId = link.getAttribute('href')?.replace('task://', '');
+                        if (taskId) onTaskIdClick(taskId);
+                      }
+                    }
+                  : undefined
+              }
+            >
+              <MarkdownViewer content={displayContent} maxHeight="max-h-none" bare />
+            </span>
           </div>
         </div>
         {thought.toolSummary && (
@@ -355,6 +387,8 @@ export const LeadThoughtsGroupRow = ({
   canBeLive,
   zebraShade,
   collapseState,
+  onTaskIdClick,
+  memberColorMap,
 }: LeadThoughtsGroupRowProps): React.JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -676,6 +710,8 @@ export const LeadThoughtsGroupRow = ({
                   thought={thought}
                   showDivider={idx > 0}
                   shouldAnimate={isLive && idx === chronologicalThoughts.length - 1}
+                  onTaskIdClick={onTaskIdClick}
+                  memberColorMap={memberColorMap}
                 />
               ))}
             </div>

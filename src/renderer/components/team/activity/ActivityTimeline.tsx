@@ -352,6 +352,8 @@ export const ActivityTimeline = ({
               onVisible={onMessageVisible}
               zebraShade={zebraShadeSet.has(0)}
               collapseState={collapseState}
+              onTaskIdClick={onTaskIdClick}
+              memberColorMap={colorMap}
             />
           );
         })()}
@@ -397,6 +399,8 @@ export const ActivityTimeline = ({
                 onVisible={onMessageVisible}
                 zebraShade={zebraShadeSet.has(realIndex)}
                 collapseState={collapseState}
+                onTaskIdClick={onTaskIdClick}
+                memberColorMap={colorMap}
               />
             </React.Fragment>
           );

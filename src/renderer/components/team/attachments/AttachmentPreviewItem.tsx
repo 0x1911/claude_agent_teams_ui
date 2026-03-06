@@ -8,12 +8,14 @@ import type { AttachmentPayload } from '@shared/types';
 interface AttachmentPreviewItemProps {
   attachment: AttachmentPayload;
   onRemove: (id: string) => void;
+  onPreview?: () => void;
   disabled?: boolean;
 }
 
 export const AttachmentPreviewItem = ({
   attachment,
   onRemove,
+  onPreview,
   disabled,
 }: AttachmentPreviewItemProps): React.JSX.Element => {
   const dataUrl = `data:${attachment.mimeType};base64,${attachment.data}`;
@@ -25,7 +27,7 @@ export const AttachmentPreviewItem = ({
           <Ban size={18} className="text-red-400" />
         </div>
       ) : null}
-      <AttachmentThumbnail src={dataUrl} alt={attachment.filename} size="sm" />
+      <AttachmentThumbnail src={dataUrl} alt={attachment.filename} size="sm" onClick={onPreview} />
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="max-w-[100px] truncate text-[11px] text-[var(--color-text-secondary)]">
           {attachment.filename}

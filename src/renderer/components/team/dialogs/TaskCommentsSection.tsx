@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { CopyButton } from '@renderer/components/common/CopyButton';
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import { ReplyQuoteBlock } from '@renderer/components/team/activity/ReplyQuoteBlock';
 import { ImageLightbox } from '@renderer/components/team/attachments/ImageLightbox';
@@ -54,7 +55,7 @@ interface TaskCommentsSectionProps {
 
 /** Convert `#<digits>` in plain text to markdown links with task:// protocol. */
 function linkifyTaskIdsInMarkdown(text: string): string {
-  return text.replace(/#(\d+)/g, '[#$1](task://$1)');
+  return text.replace(/#(\d+)\b/g, '[#$1](task://$1)');
 }
 
 /** Convert `@memberName` to markdown links with mention:// protocol for colored badge rendering. */
@@ -190,7 +191,11 @@ export const TaskCommentsSection = ({
                 }
               >
                 <div className="mb-1 flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
-                  <MemberBadge name={comment.author} color={colorMap.get(comment.author)} />
+                  <MemberBadge
+                    name={comment.author}
+                    color={colorMap.get(comment.author)}
+                    hideAvatar={comment.author === 'user'}
+                  />
                   {comment.type === 'review_approved' ? (
                     <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">
                       <CheckCircle2 size={10} />
@@ -232,6 +237,9 @@ export const TaskCommentsSection = ({
                     </TooltipTrigger>
                     <TooltipContent side="left">Reply to comment</TooltipContent>
                   </Tooltip>
+                  <span className="opacity-0 transition-opacity group-hover:opacity-100">
+                    <CopyButton text={comment.text} inline />
+                  </span>
                 </div>
                 {(() => {
                   const reply = parseMessageReply(comment.text);
