@@ -258,17 +258,12 @@ export const LeadThoughtsGroupRow = ({
     return () => observer.disconnect();
   }, [onVisible, thoughts]);
 
-  // Auto-scroll via ResizeObserver — fires after CSS animations expand content
+  // Auto-scroll when new thoughts arrive
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(() => {
-      if (isUserScrolledUpRef.current) return;
-      el.scrollTop = el.scrollHeight;
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+    if (!el || isUserScrolledUpRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [chronologicalThoughts]);
 
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
