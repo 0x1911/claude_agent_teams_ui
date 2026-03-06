@@ -19,38 +19,6 @@
 
 <br />
 
-## Table of Contents
-
-- [What is this](#what-is-this)
-- [Quick start](#quick-start)
-- [Installation](#installation)
-- [FAQ](#faq)
-- [Development](#development)
-- [Roadmap](#roadmap)
-- [Links](#links)
-- [Contributing](#contributing)
-- [Security](#security)
-- [License](#license)
-
----
-
-## What is this
-
-**Claude Agent Teams UI** is a desktop app that turns Claude Code's "Orchestrate Teams" feature into a full task management experience. Create agent teams, watch them work on a kanban board, review their code changes, and stay in control — all running locally on your machine.
-
-### Who is this for
-
-- **Developers** who want AI agents to handle tasks in parallel while they oversee progress
-- **Teams** using Claude Code and needing a shared task board, code review workflow, and team messaging
-- **Anyone** who wants to browse and analyze Claude Code session history without running agents
-
-### How it works
-
-1. **Create a team** — Define roles (e.g. lead, frontend, backend) and a provisioning prompt. The app spawns Claude Code sessions as autonomous team members.
-2. **Tasks flow automatically** — Agents create tasks, assign each other, move cards, leave comments, and send messages. You see everything on the kanban board in real time.
-3. **Review like in Cursor** — When a task is done, you see the diff, approve, reject, or request changes. Agents get notified and can fix issues.
-4. **Stay in control** — Send a direct message to any agent, add a comment on a task, or use quick actions on cards whenever you need to clarify or add work.
-
 ### Key features
 
 | Feature | Description |
@@ -69,33 +37,18 @@
 
 - **Recent tasks across projects** — browse the latest completed tasks from all your projects in one place
 - **Deep session analysis** — detailed breakdown of what happened in each Claude session: bash commands, reasoning, subprocesses
-- **Solo mode** — a one-member team: a single agent (regular claude process) that creates its own tasks, leaves comments, and shows live progress on the kanban board — saves tokens compared to a full team and can be expanded to a full team at any time
+- **Solo mode** — one-member team: a single agent that creates its own tasks and shows live progress. Saves tokens; can expand to a full team anytime
 - **Advanced context monitoring system** — comprehensive breakdown of what consumes tokens at every step: user messages, Claude.md instructions, tool outputs, thinking text, and team coordination. Token usage, percentage of context window, and session cost are displayed for each category, with detailed views by category or size.
 - **Smart task-to-log/changes matching** — automatically links Claude session logs/changes to specific tasks
-- **Zero-setup onboarding** — built-in Claude Code installation and authentication, ready to go out of the box
-- **Built-in code editor** — edit project files with Git support and other essential features without leaving the app
-- **Branch strategy control** — choose via prompt whether all agents work on a single branch or each gets its own git worktree
-- **Team member stats** — global performance statistics for every member of the team
-- **Attach code context** — reference files or code snippets in your messages, just like in Cursor
+- **Zero-setup onboarding** — built-in Claude Code installation and authentication
+- **Built-in code editor** — edit project files with Git support without leaving the app
+- **Branch strategy** — choose via prompt: single branch or git worktree per agent
+- **Team member stats** — global performance statistics per member
+- **Attach code context** — reference files or snippets in messages, like in Cursor
 - **Notification system** — configurable alerts when tasks complete, agents need attention, or errors occur
 - **MCP integration** — supports the built-in `mcp-server` (see [mcp-server folder](./mcp-server)) for integrating external tools and extensible agent plugins out of the box
 
 </details>
-
-### Tech stack
-
-Electron, React 18, TypeScript 5, Tailwind CSS 3, Zustand 4. Data from `~/.claude/` (session logs, todos, tasks). No cloud backend — everything runs locally.
-
----
-
-## Quick start
-
-1. **Download** the app for your platform (see [Installation](#installation))
-2. **Launch** — On first run, the setup wizard will install and authenticate Claude Code
-3. **Create a team** — Pick a project, define roles, write a provisioning prompt
-4. **Watch** — Agents spawn, create tasks, and work. You see it all on the kanban board
-
----
 
 ## Installation
 
@@ -137,7 +90,20 @@ No prerequisites — Claude Code can be installed and configured directly from t
 </tr>
 </table>
 
-**System requirements:** macOS 10.15+, Windows 10+, or Linux (glibc 2.28+). Node.js is not required for the desktop app.
+
+### Tech stack
+
+Electron, React 18, TypeScript 5, Tailwind CSS 3, Zustand 4. Data from `~/.claude/` (session logs, todos, tasks). No cloud backend — everything runs locally.
+
+---
+
+## Quick start
+
+1. **Download** the app for your platform (see [Installation](#installation))
+2. **Launch** — On first run, the setup wizard will install and authenticate Claude Code
+3. **Create a team** — Pick a project, define roles, write a provisioning prompt
+4. **Watch** — Agents spawn, create tasks, and work. You see it all on the kanban board
+
 
 ---
 
@@ -243,7 +209,7 @@ pnpm dist            # macOS + Windows + Linux
 
 ---
 
-## Roadmap
+## TODO
 
 - [ ] CLI runtime: Run not only on a local PC but in any headless/console environment (web UI), e.g. VPS, remote server, etc.
 - [ ] 2 modes: current (agent teams), and a new mode: regular subagents (no communication between them)
@@ -252,15 +218,6 @@ pnpm dist            # macOS + Windows + Linux
 - [ ] Planning mode to organize agent plans before execution
 - [ ] Curate what context each agent sees (files, docs, MCP servers, skills)
 - [ ] Multi-model support: proxy layer to use other popular LLMs (GPT, Gemini, DeepSeek, Llama, etc.), including offline/local models
-
----
-
-## Links
-
-- [Homepage](https://github.com/777genius/claude_agent_teams_ui)
-- [Releases](https://github.com/777genius/claude_agent_teams_ui/releases)
-- [Issues](https://github.com/777genius/claude_agent_teams_ui/issues)
-- [MCP Server](./mcp-server) — Use Claude Agent Teams UI tools from Cursor, Claude Desktop, and other MCP clients
 
 ---
 
