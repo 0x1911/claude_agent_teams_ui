@@ -1,4 +1,4 @@
-import { chmod, copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,9 +29,3 @@ async function copyRecursive(sourceDir, targetDir) {
 await rm(distDir, { recursive: true, force: true });
 await mkdir(distDir, { recursive: true });
 await copyRecursive(srcDir, distDir);
-
-for (const executablePath of ['cli.js', path.join('legacy', 'teamctl.cli.js')]) {
-  const absPath = path.join(distDir, executablePath);
-  const info = await stat(absPath);
-  await chmod(absPath, info.mode | 0o111);
-}

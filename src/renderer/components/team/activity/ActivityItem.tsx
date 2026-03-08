@@ -280,7 +280,7 @@ export const ActivityItem = ({
     if (structured) return null;
     const stripped = stripAgentBlocks(message.text).trim();
     if (!stripped) return null; // All content was agent-only blocks → show summary instead
-    // Normalize literal \n from CLI tools (teamctl.js) to real newlines
+    // Normalize literal \n from historical CLI-produced text to real newlines
     return stripped.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
   }, [structured, message.text]);
 

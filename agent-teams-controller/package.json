@@ -2,12 +2,9 @@
   "name": "agent-teams-controller",
   "version": "1.0.0",
   "private": true,
-  "description": "Controller package for Claude agent teams operations and legacy teamctl CLI compatibility",
+  "description": "Controller package for Claude agent teams operations",
   "type": "commonjs",
   "main": "src/index.js",
-  "bin": {
-    "teamctl": "src/cli.js"
-  },
   "files": [
     "dist"
   ],

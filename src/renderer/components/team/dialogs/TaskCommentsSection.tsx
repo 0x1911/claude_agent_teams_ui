@@ -27,8 +27,8 @@ import type { ResolvedTeamMember, TaskAttachmentMeta, TaskComment } from '@share
 
 /**
  * Convert literal backslash-n sequences to real newlines.
- * CLI tools (teamctl.js) may store `\n` as literal text when
- * shell double-quotes don't interpret escape sequences.
+ * Historical CLI-produced comments may store `\n` as literal text
+ * when shell double-quotes don't interpret escape sequences.
  */
 function normalizeLiteralNewlines(text: string): string {
   return text.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
