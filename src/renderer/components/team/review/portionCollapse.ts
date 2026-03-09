@@ -1,6 +1,12 @@
 import { updateOriginalDoc } from '@codemirror/merge';
 import { type Extension, Facet, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
-import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view';
+import {
+  Decoration,
+  type DecorationSet,
+  EditorView,
+  ViewPlugin,
+  WidgetType,
+} from '@codemirror/view';
 
 import { getChunks } from './CodeMirrorDiffUtils';
 
@@ -221,6 +227,7 @@ const portionCollapseTheme = EditorView.theme({
     userSelect: 'none',
     position: 'sticky',
     left: '0',
+    boxSizing: 'border-box',
   },
 
   '.cm-portion-collapse-text': {
@@ -381,6 +388,37 @@ const portionCollapseField = StateField.define<PortionCollapseState>({
   },
 });
 
+// ─── Viewport-pinning plugin ───
+// Block widgets span the full content width (can be thousands of px for wide files).
+// This plugin sets an explicit width on .cm-portion-collapse elements so they match
+// the visible viewport width, making `position: sticky; left: 0` actually constrain them.
+
+function syncCollapseWidths(view: EditorView): void {
+  const w = view.scrollDOM.clientWidth;
+  if (!w) return;
+  const els = view.dom.querySelectorAll<HTMLElement>('.cm-portion-collapse');
+  for (const el of els) {
+    el.style.width = `${w}px`;
+  }
+}
+
+const portionCollapsePinPlugin = ViewPlugin.define((view) => {
+  // Initial sync after first render
+  requestAnimationFrame(() => syncCollapseWidths(view));
+  return {
+    update() {
+      requestAnimationFrame(() => syncCollapseWidths(view));
+    },
+  };
+});
+
+const portionCollapseScrollHandler = EditorView.domEventHandlers({
+  scroll(_event, view) {
+    syncCollapseWidths(view);
+    return false;
+  },
+});
+
 // ─── Extension ───
 
 export function portionCollapseExtension(config?: PortionCollapseConfig): Extension {
@@ -395,5 +433,7 @@ export function portionCollapseExtension(config?: PortionCollapseConfig): Extens
     portionCollapseConfigFacet.of({ margin, minSize, portionSize }),
     portionCollapseField,
     portionCollapseTheme,
+    portionCollapsePinPlugin,
+    portionCollapseScrollHandler,
   ];
 }

@@ -27,6 +27,8 @@ export interface CrossTeamTarget {
   displayName: string;
   description?: string;
   color?: string;
+  leadName?: string;
+  leadColor?: string;
 }
 
 export class CrossTeamService {
@@ -174,11 +176,15 @@ export class CrossTeamService {
       }
       if (!config || config.deletedAt) continue;
 
+      const lead = config.members?.find((m) => m.role === 'lead' || m.name === 'team-lead');
+
       targets.push({
         teamName: entry,
         displayName: config.name || entry,
         description: config.description,
         color: config.color,
+        leadName: lead?.name,
+        leadColor: lead?.color,
       });
     }
 

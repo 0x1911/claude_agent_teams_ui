@@ -369,7 +369,13 @@ export const MessageComposer = ({
                 >
                   {isCrossTeam ? (
                     <>
-                      {selectedTargetColor ? (
+                      {selectedTarget?.leadName ? (
+                        <MemberBadge
+                          name={selectedTarget.leadName}
+                          color={selectedTarget.leadColor}
+                          size="sm"
+                        />
+                      ) : selectedTargetColor ? (
                         <span
                           className="inline-block size-2 shrink-0 rounded-full"
                           style={{ backgroundColor: selectedTargetColor }}
@@ -442,7 +448,9 @@ export const MessageComposer = ({
                           setTeamSelectorOpen(false);
                         }}
                       >
-                        {target.color ? (
+                        {target.leadName ? (
+                          <MemberBadge name={target.leadName} color={target.leadColor} size="sm" />
+                        ) : target.color ? (
                           <span
                             className="inline-block size-2 shrink-0 rounded-full"
                             style={{ backgroundColor: target.color }}

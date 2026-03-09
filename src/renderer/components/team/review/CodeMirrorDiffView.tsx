@@ -90,11 +90,10 @@ const diffSpecificTheme = EditorView.theme({
   },
   '.cm-insertedLine': { backgroundColor: 'var(--diff-cm-changed-bg) !important' },
   '.cm-deletedLine': { backgroundColor: 'var(--diff-cm-deleted-bg) !important' },
-  // Merge toolbar — absolute, Y and right set dynamically by mousemove handler
+  // Merge toolbar — absolute, Y and left set dynamically by JS handlers
   '.cm-deletedChunk .cm-chunkButtons': {
     position: 'absolute',
     top: '0',
-    right: '8px',
     zIndex: 10,
     display: 'flex',
     justifyContent: 'flex-end',
@@ -468,14 +467,12 @@ export const CodeMirrorDiffView = ({
     // Merge toolbar: always visible for nearest chunk, follows cursor when hovering on chunk
     if (showMergeControls) {
       // Helper: pin chunkButtons to right edge of visible viewport, accounting for horizontal scroll
-      const pinToViewportRight = (
-        btnContainer: HTMLElement,
-        parentRect: DOMRect,
-        scroller: Element
-      ): void => {
-        const scrollLeft = scroller.scrollLeft;
-        // When scrolled right, shift the button left so it stays visible
-        btnContainer.style.right = `${-scrollLeft + 8}px`;
+      const pinToViewportRight = (btnContainer: HTMLElement, scroller: Element): void => {
+        const scrollerEl = scroller as HTMLElement;
+        const btnWidth = btnContainer.offsetWidth || 200;
+        // Position at: scrollLeft + visible width - button width - margin
+        btnContainer.style.left = `${scrollerEl.scrollLeft + scrollerEl.clientWidth - btnWidth - 8}px`;
+        btnContainer.style.right = 'auto';
       };
 
       // Helper: position a chunkButtons container so it's below the change block,
@@ -493,7 +490,7 @@ export const CodeMirrorDiffView = ({
           targetY = scrollerRect.bottom - tbHeight;
         }
         btnContainer.style.top = `${targetY - parentRect.top}px`;
-        pinToViewportRight(btnContainer, parentRect, scroller);
+        pinToViewportRight(btnContainer, scroller);
       };
 
       const positionAtCursor = (chunkEl: Element, clientY: number, scroller: Element): void => {
@@ -511,7 +508,7 @@ export const CodeMirrorDiffView = ({
           targetY = scrollerRect.top;
         }
         btnContainer.style.top = `${targetY - parentRect.top}px`;
-        pinToViewportRight(btnContainer, parentRect, scroller);
+        pinToViewportRight(btnContainer, scroller);
       };
 
       // Find which chunk index the mouse is directly over (deleted or inserted area)
@@ -602,7 +599,7 @@ export const CodeMirrorDiffView = ({
               if (chunkEl) {
                 const btnContainer = chunkEl.querySelector<HTMLElement>('.cm-chunkButtons');
                 if (btnContainer) {
-                  pinToViewportRight(btnContainer, chunkEl.getBoundingClientRect(), view.scrollDOM);
+                  pinToViewportRight(btnContainer, view.scrollDOM);
                 }
               }
             }

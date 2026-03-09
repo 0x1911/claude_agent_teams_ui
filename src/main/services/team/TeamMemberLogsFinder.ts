@@ -21,6 +21,10 @@ const logger = createLogger('Service:TeamMemberLogsFinder');
  */
 const ATTRIBUTION_SCAN_LINES = 50;
 
+/** Grace before task creation — logs cannot reference a task before it exists. */
+const TASK_SINCE_GRACE_MS = 2 * 60 * 1000;
+const FILE_MENTIONS_CACHE_MAX = 200;
+
 interface StreamedMetadata {
   firstTimestamp: string | null;
   lastTimestamp: string | null;
@@ -42,6 +46,8 @@ function trimTrailingSlashes(value: string): string {
 }
 
 export class TeamMemberLogsFinder {
+  private readonly fileMentionsCache = new Map<string, boolean>();
+
   constructor(
     private readonly configReader: TeamConfigReader = new TeamConfigReader(),
     private readonly inboxReader: TeamInboxReader = new TeamInboxReader(),
@@ -120,6 +126,7 @@ export class TeamMemberLogsFinder {
     const discovery = await this.discoverProjectSessions(teamName);
     if (!discovery) return [];
 
+    const sinceMs = this.deriveSinceMs(options);
     const { projectDir, projectId, config, sessionIds, knownMembers } = discovery;
     const results: MemberLogSummary[] = [];
     const leadMemberName =
@@ -129,7 +136,7 @@ export class TeamMemberLogsFinder {
       const leadJsonl = path.join(projectDir, `${config.leadSessionId}.jsonl`);
       try {
         await fs.access(leadJsonl);
-        if (await this.fileMentionsTaskId(leadJsonl, teamName, taskId, true)) {
+        if (await this.fileMentionsTaskIdCached(leadJsonl, teamName, taskId, true, sinceMs)) {
           const leadSummary = await this.parseLeadSessionSummary(
             leadJsonl,
             projectId,
@@ -155,7 +162,8 @@ export class TeamMemberLogsFinder {
         if (!file.startsWith('agent-') || !file.endsWith('.jsonl')) continue;
         if (file.startsWith('agent-acompact')) continue;
         const filePath = path.join(subagentsDir, file);
-        if (!(await this.fileMentionsTaskId(filePath, teamName, taskId))) continue;
+        if (!(await this.fileMentionsTaskIdCached(filePath, teamName, taskId, false, sinceMs)))
+          continue;
         const attribution = await this.attributeSubagent(filePath, knownMembers);
         if (!attribution) continue;
         const summary = await this.parseSubagentSummary(
@@ -476,6 +484,59 @@ export class TeamMemberLogsFinder {
       config.members?.find((m) => m?.agentType === 'team-lead')?.name?.trim() || 'team-lead';
     const isLeadMember = leadMemberName.toLowerCase() === memberName.trim().toLowerCase();
     return { ...discovery, isLeadMember };
+  }
+
+  private deriveSinceMs(options?: {
+    intervals?: { startedAt: string; completedAt?: string }[];
+    since?: string;
+  }): number | null {
+    const sinceRaw = typeof options?.since === 'string' ? options.since : null;
+    if (sinceRaw) {
+      const ms = Date.parse(sinceRaw);
+      return Number.isFinite(ms) ? ms : null;
+    }
+    const intervals = options?.intervals;
+    if (!Array.isArray(intervals) || intervals.length === 0) return null;
+    let earliest = Number.POSITIVE_INFINITY;
+    for (const i of intervals) {
+      if (typeof i.startedAt === 'string') {
+        const ms = Date.parse(i.startedAt);
+        if (Number.isFinite(ms) && ms < earliest) earliest = ms;
+      }
+    }
+    if (!Number.isFinite(earliest) || earliest === Number.POSITIVE_INFINITY) return null;
+    return earliest - TASK_SINCE_GRACE_MS;
+  }
+
+  private async fileMentionsTaskIdCached(
+    filePath: string,
+    teamName: string,
+    taskId: string,
+    assumeTeam: boolean,
+    sinceMs: number | null
+  ): Promise<boolean> {
+    let mtimeMs: number;
+    try {
+      const stat = await fs.stat(filePath);
+      mtimeMs = stat.mtimeMs;
+    } catch {
+      return false;
+    }
+    if (sinceMs != null && mtimeMs < sinceMs - TASK_SINCE_GRACE_MS) {
+      return false;
+    }
+    const cacheKey = `${filePath}:${mtimeMs}:${taskId}:${teamName}:${assumeTeam}`;
+    const cached = this.fileMentionsCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+    const result = await this.fileMentionsTaskId(filePath, teamName, taskId, assumeTeam);
+    this.fileMentionsCache.set(cacheKey, result);
+    if (this.fileMentionsCache.size > FILE_MENTIONS_CACHE_MAX) {
+      const keys = [...this.fileMentionsCache.keys()];
+      for (let i = 0; i < Math.min(keys.length / 2, 50); i++) {
+        this.fileMentionsCache.delete(keys[i]);
+      }
+    }
+    return result;
   }
 
   private async fileMentionsTaskId(

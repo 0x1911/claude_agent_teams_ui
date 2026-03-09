@@ -71,6 +71,29 @@ import type {
   TeamTaskWithKanban,
 } from '@shared/types';
 
+const TASK_SINCE_GRACE_MS = 2 * 60 * 1000;
+
+function deriveTaskSince(task: TeamTaskWithKanban | null): string | undefined {
+  if (!task) return undefined;
+  const sources: string[] = [];
+  if (task.createdAt) sources.push(task.createdAt);
+  if (Array.isArray(task.workIntervals)) {
+    for (const i of task.workIntervals) {
+      if (i.startedAt) sources.push(i.startedAt);
+    }
+  }
+  if (Array.isArray(task.historyEvents)) {
+    for (const e of task.historyEvents) {
+      if (e.timestamp) sources.push(e.timestamp);
+    }
+  }
+  if (sources.length === 0) return undefined;
+  const earliest = sources.reduce((a, b) => (a < b ? a : b));
+  const d = new Date(earliest);
+  d.setTime(d.getTime() - TASK_SINCE_GRACE_MS);
+  return d.toISOString();
+}
+
 interface TaskDetailDialogProps {
   open: boolean;
   loading?: boolean;
@@ -774,6 +797,7 @@ export const TaskDetailDialog = ({
                   taskOwner={currentTask.owner}
                   taskStatus={currentTask.status}
                   taskWorkIntervals={currentTask.workIntervals}
+                  taskSince={deriveTaskSince(currentTask)}
                   onRefreshingChange={setLogsRefreshing}
                   // Only show a "latest messages" preview when this task is owned by a subagent.
                   // For lead-owned tasks, the lead session is a mixed stream (lead + multiple agents),

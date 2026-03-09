@@ -413,7 +413,11 @@ export const ActivityItem = ({
         <MemberBadge
           name={crossTeamOrigin ? crossTeamOrigin.memberName : message.from}
           color={isCrossTeamAny ? 'purple' : (memberColor ?? message.color)}
-          hideAvatar={message.from === 'user' || message.from === 'system'}
+          hideAvatar={
+            message.from === 'user' ||
+            message.from === 'system' ||
+            crossTeamOrigin?.memberName === 'user'
+          }
           onClick={onMemberNameClick}
         />
 

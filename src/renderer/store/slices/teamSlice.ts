@@ -305,6 +305,8 @@ export interface TeamSlice {
     displayName: string;
     description?: string;
     color?: string;
+    leadName?: string;
+    leadColor?: string;
   }[];
   crossTeamTargetsLoading: boolean;
   fetchCrossTeamTargets: () => Promise<void>;

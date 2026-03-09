@@ -1066,7 +1066,14 @@ const electronAPI: ElectronAPI = {
     },
     listTargets: async (excludeTeam?: string) => {
       return invokeIpcWithResult<
-        { teamName: string; displayName: string; description?: string; color?: string }[]
+        {
+          teamName: string;
+          displayName: string;
+          description?: string;
+          color?: string;
+          leadName?: string;
+          leadColor?: string;
+        }[]
       >(CROSS_TEAM_LIST_TARGETS, excludeTeam);
     },
     getOutbox: async (teamName: string) => {
