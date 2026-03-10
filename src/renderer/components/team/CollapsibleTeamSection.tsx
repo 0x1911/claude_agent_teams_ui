@@ -25,6 +25,7 @@ interface CollapsibleTeamSectionProps {
   headerExtra?: React.ReactNode;
   defaultOpen?: boolean;
   forceOpen?: boolean;
+  onOpenChange?: (isOpen: boolean) => void;
   action?: React.ReactNode;
   /** Stable identifier used for programmatic section navigation. */
   sectionId?: string;
@@ -46,6 +47,7 @@ export const CollapsibleTeamSection = ({
   headerExtra,
   defaultOpen = true,
   forceOpen,
+  onOpenChange,
   action,
   sectionId,
   contentClassName,
@@ -68,6 +70,10 @@ export const CollapsibleTeamSection = ({
     el.addEventListener('team-section-navigate', handleNavigate);
     return () => el.removeEventListener('team-section-navigate', handleNavigate);
   }, [handleNavigate]);
+
+  useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
 
   return (
     <section ref={sectionRef} data-section-id={sectionId} className="min-w-0">

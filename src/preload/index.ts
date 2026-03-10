@@ -1112,6 +1112,7 @@ const electronAPI: ElectronAPI = {
         status?: string;
         intervals?: { startedAt: string; completedAt?: string }[];
         since?: string;
+        summaryOnly?: boolean;
       }
     ) => {
       return invokeIpcWithResult<TaskChangeSetV2>(

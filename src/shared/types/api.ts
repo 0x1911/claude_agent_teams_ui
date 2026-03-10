@@ -595,6 +595,8 @@ export interface ReviewAPI {
       intervals?: { startedAt: string; completedAt?: string }[];
       /** Back-compat: single since timestamp (deprecated). */
       since?: string;
+      /** Lightweight response for summary UIs; skips snippets/timeline details. */
+      summaryOnly?: boolean;
     }
   ) => Promise<TaskChangeSetV2>;
   getChangeStats: (teamName: string, memberName: string) => Promise<ChangeStats>;

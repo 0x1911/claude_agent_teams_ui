@@ -934,7 +934,17 @@ export class HttpAPIClient implements ElectronAPI {
     getAgentChanges: async (_teamName: string, _memberName: string): Promise<never> => {
       throw new Error('Review is not available in browser mode');
     },
-    getTaskChanges: async (_teamName: string, _taskId: string): Promise<never> => {
+    getTaskChanges: async (
+      _teamName: string,
+      _taskId: string,
+      _options?: {
+        owner?: string;
+        status?: string;
+        intervals?: { startedAt: string; completedAt?: string }[];
+        since?: string;
+        summaryOnly?: boolean;
+      }
+    ): Promise<never> => {
       throw new Error('Review is not available in browser mode');
     },
     getChangeStats: async (_teamName: string, _memberName: string): Promise<never> => {

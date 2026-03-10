@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { api } from '@renderer/api';
 import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 import {
   ImageLightbox,
@@ -53,6 +54,7 @@ import {
   MessageSquare,
   Pencil,
   PenLine,
+  RefreshCw,
   ScrollText,
   SquarePen,
   Trash2,
@@ -65,6 +67,7 @@ import { TaskCommentInput } from './TaskCommentInput';
 import { TaskCommentsSection } from './TaskCommentsSection';
 
 import type {
+  FileChangeSummary,
   KanbanTaskState,
   ResolvedTeamMember,
   TaskAttachmentMeta,
@@ -136,6 +139,10 @@ export const TaskDetailDialog = ({
 
   const [logsRefreshing, setLogsRefreshing] = useState(false);
   const [executionPreviewOnline, setExecutionPreviewOnline] = useState(false);
+  const [changesSectionOpen, setChangesSectionOpen] = useState(false);
+  const [taskChangesFiles, setTaskChangesFiles] = useState<FileChangeSummary[] | null>(null);
+  const [taskChangesLoading, setTaskChangesLoading] = useState(false);
+  const [taskChangesError, setTaskChangesError] = useState<string | null>(null);
 
   // Inline editing: subject
   const [editingSubject, setEditingSubject] = useState(false);
@@ -197,6 +204,15 @@ export const TaskDetailDialog = ({
   useEffect(() => {
     setEditingSubject(false);
     setEditingDescription(false);
+  }, [open, currentTask?.id]);
+
+  useEffect(() => {
+    setChangesSectionOpen(false);
+    setTaskChangesFiles(null);
+    setTaskChangesLoading(false);
+    setTaskChangesError(null);
+    setLogsRefreshing(false);
+    setExecutionPreviewOnline(false);
   }, [open, currentTask?.id]);
 
   const [replyTo, setReplyTo] = useState<{
@@ -272,44 +288,82 @@ export const TaskDetailDialog = ({
 
   // Lazy-load task changes when dialog is open and task is completed
   const isTaskCompleted = currentTask?.status === 'completed';
+  const taskSince = useMemo(() => deriveTaskSince(currentTask), [currentTask]);
   const setTaskNeedsClarification = useStore((s) => s.setTaskNeedsClarification);
-  const activeChangeSet = useStore((s) => s.activeChangeSet);
-  const changeSetLoading = useStore((s) => s.changeSetLoading);
-  const fetchTaskChanges = useStore((s) => s.fetchTaskChanges);
 
-  // Use the lightweight cache to know if changes exist before full data loads
-  const changesCacheKey = currentTask ? `${teamName}:${currentTask.id}` : '';
-  const taskKnownHasChanges = useStore((s) => s.taskHasChanges[changesCacheKey]) === true;
-
-  const taskChangesFiles = useMemo(() => {
-    if (!activeChangeSet || !currentTask) return null;
-    if ('taskId' in activeChangeSet && activeChangeSet.taskId === currentTask.id) {
-      return activeChangeSet.files;
-    }
-    return null;
-  }, [activeChangeSet, currentTask]);
+  const loadTaskChangeSummary = useCallback(async (): Promise<FileChangeSummary[] | null> => {
+    if (!currentTask || variant !== 'team' || !isTaskCompleted || !onViewChanges) return null;
+    const data = await api.review.getTaskChanges(teamName, currentTask.id, {
+      owner: currentTask.owner,
+      status: currentTask.status,
+      intervals: currentTask.workIntervals,
+      since: taskSince,
+      summaryOnly: true,
+    });
+    return data.files;
+  }, [currentTask, isTaskCompleted, onViewChanges, teamName, taskSince, variant]);
 
   useEffect(() => {
     if (variant !== 'team') return;
-    if (!open || !currentTask || !isTaskCompleted || !onViewChanges) return;
-    // Only fetch if we don't already have data for this task
-    if (taskChangesFiles !== null) return;
-    void fetchTaskChanges(teamName, currentTask.id);
+    if (!open || !currentTask || !isTaskCompleted || !onViewChanges || !changesSectionOpen) return;
+
+    let cancelled = false;
+    setTaskChangesLoading(true);
+    setTaskChangesError(null);
+    void loadTaskChangeSummary()
+      .then((files) => {
+        if (!cancelled) setTaskChangesFiles(files ?? null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setTaskChangesFiles(null);
+          setTaskChangesError(
+            error instanceof Error ? error.message : 'Failed to load task changes summary'
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTaskChangesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [
+    changesSectionOpen,
     open,
     currentTask,
     isTaskCompleted,
     teamName,
-    fetchTaskChanges,
-    taskChangesFiles,
     onViewChanges,
+    taskSince,
     variant,
+    loadTaskChangeSummary,
   ]);
+
+  const handleRefreshChanges = useCallback(() => {
+    if (!currentTask || variant !== 'team' || !isTaskCompleted || !onViewChanges) return;
+    setTaskChangesLoading(true);
+    setTaskChangesError(null);
+    void loadTaskChangeSummary()
+      .then((files) => setTaskChangesFiles(files ?? null))
+      .catch((error) => {
+        setTaskChangesFiles(null);
+        setTaskChangesError(
+          error instanceof Error ? error.message : 'Failed to load task changes summary'
+        );
+      })
+      .finally(() => setTaskChangesLoading(false));
+  }, [currentTask, isTaskCompleted, onViewChanges, loadTaskChangeSummary, variant]);
 
   const handleDependencyClick = (taskId: string): void => {
     handleClose();
     onScrollToTask?.(taskId);
   };
+
+  const handleChangesSectionOpenChange = useCallback((isOpen: boolean): void => {
+    setChangesSectionOpen(isOpen);
+  }, []);
 
   if (loading) {
     return (
@@ -735,19 +789,47 @@ export const TaskDetailDialog = ({
           {/* Changes */}
           {variant === 'team' && isTaskCompleted && onViewChanges ? (
             <CollapsibleTeamSection
+              key={`task-changes:${currentTask.id}`}
               title="Changes"
               icon={<FileDiff size={14} />}
               badge={taskChangesFiles ? taskChangesFiles.length : undefined}
+              headerExtra={
+                changesSectionOpen ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="pointer-events-auto rounded p-1 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-section-hover)] hover:text-[var(--color-text)] disabled:opacity-50"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRefreshChanges();
+                        }}
+                        disabled={taskChangesLoading}
+                        aria-label="Refresh changes"
+                      >
+                        <RefreshCw
+                          size={12}
+                          className={taskChangesLoading ? 'animate-spin' : undefined}
+                        />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Refresh</TooltipContent>
+                  </Tooltip>
+                ) : null
+              }
               contentClassName="pl-2.5"
               headerClassName="-mx-6 w-[calc(100%+3rem)]"
               headerContentClassName="pl-6"
-              defaultOpen={taskKnownHasChanges}
+              defaultOpen={false}
+              onOpenChange={handleChangesSectionOpenChange}
             >
-              {changeSetLoading || (!taskChangesFiles && taskKnownHasChanges) ? (
+              {taskChangesLoading ? (
                 <div className="flex items-center gap-2 py-2 text-xs text-[var(--color-text-muted)]">
                   <Loader2 size={14} className="animate-spin" />
                   Loading changes...
                 </div>
+              ) : taskChangesError ? (
+                <p className="text-xs text-red-400">{taskChangesError}</p>
               ) : taskChangesFiles && taskChangesFiles.length > 0 ? (
                 <div className="max-h-[200px] space-y-0.5 overflow-y-auto">
                   {taskChangesFiles.map((file) => (
@@ -811,15 +893,16 @@ export const TaskDetailDialog = ({
                     </div>
                   ))}
                 </div>
-              ) : (
+              ) : changesSectionOpen ? (
                 <p className="text-xs text-[var(--color-text-muted)]">No file changes detected</p>
-              )}
+              ) : null}
             </CollapsibleTeamSection>
           ) : null}
 
           {/* Execution Logs — sessions that reference this task */}
           {variant === 'team' ? (
             <CollapsibleTeamSection
+              key={`task-logs:${currentTask.id}`}
               title="Execution Logs"
               icon={<ScrollText size={14} />}
               headerExtra={
@@ -846,7 +929,7 @@ export const TaskDetailDialog = ({
               contentClassName="pl-2.5"
               headerClassName="-mx-6 w-[calc(100%+3rem)]"
               headerContentClassName="pl-6"
-              defaultOpen
+              defaultOpen={false}
             >
               <div className="min-w-0">
                 <MemberLogsTab
@@ -855,7 +938,7 @@ export const TaskDetailDialog = ({
                   taskOwner={currentTask.owner}
                   taskStatus={currentTask.status}
                   taskWorkIntervals={currentTask.workIntervals}
-                  taskSince={deriveTaskSince(currentTask)}
+                  taskSince={taskSince}
                   onRefreshingChange={setLogsRefreshing}
                   // Only show a "latest messages" preview when this task is owned by a subagent.
                   // For lead-owned tasks, the lead session is a mixed stream (lead + multiple agents),
