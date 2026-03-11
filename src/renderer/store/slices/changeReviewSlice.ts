@@ -1,4 +1,8 @@
 import { api } from '@renderer/api';
+import {
+  buildTaskChangePresenceKey,
+  type TaskChangeRequestOptions,
+} from '@renderer/utils/taskChangeRequest';
 import { computeDiffContextHash } from '@shared/utils/diffContextHash';
 import { createLogger } from '@shared/utils/logger';
 import { structuredPatch } from 'diff';
@@ -8,6 +12,7 @@ const taskChangesCheckInFlight = new Set<string>();
 /** Negative results cached with timestamp — recheck after 30s */
 const taskChangesNegativeCache = new Map<string, number>();
 const NEGATIVE_CACHE_TTL = 30_000;
+let latestTaskChangesRequestToken = 0;
 
 /** Debounce timer for persisting decisions to disk */
 let persistDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -78,12 +83,22 @@ export interface ChangeReviewSlice {
   // Editable diff state
   editedContents: Record<string, string>;
 
-  /** Cache: "teamName:taskId" → true/false (has file changes) */
+  /** Cache: "teamName:taskId:signature" → true/false (has file changes) */
   taskHasChanges: Record<string, boolean>;
 
   // Phase 1 actions
   fetchAgentChanges: (teamName: string, memberName: string) => Promise<void>;
-  fetchTaskChanges: (teamName: string, taskId: string) => Promise<void>;
+  fetchTaskChanges: (
+    teamName: string,
+    taskId: string,
+    options: TaskChangeRequestOptions
+  ) => Promise<void>;
+  recordTaskHasChanges: (
+    teamName: string,
+    taskId: string,
+    options: TaskChangeRequestOptions,
+    hasChanges: boolean
+  ) => void;
   selectReviewFile: (filePath: string | null) => void;
   clearChangeReview: () => void;
   clearChangeReviewCache: () => void;
@@ -145,7 +160,11 @@ export interface ChangeReviewSlice {
   saveEditedFile: (filePath: string, projectPath?: string) => Promise<void>;
 
   // Task change availability
-  checkTaskHasChanges: (teamName: string, taskId: string) => Promise<void>;
+  checkTaskHasChanges: (
+    teamName: string,
+    taskId: string,
+    options: TaskChangeRequestOptions
+  ) => Promise<void>;
 }
 
 /**
@@ -278,18 +297,43 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
     }
   },
 
-  fetchTaskChanges: async (teamName: string, taskId: string) => {
+  recordTaskHasChanges: (
+    teamName: string,
+    taskId: string,
+    options: TaskChangeRequestOptions,
+    hasChanges: boolean
+  ) => {
+    const cacheKey = buildTaskChangePresenceKey(teamName, taskId, options);
+    set((s) => ({
+      taskHasChanges: { ...s.taskHasChanges, [cacheKey]: hasChanges },
+    }));
+    if (hasChanges) {
+      taskChangesNegativeCache.delete(cacheKey);
+    } else {
+      taskChangesNegativeCache.set(cacheKey, Date.now());
+    }
+  },
+
+  fetchTaskChanges: async (teamName: string, taskId: string, options: TaskChangeRequestOptions) => {
+    const requestToken = ++latestTaskChangesRequestToken;
     set({ changeSetLoading: true, changeSetError: null });
     try {
-      const data = await api.review.getTaskChanges(teamName, taskId);
-      const cacheKey = `${teamName}:${taskId}`;
+      const data = await api.review.getTaskChanges(teamName, taskId, options);
+      if (requestToken !== latestTaskChangesRequestToken) return;
+      const cacheKey = buildTaskChangePresenceKey(teamName, taskId, options);
       set((s) => ({
         activeChangeSet: data,
         changeSetLoading: false,
         selectedReviewFilePath: data.files[0]?.filePath ?? null,
         taskHasChanges: { ...s.taskHasChanges, [cacheKey]: data.files.length > 0 },
       }));
+      if (data.files.length > 0) {
+        taskChangesNegativeCache.delete(cacheKey);
+      } else {
+        taskChangesNegativeCache.set(cacheKey, Date.now());
+      }
     } catch (error) {
+      if (requestToken !== latestTaskChangesRequestToken) return;
       const message = error instanceof Error ? error.message : 'Failed to fetch task changes';
       logger.error('fetchTaskChanges error:', message);
       set({ changeSetError: message, changeSetLoading: false });
@@ -301,6 +345,7 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
   },
 
   clearChangeReview: () => {
+    latestTaskChangesRequestToken++;
     set({
       activeChangeSet: null,
       changeSetLoading: false,
@@ -320,6 +365,7 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
   },
 
   clearChangeReviewCache: () => {
+    latestTaskChangesRequestToken++;
     set({
       activeChangeSet: null,
       changeSetLoading: false,
@@ -337,6 +383,7 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
   },
 
   resetAllReviewState: () => {
+    latestTaskChangesRequestToken++;
     set({
       activeChangeSet: null,
       changeSetLoading: false,
@@ -978,8 +1025,12 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
     }
   },
 
-  checkTaskHasChanges: async (teamName: string, taskId: string) => {
-    const cacheKey = `${teamName}:${taskId}`;
+  checkTaskHasChanges: async (
+    teamName: string,
+    taskId: string,
+    options: TaskChangeRequestOptions
+  ) => {
+    const cacheKey = buildTaskChangePresenceKey(teamName, taskId, options);
     // Positive results are final — no need to recheck
     if (get().taskHasChanges[cacheKey] === true) return;
     // Prevent duplicate in-flight requests
@@ -990,18 +1041,23 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
 
     taskChangesCheckInFlight.add(cacheKey);
     try {
-      const data = await api.review.getTaskChanges(teamName, taskId);
+      const data = await api.review.getTaskChanges(teamName, taskId, {
+        ...options,
+        summaryOnly: true,
+      });
       if (data.files.length > 0) {
         set((s) => ({
           taskHasChanges: { ...s.taskHasChanges, [cacheKey]: true },
         }));
         taskChangesNegativeCache.delete(cacheKey);
       } else {
+        set((s) => ({
+          taskHasChanges: { ...s.taskHasChanges, [cacheKey]: false },
+        }));
         taskChangesNegativeCache.set(cacheKey, Date.now());
       }
     } catch {
-      // Don't cache errors in store — allow retry when session data appears later
-      taskChangesNegativeCache.set(cacheKey, Date.now());
+      // Allow immediate retry after transient failures (race, file lock, late logs).
     } finally {
       taskChangesCheckInFlight.delete(cacheKey);
     }

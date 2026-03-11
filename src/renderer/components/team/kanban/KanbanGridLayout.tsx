@@ -101,7 +101,7 @@ export const KanbanGridLayout = ({
 }: KanbanGridLayoutProps): React.JSX.Element => {
   const columnMap = useMemo(() => new Map(columns.map((column) => [column.id, column])), [columns]);
   const visibleColumnIds = useMemo(() => columns.map((column) => column.id), [columns]);
-  const { visibleItems, applyVisibleItems } = usePersistedGridLayout({
+  const { visibleItems, applyVisibleItems, isLoaded } = usePersistedGridLayout({
     scopeKey: `${GRID_SCOPE_PREFIX}:${teamName}`,
     allItemIds: allColumnIds,
     visibleItemIds: visibleColumnIds,
@@ -115,8 +115,9 @@ export const KanbanGridLayout = ({
   );
 
   useEffect(() => {
+    if (!isLoaded) return;
     setRenderLayout(visibleItems.map(toReactGridLayoutItem));
-  }, [visibleItems]);
+  }, [isLoaded, visibleItems]);
 
   const applyReactGridLayout = useCallback(
     (layout: Layout, options?: { persist?: boolean }) => {
@@ -127,6 +128,10 @@ export const KanbanGridLayout = ({
     },
     [applyVisibleItems]
   );
+
+  if (!isLoaded) {
+    return <div className="min-h-[640px] p-1.5" />;
+  }
 
   return (
     <div className="p-1.5">

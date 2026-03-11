@@ -8,6 +8,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui
 import { useUnreadCommentCount } from '@renderer/hooks/useUnreadCommentCount';
 import { useStore } from '@renderer/store';
 import { REVIEW_STATE_DISPLAY, buildMemberColorMap } from '@renderer/utils/memberHelpers';
+import {
+  buildTaskChangePresenceKey,
+  buildTaskChangeRequestOptions,
+} from '@renderer/utils/taskChangeRequest';
 import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
   ArrowLeftFromLine,
@@ -200,15 +204,27 @@ export const KanbanTaskCard = ({
   // Lazy-check if task has file changes (only for done/review/approved columns)
   const showChangesColumn =
     (columnId === 'done' || columnId === 'review' || columnId === 'approved') && !!onViewChanges;
-  const cacheKey = `${teamName}:${task.id}`;
+  const taskChangeRequestOptions = useMemo(() => buildTaskChangeRequestOptions(task), [task]);
+  const cacheKey = useMemo(
+    () => buildTaskChangePresenceKey(teamName, task.id, taskChangeRequestOptions),
+    [teamName, task.id, taskChangeRequestOptions]
+  );
   const taskHasChanges = useStore((s) => s.taskHasChanges[cacheKey]);
   const checkTaskHasChanges = useStore((s) => s.checkTaskHasChanges);
 
   useEffect(() => {
     if (showChangesColumn && task.status === 'completed' && taskHasChanges !== true) {
-      void checkTaskHasChanges(teamName, task.id);
+      void checkTaskHasChanges(teamName, task.id, taskChangeRequestOptions);
     }
-  }, [showChangesColumn, task.status, task.id, teamName, taskHasChanges, checkTaskHasChanges]);
+  }, [
+    showChangesColumn,
+    task.status,
+    task.id,
+    teamName,
+    taskHasChanges,
+    checkTaskHasChanges,
+    taskChangeRequestOptions,
+  ]);
 
   const isReviewManual = columnId === 'review' && !hasReviewers;
   const multiButton =

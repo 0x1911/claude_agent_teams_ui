@@ -120,41 +120,18 @@ export function projectVisibleGridLayoutItems(
   cols: number
 ): PersistedGridLayoutItem[] {
   const visibleIdSet = new Set(visibleIds);
-  const visibleItems = allItems
+  return allItems
     .filter((item) => visibleIdSet.has(item.id))
+    .map((item) => {
+      const width = Math.min(Math.max(1, item.w), cols);
+      const maxX = Math.max(0, cols - width);
+
+      return {
+        ...item,
+        w: width,
+        x: Math.min(Math.max(0, item.x), maxX),
+        y: Math.max(0, item.y),
+      };
+    })
     .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
-
-  if (visibleItems.length === 0) {
-    return [];
-  }
-
-  const fillWidth =
-    visibleItems.length <= 3 ? Math.max(1, Math.floor(cols / visibleItems.length)) : 0;
-  const projected: PersistedGridLayoutItem[] = [];
-  let currentX = 0;
-  let currentY = 0;
-  let rowHeight = 0;
-
-  for (const item of visibleItems) {
-    const nextWidth =
-      visibleItems.length === 1 ? cols : Math.min(cols, Math.max(item.w, fillWidth || item.w));
-
-    if (currentX + nextWidth > cols) {
-      currentX = 0;
-      currentY += rowHeight;
-      rowHeight = 0;
-    }
-
-    projected.push({
-      ...item,
-      x: currentX,
-      y: currentY,
-      w: nextWidth,
-    });
-
-    currentX += nextWidth;
-    rowHeight = Math.max(rowHeight, item.h);
-  }
-
-  return projected;
 }

@@ -34,6 +34,7 @@ import {
   TASK_STATUS_LABELS,
   TASK_STATUS_STYLES,
 } from '@renderer/utils/memberHelpers';
+import { buildTaskChangeRequestOptions, deriveTaskSince } from '@renderer/utils/taskChangeRequest';
 import { getTaskKanbanColumn } from '@shared/utils/reviewState';
 import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import { formatDistanceToNow } from 'date-fns';
@@ -74,29 +75,6 @@ import type {
   TeamTaskWithKanban,
 } from '@shared/types';
 
-const TASK_SINCE_GRACE_MS = 2 * 60 * 1000;
-
-function deriveTaskSince(task: TeamTaskWithKanban | null): string | undefined {
-  if (!task) return undefined;
-  const sources: string[] = [];
-  if (task.createdAt) sources.push(task.createdAt);
-  if (Array.isArray(task.workIntervals)) {
-    for (const i of task.workIntervals) {
-      if (i.startedAt) sources.push(i.startedAt);
-    }
-  }
-  if (Array.isArray(task.historyEvents)) {
-    for (const e of task.historyEvents) {
-      if (e.timestamp) sources.push(e.timestamp);
-    }
-  }
-  if (sources.length === 0) return undefined;
-  const earliest = sources.reduce((a, b) => (a < b ? a : b));
-  const d = new Date(earliest);
-  d.setTime(d.getTime() - TASK_SINCE_GRACE_MS);
-  return d.toISOString();
-}
-
 interface TaskDetailDialogProps {
   open: boolean;
   loading?: boolean;
@@ -136,6 +114,7 @@ export const TaskDetailDialog = ({
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const currentTask = task ? (taskMap.get(task.id) ?? task) : null;
   const updateTaskFields = useStore((s) => s.updateTaskFields);
+  const recordTaskHasChanges = useStore((s) => s.recordTaskHasChanges);
 
   const [logsRefreshing, setLogsRefreshing] = useState(false);
   const [executionPreviewOnline, setExecutionPreviewOnline] = useState(false);
@@ -289,19 +268,39 @@ export const TaskDetailDialog = ({
   // Lazy-load task changes when dialog is open and task is completed
   const isTaskCompleted = currentTask?.status === 'completed';
   const taskSince = useMemo(() => deriveTaskSince(currentTask), [currentTask]);
+  const taskChangeRequestOptions = useMemo(
+    () => (currentTask ? buildTaskChangeRequestOptions(currentTask) : null),
+    [currentTask]
+  );
+  const taskChangeSummaryOptions = useMemo(
+    () =>
+      currentTask
+        ? buildTaskChangeRequestOptions(currentTask, {
+            since: taskSince,
+            summaryOnly: true,
+          })
+        : null,
+    [currentTask, taskSince]
+  );
   const setTaskNeedsClarification = useStore((s) => s.setTaskNeedsClarification);
 
   const loadTaskChangeSummary = useCallback(async (): Promise<FileChangeSummary[] | null> => {
-    if (!currentTask || variant !== 'team' || !isTaskCompleted || !onViewChanges) return null;
-    const data = await api.review.getTaskChanges(teamName, currentTask.id, {
-      owner: currentTask.owner,
-      status: currentTask.status,
-      intervals: currentTask.workIntervals,
-      since: taskSince,
-      summaryOnly: true,
-    });
+    if (
+      !currentTask ||
+      !taskChangeSummaryOptions ||
+      variant !== 'team' ||
+      !isTaskCompleted ||
+      !onViewChanges
+    ) {
+      return null;
+    }
+    const data = await api.review.getTaskChanges(
+      teamName,
+      currentTask.id,
+      taskChangeSummaryOptions
+    );
     return data.files;
-  }, [currentTask, isTaskCompleted, onViewChanges, teamName, taskSince, variant]);
+  }, [currentTask, isTaskCompleted, onViewChanges, taskChangeSummaryOptions, teamName, variant]);
 
   useEffect(() => {
     if (variant !== 'team') return;
@@ -312,7 +311,17 @@ export const TaskDetailDialog = ({
     setTaskChangesError(null);
     void loadTaskChangeSummary()
       .then((files) => {
-        if (!cancelled) setTaskChangesFiles(files ?? null);
+        if (!cancelled) {
+          setTaskChangesFiles(files ?? null);
+          if (currentTask && taskChangeRequestOptions) {
+            recordTaskHasChanges(
+              teamName,
+              currentTask.id,
+              taskChangeRequestOptions,
+              !!files?.length
+            );
+          }
+        }
       })
       .catch((error) => {
         if (!cancelled) {
@@ -346,7 +355,12 @@ export const TaskDetailDialog = ({
     setTaskChangesLoading(true);
     setTaskChangesError(null);
     void loadTaskChangeSummary()
-      .then((files) => setTaskChangesFiles(files ?? null))
+      .then((files) => {
+        setTaskChangesFiles(files ?? null);
+        if (currentTask && taskChangeRequestOptions) {
+          recordTaskHasChanges(teamName, currentTask.id, taskChangeRequestOptions, !!files?.length);
+        }
+      })
       .catch((error) => {
         setTaskChangesFiles(null);
         setTaskChangesError(
@@ -354,7 +368,16 @@ export const TaskDetailDialog = ({
         );
       })
       .finally(() => setTaskChangesLoading(false));
-  }, [currentTask, isTaskCompleted, onViewChanges, loadTaskChangeSummary, variant]);
+  }, [
+    currentTask,
+    isTaskCompleted,
+    onViewChanges,
+    loadTaskChangeSummary,
+    recordTaskHasChanges,
+    taskChangeRequestOptions,
+    teamName,
+    variant,
+  ]);
 
   const handleDependencyClick = (taskId: string): void => {
     handleClose();

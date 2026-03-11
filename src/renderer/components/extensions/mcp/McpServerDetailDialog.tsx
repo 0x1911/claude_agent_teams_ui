@@ -236,7 +236,7 @@ export const McpServerDetailDialog = ({
                       Installed
                     </Badge>
                   )}
-                  <SourceBadge source={server.source} />
+                  {server.source !== 'official' && <SourceBadge source={server.source} />}
                 </div>
               </div>
             </div>

@@ -1,4 +1,5 @@
 import { api } from '@renderer/api';
+import type { TaskChangeRequestOptions } from '@renderer/utils/taskChangeRequest';
 import { normalizePath } from '@renderer/utils/pathNormalize';
 import { IpcError, unwrapIpc } from '@renderer/utils/unwrapIpc';
 import { createLogger } from '@shared/utils/logger';
@@ -277,8 +278,14 @@ export interface TeamSlice {
   openMemberProfile: (memberName: string) => void;
   closeMemberProfile: () => void;
   /** Set by GlobalTaskDetailDialog to signal TeamDetailView to open ChangeReviewDialog */
-  pendingReviewRequest: { taskId: string; filePath?: string } | null;
-  setPendingReviewRequest: (req: { taskId: string; filePath?: string } | null) => void;
+  pendingReviewRequest: {
+    taskId: string;
+    filePath?: string;
+    requestOptions: TaskChangeRequestOptions;
+  } | null;
+  setPendingReviewRequest: (
+    req: { taskId: string; filePath?: string; requestOptions: TaskChangeRequestOptions } | null
+  ) => void;
   selectedTeamName: string | null;
   selectedTeamData: TeamData | null;
   selectedTeamLoading: boolean;

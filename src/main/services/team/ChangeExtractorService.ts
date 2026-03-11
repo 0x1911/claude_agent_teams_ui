@@ -132,19 +132,25 @@ export class ChangeExtractorService {
     }
   ): Promise<TaskChangeSetV2> {
     const includeDetails = options?.summaryOnly !== true;
-    const cacheKey = `task:${teamName}:${taskId}`;
+    const taskMeta = await this.readTaskMeta(teamName, taskId);
+    const effectiveOptions = {
+      owner: options?.owner ?? taskMeta?.owner,
+      status: options?.status ?? taskMeta?.status,
+      intervals: options?.intervals ?? taskMeta?.intervals,
+      since: options?.since,
+    };
+    const cacheKey = this.buildTaskChangeCacheKey(
+      teamName,
+      taskId,
+      effectiveOptions,
+      includeDetails
+    );
     const cached = includeDetails ? this.taskChangeCache.get(cacheKey) : undefined;
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
     }
 
-    const taskMeta = await this.readTaskMeta(teamName, taskId);
-    const logs = await this.logsFinder.findLogsForTask(teamName, taskId, {
-      owner: options?.owner ?? taskMeta?.owner,
-      status: options?.status ?? taskMeta?.status,
-      intervals: options?.intervals ?? taskMeta?.intervals,
-      since: options?.since,
-    });
+    const logs = await this.logsFinder.findLogsForTask(teamName, taskId, effectiveOptions);
     const logRefs = await this.resolveLogFileRefs(teamName, logs);
     if (logRefs.length === 0) {
       const empty = this.emptyTaskChangeSet(teamName, taskId);
@@ -171,7 +177,7 @@ export class ChangeExtractorService {
 
     // Если scope не найден — try deterministic interval scoping, else fallback to whole file
     if (allScopes.length === 0) {
-      const intervals = options?.intervals ?? taskMeta?.intervals;
+      const intervals = effectiveOptions.intervals;
       if (Array.isArray(intervals) && intervals.length > 0) {
         const { files, toolUseIds, startTimestamp, endTimestamp } =
           await this.extractIntervalScopedChanges(logRefs, intervals, projectPath, includeDetails);
@@ -345,7 +351,8 @@ export class ChangeExtractorService {
         status: typeof parsed.status === 'string' ? parsed.status : undefined,
         intervals: derivedIntervals,
       };
-    } catch {
+    } catch (error) {
+      logger.debug(`Failed to read task meta for ${teamName}/${taskId}: ${String(error)}`);
       return null;
     }
   }
@@ -532,7 +539,7 @@ export class ChangeExtractorService {
           const replaceAll = input.replace_all === true;
 
           if (targetPath) {
-            seenFiles.add(targetPath);
+            seenFiles.add(this.normalizeFilePathKey(targetPath));
             snippets.push({
               toolUseId,
               filePath: targetPath,
@@ -551,8 +558,9 @@ export class ChangeExtractorService {
           const writeContent = typeof input.content === 'string' ? input.content : '';
 
           if (targetPath) {
-            const isNew = !seenFiles.has(targetPath);
-            seenFiles.add(targetPath);
+            const normalizedTargetPath = this.normalizeFilePathKey(targetPath);
+            const isNew = !seenFiles.has(normalizedTargetPath);
+            seenFiles.add(normalizedTargetPath);
             snippets.push({
               toolUseId,
               filePath: targetPath,
@@ -571,7 +579,7 @@ export class ChangeExtractorService {
           const edits = Array.isArray(input.edits) ? input.edits : [];
 
           if (targetPath) {
-            seenFiles.add(targetPath);
+            seenFiles.add(this.normalizeFilePathKey(targetPath));
             for (const edit of edits) {
               if (!edit || typeof edit !== 'object') continue;
               const editObj = edit as Record<string, unknown>;
@@ -668,24 +676,30 @@ export class ChangeExtractorService {
     projectPath?: string,
     includeDetails = true
   ): FileChangeSummary[] {
-    const fileMap = new Map<string, { snippets: SnippetDiff[]; isNewFile: boolean }>();
+    const fileMap = new Map<
+      string,
+      { filePath: string; snippets: SnippetDiff[]; isNewFile: boolean }
+    >();
 
     for (const snippet of snippets) {
       // Пропускаем snippets с ошибками при агрегации
       if (snippet.isError) continue;
 
-      const existing = fileMap.get(snippet.filePath);
+      const normalizedFilePath = this.normalizeFilePathKey(snippet.filePath);
+      const existing = fileMap.get(normalizedFilePath);
       if (existing) {
         existing.snippets.push(snippet);
       } else {
-        fileMap.set(snippet.filePath, {
+        fileMap.set(normalizedFilePath, {
+          filePath: snippet.filePath,
           snippets: [snippet],
           isNewFile: snippet.type === 'write-new',
         });
       }
     }
 
-    return [...fileMap.entries()].map(([fp, data]) => {
+    return [...fileMap.values()].map((data) => {
+      const fp = data.filePath;
       let totalAdded = 0;
       let totalRemoved = 0;
       for (const s of data.snippets) {
@@ -854,16 +868,12 @@ export class ChangeExtractorService {
     projectPath?: string,
     includeDetails = true
   ): Promise<TaskChangeSetV2> {
-    const allFiles: FileChangeSummary[] = [];
+    const allSnippets: SnippetDiff[] = [];
     for (const ref of logRefs) {
-      const files = await this.extractAllChanges(
-        ref.filePath,
-        ref.memberName,
-        projectPath,
-        includeDetails
-      );
-      allFiles.push(...files);
+      const snippets = await this.parseJSONLFile(ref.filePath);
+      allSnippets.push(...snippets);
     }
+    const allFiles = this.aggregateByFile(allSnippets, projectPath, includeDetails);
 
     const fallbackScope: TaskChangeScope = {
       taskId,
@@ -915,5 +925,43 @@ export class ChangeExtractorService {
       },
       warnings: ['No log files found for this task.'],
     };
+  }
+
+  private buildTaskChangeCacheKey(
+    teamName: string,
+    taskId: string,
+    options: {
+      owner?: string;
+      status?: string;
+      intervals?: { startedAt: string; completedAt?: string }[];
+      since?: string;
+    },
+    includeDetails: boolean
+  ): string {
+    const owner = typeof options.owner === 'string' ? options.owner.trim() : '';
+    const status = typeof options.status === 'string' ? options.status.trim() : '';
+    const since = typeof options.since === 'string' ? options.since : '';
+    const intervals = Array.isArray(options.intervals)
+      ? options.intervals.map((interval) => ({
+          startedAt: interval.startedAt,
+          completedAt: interval.completedAt ?? '',
+        }))
+      : [];
+
+    return JSON.stringify({
+      type: 'task',
+      teamName,
+      taskId,
+      includeDetails,
+      owner,
+      status,
+      since,
+      intervals,
+    });
+  }
+
+  private normalizeFilePathKey(filePath: string): string {
+    const normalized = filePath.replace(/\\/g, '/');
+    return normalized.replace(/^[A-Z]:/, (drive) => drive.toLowerCase());
   }
 }

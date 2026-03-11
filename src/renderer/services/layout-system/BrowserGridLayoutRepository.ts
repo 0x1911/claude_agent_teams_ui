@@ -37,26 +37,36 @@ function removeLocalStorage(key: string): void {
   }
 }
 
+function pickNewestState(
+  ...states: Array<PersistedGridLayoutState | null | undefined>
+): PersistedGridLayoutState | null {
+  return states.reduce<PersistedGridLayoutState | null>((latest, current) => {
+    if (!current) return latest;
+    if (!latest) return current;
+    return current.updatedAt >= latest.updatedAt ? current : latest;
+  }, null);
+}
+
 export class BrowserGridLayoutRepository implements GridLayoutRepository<PersistedGridLayoutState> {
   private idbUnavailable = false;
   private readonly fallbackStore = new Map<string, PersistedGridLayoutState>();
 
   async load(scopeKey: string): Promise<PersistedGridLayoutState | null> {
     const key = storageKey(scopeKey);
+    const memoryState = this.fallbackStore.get(key) ?? null;
+    const localState = readLocalStorage(key);
+    let idbState: PersistedGridLayoutState | null = null;
 
     if (!this.idbUnavailable) {
       try {
         const stored = await get<unknown>(key);
-        const sanitized = sanitizePersistedGridLayoutState(stored);
-        if (sanitized) {
-          return sanitized;
-        }
+        idbState = sanitizePersistedGridLayoutState(stored);
       } catch {
         this.idbUnavailable = true;
       }
     }
 
-    return this.fallbackStore.get(key) ?? readLocalStorage(key);
+    return pickNewestState(memoryState, localState, idbState);
   }
 
   async save(scopeKey: string, state: PersistedGridLayoutState): Promise<void> {

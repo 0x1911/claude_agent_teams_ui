@@ -10,6 +10,7 @@ import { useViewedFiles } from '@renderer/hooks/useViewedFiles';
 import { cn } from '@renderer/lib/utils';
 import { useStore } from '@renderer/store';
 import { getFileHunkCount, REVIEW_INSTANT_APPLY } from '@renderer/store/slices/changeReviewSlice';
+import { type TaskChangeRequestOptions } from '@renderer/utils/taskChangeRequest';
 import { buildSelectionAction } from '@renderer/utils/buildSelectionAction';
 import { buildSelectionInfo, SELECTION_DEBOUNCE_MS } from '@renderer/utils/codemirrorSelectionInfo';
 import { sortItemsAsTree } from '@renderer/utils/fileTreeBuilder';
@@ -47,6 +48,7 @@ interface ChangeReviewDialogProps {
   memberName?: string;
   taskId?: string;
   initialFilePath?: string;
+  taskChangeRequestOptions?: TaskChangeRequestOptions;
   projectPath?: string;
   onEditorAction?: (action: EditorSelectionAction) => void;
 }
@@ -63,6 +65,7 @@ export const ChangeReviewDialog = ({
   memberName,
   taskId,
   initialFilePath,
+  taskChangeRequestOptions,
   projectPath,
   onEditorAction,
 }: ChangeReviewDialogProps): React.ReactElement | null => {
@@ -692,7 +695,7 @@ export const ChangeReviewDialog = ({
     if (mode === 'agent' && memberName) {
       void fetchAgentChanges(teamName, memberName);
     } else if (mode === 'task' && taskId) {
-      void fetchTaskChanges(teamName, taskId);
+      void fetchTaskChanges(teamName, taskId, taskChangeRequestOptions ?? {});
     }
 
     // On close — clear only volatile cache, keep decisions in store
@@ -703,6 +706,7 @@ export const ChangeReviewDialog = ({
     teamName,
     memberName,
     taskId,
+    taskChangeRequestOptions,
     decisionScopeKey,
     fetchAgentChanges,
     fetchTaskChanges,

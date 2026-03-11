@@ -26,6 +26,10 @@ import { formatProjectPath } from '@renderer/utils/pathDisplay';
 import { buildTaskCountsByOwner, normalizePath } from '@renderer/utils/pathNormalize';
 import { nameColorSet } from '@renderer/utils/projectColor';
 import { resolveProjectIdByPath } from '@renderer/utils/projectLookup';
+import {
+  buildTaskChangeRequestOptions,
+  type TaskChangeRequestOptions,
+} from '@renderer/utils/taskChangeRequest';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
@@ -175,6 +179,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     memberName?: string;
     taskId?: string;
     initialFilePath?: string;
+    taskChangeRequestOptions?: TaskChangeRequestOptions;
   }>({ open: false, mode: 'task' });
 
   // Active teams for conflict warning in LaunchTeamDialog
@@ -723,6 +728,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
       mode: 'task',
       taskId: pendingReviewRequest.taskId,
       initialFilePath: pendingReviewRequest.filePath,
+      taskChangeRequestOptions: pendingReviewRequest.requestOptions,
     });
     if (pendingReviewRequest.filePath) {
       selectReviewFile(pendingReviewRequest.filePath);
@@ -763,18 +769,34 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
     [teamName, softDeleteTask]
   );
 
-  const handleViewChanges = useCallback((taskId: string) => {
-    setReviewDialogState({ open: true, mode: 'task', taskId });
-  }, []);
+  const handleViewChanges = useCallback(
+    (taskId: string) => {
+      const task = taskMap.get(taskId);
+      setReviewDialogState({
+        open: true,
+        mode: 'task',
+        taskId,
+        taskChangeRequestOptions: task ? buildTaskChangeRequestOptions(task) : {},
+      });
+    },
+    [taskMap]
+  );
 
   const handleViewChangesForFile = useCallback(
     (taskId: string, filePath?: string) => {
-      setReviewDialogState({ open: true, mode: 'task', taskId });
+      const task = taskMap.get(taskId);
+      setReviewDialogState({
+        open: true,
+        mode: 'task',
+        taskId,
+        initialFilePath: filePath,
+        taskChangeRequestOptions: task ? buildTaskChangeRequestOptions(task) : {},
+      });
       if (filePath) {
         selectReviewFile(filePath);
       }
     },
-    [selectReviewFile]
+    [selectReviewFile, taskMap]
   );
 
   const handleDeleteTeam = useCallback((): void => {
@@ -1873,7 +1895,9 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
               setReviewDialogState((prev) => ({
                 ...prev,
                 open,
-                ...(open ? {} : { initialFilePath: undefined }),
+                ...(open
+                  ? {}
+                  : { initialFilePath: undefined, taskChangeRequestOptions: undefined }),
               }))
             }
             teamName={teamName}
@@ -1881,6 +1905,7 @@ export const TeamDetailView = ({ teamName }: TeamDetailViewProps): React.JSX.Ele
             memberName={reviewDialogState.memberName}
             taskId={reviewDialogState.taskId}
             initialFilePath={reviewDialogState.initialFilePath}
+            taskChangeRequestOptions={reviewDialogState.taskChangeRequestOptions}
             projectPath={data.config.projectPath}
             onEditorAction={handleEditorAction}
           />

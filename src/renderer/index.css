@@ -318,6 +318,7 @@
   width: 36px;
   height: 6px;
   transform: translateX(-50%);
+  cursor: ns-resize;
 }
 
 .kanban-grid-resize-handle-n {
@@ -334,6 +335,7 @@
   width: 6px;
   height: 36px;
   transform: translateY(-50%);
+  cursor: ew-resize;
 }
 
 .kanban-grid-resize-handle-e {
@@ -355,21 +357,25 @@
 .kanban-grid-resize-handle-ne {
   top: -4px;
   right: -4px;
+  cursor: nesw-resize;
 }
 
 .kanban-grid-resize-handle-nw {
   top: -4px;
   left: -4px;
+  cursor: nwse-resize;
 }
 
 .kanban-grid-resize-handle-se {
   right: -4px;
   bottom: -4px;
+  cursor: nwse-resize;
 }
 
 .kanban-grid-resize-handle-sw {
   left: -4px;
   bottom: -4px;
+  cursor: nesw-resize;
 }
 
 /* File icon glow — halo so dark icons stay visible on dark backgrounds */

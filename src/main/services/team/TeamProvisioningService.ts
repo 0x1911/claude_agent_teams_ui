@@ -2387,7 +2387,7 @@ export class TeamProvisioningService {
       const { env: shellEnv } = await this.buildProvisioningEnv();
       let mcpConfigPath: string;
       try {
-        mcpConfigPath = await this.mcpConfigBuilder.writeConfigFile();
+        mcpConfigPath = await this.mcpConfigBuilder.writeConfigFile(request.cwd);
       } catch (error) {
         this.runs.delete(runId);
         this.activeByTeam.delete(request.teamName);
@@ -2734,7 +2734,7 @@ export class TeamProvisioningService {
       const { env: shellEnv } = await this.buildProvisioningEnv();
       let mcpConfigPath: string;
       try {
-        mcpConfigPath = await this.mcpConfigBuilder.writeConfigFile();
+        mcpConfigPath = await this.mcpConfigBuilder.writeConfigFile(request.cwd);
       } catch (error) {
         this.runs.delete(runId);
         this.activeByTeam.delete(request.teamName);

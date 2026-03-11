@@ -36,6 +36,7 @@ const makePlugin = (overrides: Partial<EnrichedPlugin>): EnrichedPlugin => ({
   marketplaceId: 'test@marketplace',
   qualifiedName: 'test@marketplace',
   name: 'Test Plugin',
+  source: 'official',
   description: 'A test plugin',
   category: 'testing',
   hasLspServers: false,

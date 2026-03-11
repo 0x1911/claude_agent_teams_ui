@@ -17,15 +17,10 @@ import { Cloud, Clock, Globe, KeyRound, Lock, Monitor, Star, Tag, Wrench } from 
 import { Github as GithubIcon } from 'lucide-react';
 
 import { InstallButton } from '../common/InstallButton';
+import { SourceBadge } from '../common/SourceBadge';
 import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
 
 import type { McpCatalogItem, McpServerDiagnostic } from '@shared/types/extensions';
-
-/** Ribbon colors by source */
-const RIBBON_STYLES: Record<string, string> = {
-  official: 'bg-blue-500/90 text-white',
-  glama: 'bg-zinc-600/90 text-zinc-200',
-};
 
 interface McpServerCardProps {
   server: McpCatalogItem;
@@ -81,17 +76,8 @@ export const McpServerCard = ({
         isInstalled ? 'border-l-2 border-border border-l-emerald-500/30' : 'border-border'
       }`}
     >
-      {/* Source ribbon (top-left corner) */}
-      <div className="pointer-events-none absolute -left-[1px] -top-[1px] size-16 overflow-hidden">
-        <div
-          className={`absolute left-[-18px] top-[8px] w-[80px] rotate-[-45deg] text-center text-[9px] font-semibold leading-[18px] shadow-sm ${RIBBON_STYLES[server.source] ?? RIBBON_STYLES.glama}`}
-        >
-          {server.source === 'official' ? 'Official' : 'Glama'}
-        </div>
-      </div>
-
       {/* Header: icon + name */}
-      <div className={`flex items-start gap-2.5 ${hasIcon ? 'pl-5' : 'pl-7'}`}>
+      <div className="flex items-start gap-2.5">
         {/* Server icon (only when available) */}
         {hasIcon && (
           <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised">
@@ -105,7 +91,14 @@ export const McpServerCard = ({
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="truncate text-sm font-semibold text-text">{server.name}</h3>
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-semibold text-text">{server.name}</h3>
+              {server.source !== 'official' && (
+                <div className="mt-1">
+                  <SourceBadge source={server.source} />
+                </div>
+              )}
+            </div>
             <div className="flex shrink-0 items-center gap-1.5">
               {isInstalled && (
                 <Badge
