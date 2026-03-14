@@ -23,7 +23,10 @@ const ATTRIBUTION_SCAN_LINES = 50;
 
 /** Grace before task creation — logs cannot reference a task before it exists. */
 const TASK_SINCE_GRACE_MS = 2 * 60 * 1000;
-const FILE_MENTIONS_CACHE_MAX = 200;
+const FILE_MENTIONS_CACHE_MAX = 1000;
+
+/** Max concurrent file reads during parallel scan phases. */
+const SCAN_CONCURRENCY = 15;
 
 /** Signal sources for subagent member attribution, ordered by reliability. */
 type AttributionSignalSource = 'process_team' | 'routing_sender' | 'teammate_id' | 'text_mention';
@@ -51,6 +54,13 @@ interface StreamedMetadata {
   firstTimestamp: string | null;
   lastTimestamp: string | null;
   messageCount: number;
+}
+
+/** Result of attributing a subagent file to a team member. */
+interface SubagentAttribution {
+  detectedMember: string;
+  description: string;
+  firstTimestamp: string | null;
 }
 
 function trimTrailingSlashes(value: string): string {
@@ -182,44 +192,61 @@ export class TeamMemberLogsFinder {
     }
     const tLead = performance.now();
 
-    let totalFiles = 0;
-    let mentionHits = 0;
-    let cacheHits = 0;
-    const cacheSnapshotBefore = this.fileMentionsCache.size;
-
+    // ── Collect all subagent file candidates ──
+    const candidates: { filePath: string; sessionId: string; fileName: string }[] = [];
     for (const sessionId of sessionIds) {
       const subagentsDir = path.join(projectDir, sessionId, 'subagents');
-      let files: string[];
+      let dirFiles: string[];
       try {
-        files = await fs.readdir(subagentsDir);
+        dirFiles = await fs.readdir(subagentsDir);
       } catch {
         continue;
       }
-      for (const file of files) {
-        if (!file.startsWith('agent-') || !file.endsWith('.jsonl')) continue;
-        if (file.startsWith('agent-acompact')) continue;
-        totalFiles++;
-        const filePath = path.join(subagentsDir, file);
-        const cacheSizeBefore = this.fileMentionsCache.size;
-        if (!(await this.fileMentionsTaskIdCached(filePath, teamName, taskId, false, sinceMs))) {
-          if (this.fileMentionsCache.size === cacheSizeBefore) cacheHits++;
+      for (const f of dirFiles) {
+        if (!f.startsWith('agent-') || !f.endsWith('.jsonl') || f.startsWith('agent-acompact'))
           continue;
-        }
-        if (this.fileMentionsCache.size === cacheSizeBefore) cacheHits++;
-        mentionHits++;
-        const attribution = await this.attributeSubagent(filePath, knownMembers);
-        if (!attribution) continue;
-        const summary = await this.parseSubagentSummary(
-          filePath,
-          projectId,
-          sessionId,
-          file,
-          attribution.detectedMember,
-          knownMembers
-        );
-        if (summary) results.push(summary);
+        candidates.push({ filePath: path.join(subagentsDir, f), sessionId, fileName: f });
       }
     }
+
+    // ── Parallel scan with concurrency limit ──
+    const settled: (MemberLogSummary | null)[] = new Array(candidates.length).fill(null);
+    let nextIdx = 0;
+    let mentionHits = 0;
+
+    const scanWorker = async (): Promise<void> => {
+      while (nextIdx < candidates.length) {
+        const idx = nextIdx++;
+        const c = candidates[idx];
+        try {
+          if (!(await this.fileMentionsTaskIdCached(c.filePath, teamName, taskId, false, sinceMs)))
+            continue;
+          mentionHits++;
+          const attribution = await this.attributeSubagent(c.filePath, knownMembers);
+          if (!attribution) continue;
+          const summary = await this.parseSubagentSummary(
+            c.filePath,
+            projectId,
+            c.sessionId,
+            c.fileName,
+            attribution.detectedMember,
+            knownMembers,
+            attribution
+          );
+          if (summary) settled[idx] = summary;
+        } catch {
+          // One file error must not break others
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(SCAN_CONCURRENCY, candidates.length) }, () => scanWorker())
+    );
+    for (const s of settled) {
+      if (s) results.push(s);
+    }
+    const totalFiles = candidates.length;
     const tScan = performance.now();
 
     const normalizedOwner =
@@ -315,10 +342,9 @@ export class TeamMemberLogsFinder {
         `total=${(tTotal - t0).toFixed(0)}ms | ` +
         `discovery=${(tDiscovery - t0).toFixed(0)}ms | ` +
         `lead=${(tLead - tDiscovery).toFixed(0)}ms | ` +
-        `scan=${(tScan - tLead).toFixed(0)}ms (${totalFiles} files, ${mentionHits} hits, ${cacheHits} cache) | ` +
+        `scan=${(tScan - tLead).toFixed(0)}ms (${totalFiles} files, ${mentionHits} hits) | ` +
         `owner=${(tOwner - tScan).toFixed(0)}ms | ` +
-        `sessions=${sessionIds.length} | cache=${cacheSnapshotBefore}→${this.fileMentionsCache.size} | ` +
-        `results=${sorted.length}`
+        `sessions=${sessionIds.length} | results=${sorted.length}`
     );
 
     return sorted;
@@ -378,37 +404,52 @@ export class TeamMemberLogsFinder {
     }
     const tLead = performance.now();
 
-    let totalFiles = 0;
-    let mentionHits = 0;
-
+    // ── Collect all subagent file candidates ──
+    const candidates: { filePath: string; sessionId: string; fileName: string }[] = [];
     for (const sessionId of sessionIds) {
       const subagentsDir = path.join(projectDir, sessionId, 'subagents');
-      let files: string[];
+      let dirFiles: string[];
       try {
-        files = await fs.readdir(subagentsDir);
+        dirFiles = await fs.readdir(subagentsDir);
       } catch {
         continue;
       }
-      for (const file of files) {
-        if (!file.startsWith('agent-') || !file.endsWith('.jsonl')) continue;
-        if (file.startsWith('agent-acompact')) continue;
-        totalFiles++;
-
-        const filePath = path.join(subagentsDir, file);
-        if (!(await this.fileMentionsTaskIdCached(filePath, teamName, taskId, false, sinceMs))) {
+      for (const f of dirFiles) {
+        if (!f.startsWith('agent-') || !f.endsWith('.jsonl') || f.startsWith('agent-acompact'))
           continue;
-        }
-        mentionHits++;
-
-        const attribution = await this.attributeSubagent(filePath, knownMembers);
-        if (!attribution) continue;
-        pushRef(
-          filePath,
-          attribution.detectedMember,
-          await this.getSortTime(filePath, attribution.firstTimestamp)
-        );
+        candidates.push({ filePath: path.join(subagentsDir, f), sessionId, fileName: f });
       }
     }
+
+    // ── Parallel scan with concurrency limit ──
+    let nextIdx = 0;
+    let mentionHits = 0;
+
+    const scanWorker = async (): Promise<void> => {
+      while (nextIdx < candidates.length) {
+        const idx = nextIdx++;
+        const c = candidates[idx];
+        try {
+          if (!(await this.fileMentionsTaskIdCached(c.filePath, teamName, taskId, false, sinceMs)))
+            continue;
+          mentionHits++;
+          const attribution = await this.attributeSubagent(c.filePath, knownMembers);
+          if (!attribution) continue;
+          pushRef(
+            c.filePath,
+            attribution.detectedMember,
+            await this.getSortTime(c.filePath, attribution.firstTimestamp)
+          );
+        } catch {
+          // One file error must not break others
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(SCAN_CONCURRENCY, candidates.length) }, () => scanWorker())
+    );
+    const totalFiles = candidates.length;
     const tScan = performance.now();
 
     const normalizedOwner =
@@ -967,14 +1008,15 @@ export class TeamMemberLogsFinder {
     sessionId: string,
     fileName: string,
     targetMember: string,
-    knownMembers: Set<string>
+    knownMembers: Set<string>,
+    precomputedAttribution?: SubagentAttribution
   ): Promise<MemberSubagentLogSummary | null> {
     const subagentId = fileName.replace(/^agent-/, '').replace(/\.jsonl$/, '');
 
     // ── Phase 1: Attribution (first N lines) ──
-    // Detect which member owns this file + extract description.
-    // All detection signals appear in the first few lines of the JSONL.
-    const attribution = await this.attributeSubagent(filePath, knownMembers);
+    // Reuse pre-computed attribution when available to avoid re-reading the file.
+    const attribution =
+      precomputedAttribution ?? (await this.attributeSubagent(filePath, knownMembers));
     if (!attribution) return null;
 
     const targetLower = targetMember.toLowerCase();
@@ -1031,11 +1073,7 @@ export class TeamMemberLogsFinder {
   private async attributeSubagent(
     filePath: string,
     knownMembers: Set<string>
-  ): Promise<{
-    detectedMember: string;
-    description: string;
-    firstTimestamp: string | null;
-  } | null> {
+  ): Promise<SubagentAttribution | null> {
     const lines: string[] = [];
 
     try {

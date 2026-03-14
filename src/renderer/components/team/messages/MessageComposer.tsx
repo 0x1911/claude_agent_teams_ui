@@ -68,10 +68,23 @@ export const MessageComposer = ({
   sending,
   sendError,
   lastResult,
-  textareaRef,
+  textareaRef: externalTextareaRef,
   onSend,
   onCrossTeamSend,
 }: MessageComposerProps): React.JSX.Element => {
+  const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useMemo(() => {
+    // Merge internal and external refs into a single callback ref
+    return (node: HTMLTextAreaElement | null) => {
+      (internalTextareaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
+      if (typeof externalTextareaRef === 'function') {
+        externalTextareaRef(node);
+      } else if (externalTextareaRef) {
+        (externalTextareaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalTextareaRef]);
   const [recipient, setRecipient] = useState<string>(() => {
     const lead = members.find((m) => m.role === 'lead' || m.name === 'team-lead');
     return lead?.name ?? members[0]?.name ?? '';
@@ -196,6 +209,15 @@ export const MessageComposer = ({
   const shouldAutoDelegate = isLeadRecipient && canDelegate;
 
   const { actionMode, setActionMode, isLoaded: draftLoaded } = draft;
+
+  // Re-focus textarea after action mode changes (Do/Ask/Delegate button clicks)
+  const prevActionModeRef = useRef(actionMode);
+  useEffect(() => {
+    if (prevActionModeRef.current !== actionMode) {
+      prevActionModeRef.current = actionMode;
+      internalTextareaRef.current?.focus();
+    }
+  }, [actionMode]);
 
   // Auto-select delegate when lead recipient is chosen by the user.
   // Wait until draft is restored from IndexedDB (draftLoaded) before running,
