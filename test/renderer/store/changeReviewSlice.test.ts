@@ -55,6 +55,83 @@ async function flushAsyncWork(): Promise<void> {
   await Promise.resolve();
 }
 
+function makeSnippet(
+  overrides: Partial<{
+    toolUseId: string;
+    filePath: string;
+    toolName: string;
+    type: 'edit' | 'multi-edit' | 'write-new' | 'write-update';
+    oldString: string;
+    newString: string;
+    replaceAll: boolean;
+    timestamp: string;
+    isError: boolean;
+    contextHash: string;
+  }> = {}
+) {
+  return {
+    toolUseId: 'tool-1',
+    filePath: '/repo/file.ts',
+    toolName: 'Edit',
+    type: 'edit' as const,
+    oldString: 'before',
+    newString: 'after',
+    replaceAll: false,
+    timestamp: '2026-03-01T10:00:00.000Z',
+    isError: false,
+    ...overrides,
+  };
+}
+
+function makeFile(filePath = '/repo/file.ts', snippetOverrides = {}) {
+  return {
+    filePath,
+    relativePath: filePath.split('/').pop() ?? 'file.ts',
+    snippets: [makeSnippet({ filePath, ...snippetOverrides })],
+    linesAdded: 1,
+    linesRemoved: 1,
+    isNewFile: false,
+  };
+}
+
+function makeAgentChangeSet(filePath = '/repo/file.ts', snippetOverrides = {}) {
+  const file = makeFile(filePath, snippetOverrides);
+  return {
+    memberName: 'alice',
+    teamName: 'team-a',
+    files: [file],
+    totalFiles: 1,
+    totalLinesAdded: file.linesAdded,
+    totalLinesRemoved: file.linesRemoved,
+  };
+}
+
+function makeTaskChangeSet(taskId = 'task-1', filePath = '/repo/file.ts', snippetOverrides = {}) {
+  const file = makeFile(filePath, snippetOverrides);
+  return {
+    teamName: 'team-a',
+    taskId,
+    files: [file],
+    totalFiles: 1,
+    totalLinesAdded: file.linesAdded,
+    totalLinesRemoved: file.linesRemoved,
+    confidence: 'fallback',
+    computedAt: '2026-03-01T12:00:00.000Z',
+    scope: {
+      taskId,
+      memberName: 'alice',
+      startLine: 0,
+      endLine: 0,
+      startTimestamp: '',
+      endTimestamp: '',
+      toolUseIds: [],
+      filePaths: [filePath],
+      confidence: { tier: 4, label: 'fallback', reason: 'test fixture' },
+    },
+    warnings: [],
+  };
+}
+
 const OPTIONS_A = {
   owner: 'alice',
   status: 'completed',
@@ -391,5 +468,341 @@ describe('changeReviewSlice task changes', () => {
       forceFresh: true,
     });
     expect(store.getState().taskHasChanges[buildTaskChangePresenceKey(teamName, taskId, OPTIONS_A)]).toBe(false);
+  });
+
+  it('clears resolved file content state when fetchAgentChanges installs a new change set', async () => {
+    const store = createSliceStore();
+    const data = makeAgentChangeSet('/repo/new.ts');
+    hoisted.getAgentChanges.mockResolvedValue(data);
+
+    store.setState({
+      hunkDecisions: { '/repo/file.ts:0': 'rejected' },
+      fileContents: {
+        '/repo/file.ts': {
+          ...makeFile('/repo/file.ts'),
+          originalFullContent: 'before',
+          modifiedFullContent: 'after',
+          contentSource: 'snippet-reconstruction',
+        },
+      },
+      fileContentsLoading: { '/repo/file.ts': true },
+      fileChunkCounts: { '/repo/file.ts': 3 },
+      hunkContextHashesByFile: { '/repo/file.ts': { 0: 'ctx' } },
+      changeSetEpoch: 4,
+      fileContentVersionByPath: { '/repo/file.ts': 2 },
+    });
+
+    await store.getState().fetchAgentChanges('team-a', 'alice');
+
+    expect(store.getState().activeChangeSet).toEqual(data);
+    expect(store.getState().selectedReviewFilePath).toBe('/repo/new.ts');
+    expect(store.getState().fileContents).toEqual({});
+    expect(store.getState().fileContentsLoading).toEqual({});
+    expect(store.getState().fileChunkCounts).toEqual({});
+    expect(store.getState().hunkContextHashesByFile).toEqual({});
+    expect(store.getState().hunkDecisions).toEqual({ '/repo/file.ts:0': 'rejected' });
+    expect(store.getState().changeSetEpoch).toBe(5);
+    expect(store.getState().fileContentVersionByPath).toEqual({});
+  });
+
+  it('clears resolved file content state when fetchTaskChanges installs a new change set', async () => {
+    const store = createSliceStore();
+    const data = makeTaskChangeSet('task-2', '/repo/task.ts');
+    hoisted.getTaskChanges.mockResolvedValue(data);
+
+    store.setState({
+      hunkDecisions: { '/repo/file.ts:0': 'accepted' },
+      fileContents: {
+        '/repo/file.ts': {
+          ...makeFile('/repo/file.ts'),
+          originalFullContent: 'before',
+          modifiedFullContent: 'after',
+          contentSource: 'snippet-reconstruction',
+        },
+      },
+      fileContentsLoading: { '/repo/file.ts': true },
+      fileChunkCounts: { '/repo/file.ts': 2 },
+      hunkContextHashesByFile: { '/repo/file.ts': { 0: 'ctx' } },
+      changeSetEpoch: 1,
+      fileContentVersionByPath: { '/repo/file.ts': 7 },
+    });
+
+    await store.getState().fetchTaskChanges('team-a', 'task-2', OPTIONS_A);
+
+    expect(store.getState().activeChangeSet).toEqual(data);
+    expect(store.getState().activeTaskChangeRequestOptions).toEqual(OPTIONS_A);
+    expect(store.getState().selectedReviewFilePath).toBe('/repo/task.ts');
+    expect(store.getState().fileContents).toEqual({});
+    expect(store.getState().fileContentsLoading).toEqual({});
+    expect(store.getState().fileChunkCounts).toEqual({});
+    expect(store.getState().hunkContextHashesByFile).toEqual({});
+    expect(store.getState().hunkDecisions).toEqual({ '/repo/file.ts:0': 'accepted' });
+    expect(store.getState().changeSetEpoch).toBe(2);
+    expect(store.getState().fileContentVersionByPath).toEqual({});
+  });
+
+  it('re-fetches visible file content after change-set replacement instead of silently reusing stale content', async () => {
+    const store = createSliceStore();
+    const refreshed = makeAgentChangeSet('/repo/file.ts', { newString: 'after-v2' });
+    hoisted.getAgentChanges.mockResolvedValueOnce(refreshed);
+    hoisted.getFileContent.mockResolvedValueOnce({
+      ...makeFile('/repo/file.ts', { newString: 'after-v2' }),
+      originalFullContent: 'before',
+      modifiedFullContent: 'after-v2',
+      contentSource: 'snippet-reconstruction',
+    });
+
+    store.setState({
+      activeChangeSet: makeAgentChangeSet('/repo/file.ts'),
+      fileContents: {
+        '/repo/file.ts': {
+          ...makeFile('/repo/file.ts'),
+          originalFullContent: 'before',
+          modifiedFullContent: 'after',
+          contentSource: 'snippet-reconstruction',
+        },
+      },
+      fileContentsLoading: {},
+      changeSetEpoch: 0,
+      fileContentVersionByPath: {},
+    });
+
+    await store.getState().fetchAgentChanges('team-a', 'alice');
+    expect(store.getState().fileContents).toEqual({});
+
+    await store.getState().fetchFileContent('team-a', 'alice', '/repo/file.ts');
+
+    expect(hoisted.getFileContent).toHaveBeenCalledTimes(1);
+    expect(hoisted.getFileContent).toHaveBeenCalledWith(
+      'team-a',
+      'alice',
+      '/repo/file.ts',
+      refreshed.files[0]?.snippets ?? []
+    );
+    expect(store.getState().fileContents['/repo/file.ts']?.modifiedFullContent).toBe('after-v2');
+  });
+
+  it('ignores stale fetchFileContent responses after change-set replacement', async () => {
+    const store = createSliceStore();
+    const pending = deferred<any>();
+    hoisted.getFileContent.mockReturnValueOnce(pending.promise);
+    hoisted.getAgentChanges.mockResolvedValueOnce(makeAgentChangeSet('/repo/next.ts'));
+
+    store.setState({
+      activeChangeSet: makeAgentChangeSet('/repo/file.ts'),
+      hunkContextHashesByFile: { '/repo/file.ts': { 0: 'ctx' } },
+      changeSetEpoch: 0,
+      fileContentVersionByPath: {},
+    });
+
+    const fetchPromise = store.getState().fetchFileContent('team-a', 'alice', '/repo/file.ts');
+    await flushAsyncWork();
+    await store.getState().fetchAgentChanges('team-a', 'alice');
+
+    pending.resolve({
+      ...makeFile('/repo/file.ts'),
+      originalFullContent: 'before',
+      modifiedFullContent: 'after',
+      contentSource: 'snippet-reconstruction',
+    });
+    await fetchPromise;
+    await flushAsyncWork();
+
+    expect(store.getState().selectedReviewFilePath).toBe('/repo/next.ts');
+    expect(store.getState().fileContents).toEqual({});
+    expect(store.getState().fileContentsLoading).toEqual({});
+  });
+
+  it('ignores stale fetchFileContent responses after per-file invalidation', async () => {
+    const store = createSliceStore();
+    const pending = deferred<any>();
+    hoisted.getFileContent.mockReturnValueOnce(pending.promise);
+
+    store.setState({
+      activeChangeSet: makeAgentChangeSet('/repo/file.ts'),
+      changeSetEpoch: 0,
+      fileContentVersionByPath: {},
+    });
+
+    const fetchPromise = store.getState().fetchFileContent('team-a', 'alice', '/repo/file.ts');
+    await flushAsyncWork();
+    store.getState().clearReviewStateForFile('/repo/file.ts');
+
+    pending.resolve({
+      ...makeFile('/repo/file.ts'),
+      originalFullContent: 'before',
+      modifiedFullContent: 'after',
+      contentSource: 'snippet-reconstruction',
+    });
+    await fetchPromise;
+    await flushAsyncWork();
+
+    expect(store.getState().fileContents).toEqual({});
+    expect(store.getState().fileContentsLoading).toEqual({});
+    expect(store.getState().hunkContextHashesByFile).toEqual({});
+    expect(store.getState().fileContentVersionByPath['/repo/file.ts']).toBe(1);
+  });
+
+  it('ignores stale fetchFileContent responses after removing a review file', async () => {
+    const store = createSliceStore();
+    const pending = deferred<any>();
+    hoisted.getFileContent.mockReturnValueOnce(pending.promise);
+
+    store.setState({
+      activeChangeSet: makeAgentChangeSet('/repo/file.ts'),
+      changeSetEpoch: 0,
+      fileContentVersionByPath: {},
+    });
+
+    const fetchPromise = store.getState().fetchFileContent('team-a', 'alice', '/repo/file.ts');
+    await flushAsyncWork();
+    store.getState().removeReviewFile('/repo/file.ts');
+
+    pending.resolve({
+      ...makeFile('/repo/file.ts'),
+      originalFullContent: 'before',
+      modifiedFullContent: 'after',
+      contentSource: 'snippet-reconstruction',
+    });
+    await fetchPromise;
+    await flushAsyncWork();
+
+    expect(store.getState().activeChangeSet?.files).toEqual([]);
+    expect(store.getState().fileContents).toEqual({});
+    expect(store.getState().fileContentsLoading).toEqual({});
+    expect(store.getState().fileContentVersionByPath['/repo/file.ts']).toBe(1);
+  });
+
+  it('keeps restored file content when a stale fetch resolves after remove and re-add', async () => {
+    const store = createSliceStore();
+    const pending = deferred<any>();
+    hoisted.getFileContent.mockReturnValueOnce(pending.promise);
+
+    store.setState({
+      activeChangeSet: makeAgentChangeSet('/repo/file.ts'),
+      changeSetEpoch: 0,
+      fileContentVersionByPath: {},
+    });
+
+    const fetchPromise = store.getState().fetchFileContent('team-a', 'alice', '/repo/file.ts');
+    await flushAsyncWork();
+    store.getState().removeReviewFile('/repo/file.ts');
+    store.getState().addReviewFile(makeFile('/repo/file.ts'), {
+      index: 0,
+      content: {
+        ...makeFile('/repo/file.ts'),
+        originalFullContent: 'before',
+        modifiedFullContent: 'restored',
+        contentSource: 'snippet-reconstruction',
+      },
+    });
+
+    pending.resolve({
+      ...makeFile('/repo/file.ts'),
+      originalFullContent: 'before',
+      modifiedFullContent: 'stale',
+      contentSource: 'snippet-reconstruction',
+    });
+    await fetchPromise;
+    await flushAsyncWork();
+
+    expect(store.getState().activeChangeSet?.files).toHaveLength(1);
+    expect(store.getState().fileContents['/repo/file.ts']?.modifiedFullContent).toBe('restored');
+    expect(store.getState().fileContentVersionByPath['/repo/file.ts']).toBe(1);
+  });
+
+  it('ignores stale fetchFileContent responses that resolve after saveEditedFile', async () => {
+    const store = createSliceStore();
+    const fetchPending = deferred<any>();
+    const savePending = deferred<void>();
+    hoisted.getFileContent.mockReturnValueOnce(fetchPending.promise);
+    hoisted.saveEditedFile.mockReturnValueOnce(savePending.promise);
+
+    store.setState({
+      activeChangeSet: makeAgentChangeSet('/repo/file.ts'),
+      fileContents: {
+        '/repo/file.ts': {
+          ...makeFile('/repo/file.ts'),
+          originalFullContent: 'before',
+          modifiedFullContent: 'draft-before-save',
+          contentSource: 'snippet-reconstruction',
+        },
+      },
+      fileContentsLoading: { '/repo/file.ts': true },
+      fileChunkCounts: { '/repo/file.ts': 3 },
+      hunkContextHashesByFile: { '/repo/file.ts': { 0: 'ctx' } },
+      editedContents: { '/repo/file.ts': 'saved-content' },
+      changeSetEpoch: 0,
+      fileContentVersionByPath: {},
+    });
+
+    const fetchPromise = store.getState().fetchFileContent('team-a', 'alice', '/repo/file.ts');
+    await flushAsyncWork();
+    const savePromise = store.getState().saveEditedFile('/repo/file.ts');
+    await flushAsyncWork();
+
+    savePending.resolve();
+    await savePromise;
+
+    fetchPending.resolve({
+      ...makeFile('/repo/file.ts'),
+      originalFullContent: 'before',
+      modifiedFullContent: 'stale-after-save',
+      contentSource: 'snippet-reconstruction',
+    });
+    await fetchPromise;
+    await flushAsyncWork();
+
+    expect(store.getState().editedContents).toEqual({});
+    expect(store.getState().fileContents['/repo/file.ts']?.modifiedFullContent).toBe('saved-content');
+    expect(store.getState().fileContentsLoading['/repo/file.ts']).toBe(false);
+    expect(store.getState().fileChunkCounts).toEqual({});
+    expect(store.getState().hunkContextHashesByFile).toEqual({});
+    expect(store.getState().fileContentVersionByPath['/repo/file.ts']).toBe(1);
+  });
+
+  it('forces re-review when snippets change even if file paths stay the same', async () => {
+    const store = createSliceStore();
+    const current = makeAgentChangeSet('/repo/file.ts', { newString: 'after' });
+    const fresh = makeAgentChangeSet('/repo/file.ts', { newString: 'after-v2' });
+    hoisted.getAgentChanges.mockResolvedValueOnce(fresh);
+
+    store.setState({
+      activeChangeSet: current,
+      hunkDecisions: { '/repo/file.ts:0': 'rejected' },
+      fileDecisions: { '/repo/file.ts': 'rejected' },
+      fileChunkCounts: { '/repo/file.ts': 1 },
+      reviewUndoStack: [{ hunkDecisions: { '/repo/file.ts:0': 'rejected' }, fileDecisions: { '/repo/file.ts': 'rejected' } }],
+      hunkContextHashesByFile: { '/repo/file.ts': { 0: 'ctx' } },
+      fileContents: {
+        '/repo/file.ts': {
+          ...makeFile('/repo/file.ts'),
+          originalFullContent: 'before',
+          modifiedFullContent: 'after',
+          contentSource: 'snippet-reconstruction',
+        },
+      },
+      fileContentsLoading: { '/repo/file.ts': false },
+      editedContents: { '/repo/file.ts': 'draft' },
+      changeSetEpoch: 2,
+      fileContentVersionByPath: { '/repo/file.ts': 3 },
+    });
+
+    await store.getState().applyReview('team-a', undefined, 'alice');
+
+    expect(hoisted.applyDecisions).not.toHaveBeenCalled();
+    expect(store.getState().activeChangeSet).toEqual(fresh);
+    expect(store.getState().applyError).toBe(
+      'Changes have been updated since you started reviewing. Please re-review.'
+    );
+    expect(store.getState().hunkDecisions).toEqual({});
+    expect(store.getState().fileDecisions).toEqual({});
+    expect(store.getState().reviewUndoStack).toEqual([]);
+    expect(store.getState().hunkContextHashesByFile).toEqual({});
+    expect(store.getState().fileContents).toEqual({});
+    expect(store.getState().fileContentsLoading).toEqual({});
+    expect(store.getState().editedContents).toEqual({});
+    expect(store.getState().changeSetEpoch).toBe(3);
+    expect(store.getState().fileContentVersionByPath).toEqual({});
   });
 });

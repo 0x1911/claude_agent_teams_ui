@@ -1203,26 +1203,74 @@ export class TeamDataService {
     ].join('\n');
   }
 
+  private logTaskCommentNotificationSkip(
+    teamName: string,
+    task: Pick<TeamTask, 'id' | 'displayId'>,
+    reason: string,
+    comment?: Pick<TaskComment, 'id'>
+  ): void {
+    const commentSuffix = comment ? `:${comment.id}` : '';
+    logger.info(
+      `[TeamDataService] Skipped task comment notification for ${teamName}#${this.getTaskLabel(task)}${commentSuffix} (${reason})`
+    );
+  }
+
   private getEligibleTaskCommentNotifications(
     teamName: string,
     task: TeamTask,
     leadName: string,
     leadSessionId?: string
   ): EligibleTaskCommentNotification[] {
-    if (task.status === 'deleted') return [];
+    if (task.status === 'deleted') {
+      this.logTaskCommentNotificationSkip(teamName, task, 'task deleted');
+      return [];
+    }
     const owner = task.owner?.trim() ?? '';
-    if (!owner || this.isLeadOwner(owner, leadName)) return [];
+    if (!owner) {
+      this.logTaskCommentNotificationSkip(teamName, task, 'task has no owner');
+      return [];
+    }
+    if (this.isLeadOwner(owner, leadName)) {
+      this.logTaskCommentNotificationSkip(teamName, task, 'task owner is lead');
+      return [];
+    }
 
     const taskRef = this.buildTaskRef(teamName, task);
     const comments = Array.isArray(task.comments) ? task.comments : [];
     const out: EligibleTaskCommentNotification[] = [];
 
     for (const comment of comments) {
-      if (comment.type !== 'regular') continue;
+      if (comment.type !== 'regular') {
+        this.logTaskCommentNotificationSkip(
+          teamName,
+          task,
+          `comment type ${comment.type}`,
+          comment
+        );
+        continue;
+      }
       const author = comment.author?.trim() ?? '';
-      if (!author || author.toLowerCase() === 'user') continue;
-      if (this.isLeadOwner(author, leadName)) continue;
-      if (comment.id.startsWith('msg-')) continue;
+      if (!author) {
+        this.logTaskCommentNotificationSkip(teamName, task, 'comment author missing', comment);
+        continue;
+      }
+      if (author.toLowerCase() === 'user') {
+        this.logTaskCommentNotificationSkip(teamName, task, 'comment author is user', comment);
+        continue;
+      }
+      if (this.isLeadOwner(author, leadName)) {
+        this.logTaskCommentNotificationSkip(teamName, task, 'comment author is lead', comment);
+        continue;
+      }
+      if (comment.id.startsWith('msg-')) {
+        this.logTaskCommentNotificationSkip(
+          teamName,
+          task,
+          'comment is mirrored inbox artifact',
+          comment
+        );
+        continue;
+      }
 
       const key = this.buildTaskCommentNotificationKey(task, comment);
       out.push({
@@ -1234,7 +1282,7 @@ export class TeamDataService {
         leadSessionId,
         taskRef,
         text: this.buildTaskCommentNotificationText(task, comment),
-        summary: `**Comment on** #${taskRef.displayId}`,
+        summary: `Comment on #${taskRef.displayId}`,
       });
     }
 

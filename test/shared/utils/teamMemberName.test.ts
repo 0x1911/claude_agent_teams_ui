@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { createCliAutoSuffixNameGuard, parseNumericSuffixName } from '@shared/utils/teamMemberName';
+import {
+  createCliAutoSuffixNameGuard,
+  createCliProvisionerNameGuard,
+  parseNumericSuffixName,
+} from '@shared/utils/teamMemberName';
 
 describe('teamMemberName helpers', () => {
   it('parses numeric suffix names', () => {
@@ -34,5 +38,47 @@ describe('teamMemberName helpers', () => {
     const keepName = createCliAutoSuffixNameGuard(['Alice', 'alice-2']);
 
     expect(keepName('alice-2')).toBe(false);
+  });
+});
+
+describe('createCliProvisionerNameGuard', () => {
+  it('drops provisioner names when the base member exists', () => {
+    const keep = createCliProvisionerNameGuard([
+      'alice',
+      'alice-provisioner',
+      'bob',
+      'bob-provisioner',
+    ]);
+
+    expect(keep('alice')).toBe(true);
+    expect(keep('alice-provisioner')).toBe(false);
+    expect(keep('bob')).toBe(true);
+    expect(keep('bob-provisioner')).toBe(false);
+  });
+
+  it('keeps provisioner names when the base member is absent', () => {
+    const keep = createCliProvisionerNameGuard(['carol-provisioner']);
+
+    expect(keep('carol-provisioner')).toBe(true);
+  });
+
+  it('treats base-name collisions case-insensitively', () => {
+    const keep = createCliProvisionerNameGuard(['Alice', 'alice-provisioner']);
+
+    expect(keep('alice-provisioner')).toBe(false);
+  });
+
+  it('keeps non-provisioner names unchanged', () => {
+    const keep = createCliProvisionerNameGuard(['alice', 'alice-provisioner', 'dev-1']);
+
+    expect(keep('alice')).toBe(true);
+    expect(keep('dev-1')).toBe(true);
+  });
+
+  it('handles empty and edge-case names', () => {
+    const keep = createCliProvisionerNameGuard(['', '-provisioner']);
+
+    expect(keep('')).toBe(true);
+    expect(keep('-provisioner')).toBe(true);
   });
 });

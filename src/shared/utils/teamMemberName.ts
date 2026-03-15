@@ -38,3 +38,32 @@ export function createCliAutoSuffixNameGuard(
     return !allLower.has(info.base.toLowerCase());
   };
 }
+
+const PROVISIONER_SUFFIX = '-provisioner';
+
+/**
+ * Claude CLI creates temporary "{name}-provisioner" agents during team provisioning
+ * to spawn real teammates. These are internal artifacts and should be hidden when
+ * the real base member (e.g. "alice") also exists.
+ *
+ * Only removes "alice-provisioner" if "alice" is present — if the base is missing,
+ * the provisioner entry is kept for visibility.
+ */
+export function createCliProvisionerNameGuard(
+  allNames: Iterable<string>
+): (name: string) => boolean {
+  const allLower = new Set<string>();
+  for (const n of allNames) {
+    if (typeof n !== 'string') continue;
+    const t = n.trim().toLowerCase();
+    if (t) allLower.add(t);
+  }
+
+  return (name: string): boolean => {
+    const lower = name.trim().toLowerCase();
+    if (!lower.endsWith(PROVISIONER_SUFFIX)) return true;
+    const base = lower.slice(0, -PROVISIONER_SUFFIX.length);
+    if (!base) return true;
+    return !allLower.has(base);
+  };
+}

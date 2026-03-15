@@ -6,6 +6,7 @@ import {
 } from '@renderer/utils/taskChangeRequest';
 import { computeDiffContextHash } from '@shared/utils/diffContextHash';
 import { createLogger } from '@shared/utils/logger';
+import { normalizePathForComparison } from '@shared/utils/platformPath';
 import { structuredPatch } from 'diff';
 
 /** Tracks in-flight checkTaskHasChanges calls to avoid duplicate requests */
@@ -32,6 +33,7 @@ import type {
   FileChangeWithContent,
   FileReviewDecision,
   HunkDecision,
+  SnippetDiff,
   TaskChangeSet,
   TaskChangeSetV2,
 } from '@shared/types';
@@ -44,6 +46,8 @@ interface DecisionSnapshot {
   hunkDecisions: Record<string, HunkDecision>;
   fileDecisions: Record<string, HunkDecision>;
 }
+
+type ReviewChangeSet = AgentChangeSet | TaskChangeSet | TaskChangeSetV2;
 
 const MAX_REVIEW_UNDO_DEPTH = 10;
 
@@ -89,6 +93,8 @@ export interface ChangeReviewSlice {
   hunkContextHashesByFile: Record<string, Record<number, string>>;
   fileContents: Record<string, FileChangeWithContent>;
   fileContentsLoading: Record<string, boolean>;
+  changeSetEpoch: number;
+  fileContentVersionByPath: Record<string, number>;
   collapseUnchanged: boolean;
   applyError: string | null;
   applying: boolean;
@@ -270,10 +276,83 @@ function buildHunkContextHashesForFile(
   return out;
 }
 
+function encodeFingerprintField(value: string): string {
+  return `${value.length}:${value}`;
+}
+
+function fingerprintSnippet(snippet: SnippetDiff): string {
+  return [
+    encodeFingerprintField(normalizePathForComparison(snippet.filePath)),
+    encodeFingerprintField(snippet.toolUseId),
+    encodeFingerprintField(snippet.timestamp),
+    encodeFingerprintField(snippet.type),
+    encodeFingerprintField(snippet.oldString),
+    encodeFingerprintField(snippet.newString),
+    encodeFingerprintField(snippet.replaceAll ? '1' : '0'),
+    encodeFingerprintField(snippet.isError ? '1' : '0'),
+    encodeFingerprintField(snippet.contextHash ?? ''),
+  ].join('|');
+}
+
+function fingerprintChangeSet(changeSet: ReviewChangeSet): string {
+  return [...changeSet.files]
+    .sort((a, b) =>
+      normalizePathForComparison(a.filePath).localeCompare(normalizePathForComparison(b.filePath))
+    )
+    .map((file) =>
+      [
+        encodeFingerprintField(normalizePathForComparison(file.filePath)),
+        ...file.snippets.map(fingerprintSnippet),
+      ].join('|')
+    )
+    .join('||');
+}
+
 export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeReviewSlice> = (
   set,
   get
 ) => {
+  const installActiveChangeSetForLoad = (
+    data: ReviewChangeSet,
+    extraState?: Partial<ChangeReviewSlice>
+  ): void => {
+    set((s) => ({
+      activeChangeSet: data,
+      changeSetLoading: false,
+      selectedReviewFilePath: data.files[0]?.filePath ?? null,
+      fileContents: {},
+      fileContentsLoading: {},
+      fileChunkCounts: {},
+      hunkContextHashesByFile: {},
+      applyError: null,
+      changeSetEpoch: s.changeSetEpoch + 1,
+      fileContentVersionByPath: {},
+      ...extraState,
+    }));
+  };
+
+  const replaceActiveChangeSetAfterStaleRefresh = (
+    fresh: ReviewChangeSet,
+    applyError: string
+  ): void => {
+    set((s) => ({
+      activeChangeSet: fresh,
+      applying: false,
+      applyError,
+      selectedReviewFilePath: fresh.files[0]?.filePath ?? null,
+      hunkDecisions: {},
+      fileDecisions: {},
+      fileChunkCounts: {},
+      reviewUndoStack: [],
+      hunkContextHashesByFile: {},
+      fileContents: {},
+      fileContentsLoading: {},
+      editedContents: {},
+      changeSetEpoch: s.changeSetEpoch + 1,
+      fileContentVersionByPath: {},
+    }));
+  };
+
   const revalidateTaskChangePresence = async (
     teamName: string,
     taskId: string,
@@ -326,6 +405,8 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
     hunkContextHashesByFile: {},
     fileContents: {},
     fileContentsLoading: {},
+    changeSetEpoch: 0,
+    fileContentVersionByPath: {},
     collapseUnchanged: true,
     applyError: null,
     applying: false,
@@ -339,11 +420,7 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
       set({ changeSetLoading: true, changeSetError: null });
       try {
         const data = await api.review.getAgentChanges(teamName, memberName);
-        set({
-          activeChangeSet: data,
-          changeSetLoading: false,
-          selectedReviewFilePath: data.files[0]?.filePath ?? null,
-        });
+        installActiveChangeSetForLoad(data, { activeTaskChangeRequestOptions: null });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to fetch agent changes';
         logger.error('fetchAgentChanges error:', message);
@@ -379,13 +456,10 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         const data = await api.review.getTaskChanges(teamName, taskId, options);
         if (requestToken !== latestTaskChangesRequestToken) return;
         const cacheKey = buildTaskChangePresenceKey(teamName, taskId, options);
-        set((s) => ({
-          activeChangeSet: data,
+        installActiveChangeSetForLoad(data, {
           activeTaskChangeRequestOptions: options,
-          changeSetLoading: false,
-          selectedReviewFilePath: data.files[0]?.filePath ?? null,
-          taskHasChanges: { ...s.taskHasChanges, [cacheKey]: data.files.length > 0 },
-        }));
+          taskHasChanges: { ...get().taskHasChanges, [cacheKey]: data.files.length > 0 },
+        });
         if (data.files.length > 0) {
           taskChangesNegativeCache.delete(cacheKey);
         } else {
@@ -405,7 +479,7 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
 
     clearChangeReview: () => {
       latestTaskChangesRequestToken++;
-      set({
+      set((s) => ({
         activeChangeSet: null,
         changeSetLoading: false,
         changeSetError: null,
@@ -418,15 +492,17 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         hunkContextHashesByFile: {},
         fileContents: {},
         fileContentsLoading: {},
+        changeSetEpoch: s.changeSetEpoch + 1,
+        fileContentVersionByPath: {},
         applyError: null,
         applying: false,
         editedContents: {},
-      });
+      }));
     },
 
     clearChangeReviewCache: () => {
       latestTaskChangesRequestToken++;
-      set({
+      set((s) => ({
         activeChangeSet: null,
         changeSetLoading: false,
         changeSetError: null,
@@ -437,15 +513,17 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         hunkContextHashesByFile: {},
         fileContents: {},
         fileContentsLoading: {},
+        changeSetEpoch: s.changeSetEpoch + 1,
+        fileContentVersionByPath: {},
         applyError: null,
         applying: false,
         editedContents: {},
-      });
+      }));
     },
 
     resetAllReviewState: () => {
       latestTaskChangesRequestToken++;
-      set({
+      set((s) => ({
         activeChangeSet: null,
         changeSetLoading: false,
         changeSetError: null,
@@ -458,10 +536,12 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         hunkContextHashesByFile: {},
         fileContents: {},
         fileContentsLoading: {},
+        changeSetEpoch: s.changeSetEpoch + 1,
+        fileContentVersionByPath: {},
         applyError: null,
         applying: false,
         editedContents: {},
-      });
+      }));
     },
 
     // ── Decision persistence ──
@@ -693,6 +773,8 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
       const state = get();
       // Skip if already loaded or loading
       if (state.fileContents[filePath] || state.fileContentsLoading[filePath]) return;
+      const changeSetEpoch = state.changeSetEpoch;
+      const fileVersion = state.fileContentVersionByPath[filePath] ?? 0;
 
       set((s) => ({
         fileContentsLoading: { ...s.fileContentsLoading, [filePath]: true },
@@ -705,6 +787,9 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         const snippets = fileEntry?.snippets ?? [];
 
         const content = await api.review.getFileContent(teamName, memberName, filePath, snippets);
+        const latest = get();
+        if (changeSetEpoch !== latest.changeSetEpoch) return;
+        if ((latest.fileContentVersionByPath[filePath] ?? 0) !== fileVersion) return;
         set((s) => {
           const result: Partial<ChangeReviewSlice> = {
             fileContents: { ...s.fileContents, [filePath]: content },
@@ -735,6 +820,9 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
           return result;
         });
       } catch (error) {
+        const latest = get();
+        if (changeSetEpoch !== latest.changeSetEpoch) return;
+        if ((latest.fileContentVersionByPath[filePath] ?? 0) !== fileVersion) return;
         logger.error('fetchFileContent error:', error);
         set((s) => ({
           fileContentsLoading: { ...s.fileContentsLoading, [filePath]: false },
@@ -749,20 +837,16 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         // Stale check: re-fetch changes and compare content fingerprint
         const state = get();
         const current = state.activeChangeSet;
-        // Fingerprint uses file count + file paths only (not line counts)
-        // because line counts may be corrected by lazy-loaded content resolution
-        const fingerprint = (cs: { totalFiles: number; files: { filePath: string }[] }): string =>
-          `${cs.totalFiles}:${cs.files.map((f) => f.filePath).join(',')}`;
+        const currentFingerprint = current
+          ? fingerprintChangeSet(current as ReviewChangeSet)
+          : null;
+        const staleMessage =
+          'Changes have been updated since you started reviewing. Please re-review.';
 
         if (memberName && current) {
           const fresh = await api.review.getAgentChanges(teamName, memberName);
-          if (fingerprint(fresh) !== fingerprint(current)) {
-            set({
-              activeChangeSet: fresh,
-              applying: false,
-              applyError:
-                'Changes have been updated since you started reviewing. Please re-review.',
-            });
+          if (currentFingerprint !== fingerprintChangeSet(fresh)) {
+            replaceActiveChangeSetAfterStaleRefresh(fresh, staleMessage);
             return;
           }
         } else if (taskId && current) {
@@ -770,13 +854,8 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
             ...(state.activeTaskChangeRequestOptions ?? {}),
             forceFresh: true,
           });
-          if (fingerprint(fresh) !== fingerprint(current)) {
-            set({
-              activeChangeSet: fresh,
-              applying: false,
-              applyError:
-                'Changes have been updated since you started reviewing. Please re-review.',
-            });
+          if (currentFingerprint !== fingerprintChangeSet(fresh)) {
+            replaceActiveChangeSetAfterStaleRefresh(fresh, staleMessage);
             return;
           }
         }
@@ -952,6 +1031,11 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         const nextHashes = { ...s.hunkContextHashesByFile };
         delete nextHashes[filePath];
 
+        const nextFileContentVersionByPath = {
+          ...s.fileContentVersionByPath,
+          [filePath]: (s.fileContentVersionByPath[filePath] ?? 0) + 1,
+        };
+
         const nextSelected =
           s.selectedReviewFilePath === filePath
             ? (nextFiles[0]?.filePath ?? null)
@@ -973,6 +1057,7 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
           fileContentsLoading: nextFileContentsLoading,
           editedContents: nextEditedContents,
           hunkContextHashesByFile: nextHashes,
+          fileContentVersionByPath: nextFileContentVersionByPath,
         };
       });
     },
@@ -1004,6 +1089,11 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
           ? { ...s.fileContentsLoading, [file.filePath]: false }
           : s.fileContentsLoading;
 
+        const nextFileContentVersionByPath = {
+          ...s.fileContentVersionByPath,
+          [file.filePath]: s.fileContentVersionByPath[file.filePath] ?? 0,
+        };
+
         return {
           activeChangeSet: {
             ...s.activeChangeSet,
@@ -1015,6 +1105,7 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
           selectedReviewFilePath: s.selectedReviewFilePath ?? file.filePath,
           fileContents: nextFileContents,
           fileContentsLoading: nextFileContentsLoading,
+          fileContentVersionByPath: nextFileContentVersionByPath,
         };
       });
     },
@@ -1046,6 +1137,14 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
         const nextEditedContents = { ...s.editedContents };
         delete nextEditedContents[filePath];
 
+        const nextHunkContextHashesByFile = { ...s.hunkContextHashesByFile };
+        delete nextHunkContextHashesByFile[filePath];
+
+        const nextFileContentVersionByPath = {
+          ...s.fileContentVersionByPath,
+          [filePath]: (s.fileContentVersionByPath[filePath] ?? 0) + 1,
+        };
+
         return {
           hunkDecisions: nextHunkDecisions,
           fileDecisions: nextFileDecisions,
@@ -1053,6 +1152,8 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
           fileContents: nextFileContents,
           fileContentsLoading: nextFileContentsLoading,
           editedContents: nextEditedContents,
+          hunkContextHashesByFile: nextHunkContextHashesByFile,
+          fileContentVersionByPath: nextFileContentVersionByPath,
         };
       });
     },
@@ -1078,12 +1179,27 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
     saveEditedFile: async (filePath: string, projectPath?: string) => {
       const content = get().editedContents[filePath];
       if (!(filePath in get().editedContents)) return;
-      set({ applying: true, applyError: null });
+      set((s) => ({
+        fileContentsLoading: { ...s.fileContentsLoading, [filePath]: false },
+        applying: true,
+        applyError: null,
+        fileContentVersionByPath: {
+          ...s.fileContentVersionByPath,
+          [filePath]: (s.fileContentVersionByPath[filePath] ?? 0) + 1,
+        },
+      }));
       try {
         await api.review.saveEditedFile(filePath, content, projectPath);
         set((s) => {
           const nextEdited = { ...s.editedContents };
           delete nextEdited[filePath];
+
+          const nextFileChunkCounts = { ...s.fileChunkCounts };
+          delete nextFileChunkCounts[filePath];
+
+          const nextHunkContextHashesByFile = { ...s.hunkContextHashesByFile };
+          delete nextHunkContextHashesByFile[filePath];
+
           // Update cached content in-place to avoid skeleton flash.
           // Replace modifiedFullContent with saved version so CodeMirror
           // reflects the new baseline without a full re-fetch cycle.
@@ -1096,7 +1212,13 @@ export const createChangeReviewSlice: StateCreator<AppState, [], [], ChangeRevie
               contentSource: 'disk-current',
             };
           }
-          return { editedContents: nextEdited, fileContents: nextContents, applying: false };
+          return {
+            editedContents: nextEdited,
+            fileChunkCounts: nextFileChunkCounts,
+            hunkContextHashesByFile: nextHunkContextHashesByFile,
+            fileContents: nextContents,
+            applying: false,
+          };
         });
       } catch (error) {
         set({ applying: false, applyError: mapReviewError(error) });
