@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { getNextSuggestedMemberName } from '@renderer/components/team/members/memberNameSets';
 import {
   buildMembersFromDrafts,
   createMemberDraft,
   MembersEditorSection,
   validateMemberNameInline,
 } from '@renderer/components/team/members/MembersEditorSection';
-import { getNextSuggestedMemberName } from '@renderer/components/team/members/memberNameSets';
 import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,

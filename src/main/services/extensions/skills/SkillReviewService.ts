@@ -2,9 +2,9 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import { createLogger } from '@shared/utils/logger';
-import type { SkillDraftFile, SkillReviewFileChange } from '@shared/types/extensions';
 
 import type { ImportedSkillSourceFile } from './SkillImportService';
+import type { SkillDraftFile, SkillReviewFileChange } from '@shared/types/extensions';
 
 const logger = createLogger('Extensions:SkillReview');
 

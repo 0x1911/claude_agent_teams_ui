@@ -40,8 +40,8 @@ import { LimitContextCheckbox } from './LimitContextCheckbox';
 import { OptionalSettingsSection } from './OptionalSettingsSection';
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { SkipPermissionsCheckbox } from './SkipPermissionsCheckbox';
-import { getNextSuggestedTeamName } from './teamNameSets';
 import { computeEffectiveTeamModel, TeamModelSelector } from './TeamModelSelector';
+import { getNextSuggestedTeamName } from './teamNameSets';
 
 import type { MemberDraft } from '@renderer/components/team/members/membersEditorTypes';
 
@@ -694,7 +694,7 @@ export const CreateTeamDialog = ({
     if (!validation.valid) {
       const errors = validation.errors ?? {};
       setFieldErrors(errors);
-      const messages = Object.values(errors).filter(Boolean) as string[];
+      const messages = Object.values(errors).filter(Boolean);
       setLocalError(messages.join(' · ') || 'Check form fields');
       return;
     }
@@ -745,7 +745,7 @@ export const CreateTeamDialog = ({
       if (!prev.teamName) return prev;
       // eslint-disable-next-line sonarjs/no-unused-vars -- destructured to omit teamName from rest
       const { teamName: _teamName, ...rest } = prev;
-      const remaining = Object.values(rest).filter(Boolean) as string[];
+      const remaining = Object.values(rest).filter(Boolean);
       if (remaining.length === 0) {
         setLocalError(null);
       } else {

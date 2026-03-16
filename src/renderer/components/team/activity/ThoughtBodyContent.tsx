@@ -4,12 +4,12 @@ import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer
 import { CopyButton } from '@renderer/components/common/CopyButton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { CARD_ICON_MUTED, CARD_TEXT_LIGHT } from '@renderer/constants/cssVariables';
+import { linkifyAllMentionsInMarkdown } from '@renderer/utils/mentionLinkify';
 import {
   areStringArraysEqual,
   areStringMapsEqual,
   areThoughtMessagesEquivalentForRender,
 } from '@renderer/utils/messageRenderEquality';
-import { linkifyAllMentionsInMarkdown } from '@renderer/utils/mentionLinkify';
 import { linkifyTaskIdsInMarkdown, parseTaskLinkHref } from '@renderer/utils/taskReferenceUtils';
 import { Reply } from 'lucide-react';
 

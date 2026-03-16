@@ -4,6 +4,10 @@
 
 import { useEffect, useState } from 'react';
 
+import { api } from '@renderer/api';
+import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
+import { Badge } from '@renderer/components/ui/badge';
+import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -11,8 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog';
-import { Badge } from '@renderer/components/ui/badge';
-import { Button } from '@renderer/components/ui/button';
 import { Label } from '@renderer/components/ui/label';
 import {
   Select,
@@ -22,7 +24,6 @@ import {
   SelectValue,
 } from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
-import { api } from '@renderer/api';
 import {
   getCapabilityLabel,
   inferCapabilities,
@@ -33,8 +34,6 @@ import { ExternalLink, Loader2, Mail } from 'lucide-react';
 import { InstallButton } from '../common/InstallButton';
 import { InstallCountBadge } from '../common/InstallCountBadge';
 import { SourceBadge } from '../common/SourceBadge';
-
-import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
 
 import type { EnrichedPlugin, InstallScope } from '@shared/types/extensions';
 

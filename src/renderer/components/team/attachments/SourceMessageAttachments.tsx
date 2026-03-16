@@ -1,6 +1,5 @@
-import { Info } from 'lucide-react';
-
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { Info } from 'lucide-react';
 
 import { AttachmentDisplay } from './AttachmentDisplay';
 
@@ -27,9 +26,7 @@ export const SourceMessageAttachments = ({
   }));
 
   const truncatedText =
-    sourceMessage.text.length > 300
-      ? sourceMessage.text.slice(0, 297) + '...'
-      : sourceMessage.text;
+    sourceMessage.text.length > 300 ? sourceMessage.text.slice(0, 297) + '...' : sourceMessage.text;
 
   const formattedDate = (() => {
     try {

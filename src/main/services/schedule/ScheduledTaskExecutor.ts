@@ -41,7 +41,7 @@ function extractSummaryFromStreamJson(stdout: string): string {
 
       const content = (parsed.content ??
         (parsed.message as Record<string, unknown> | undefined)?.content) as
-        | Array<{ type?: string; text?: string }>
+        | { type?: string; text?: string }[]
         | undefined;
       if (!Array.isArray(content)) continue;
 

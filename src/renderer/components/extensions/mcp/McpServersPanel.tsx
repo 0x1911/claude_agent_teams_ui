@@ -15,6 +15,7 @@ import {
 } from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
 import { formatRelativeTime } from '@renderer/utils/formatters';
+import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
 import { AlertTriangle, RefreshCw, Search, Server } from 'lucide-react';
 
 import { SearchInput } from '../common/SearchInput';
@@ -27,7 +28,6 @@ import type {
   McpCatalogItem,
   McpServerDiagnostic,
 } from '@shared/types/extensions';
-import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
 
 type McpSortValue = 'name-asc' | 'name-desc' | 'tools-desc';
 

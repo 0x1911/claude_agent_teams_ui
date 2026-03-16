@@ -17,9 +17,10 @@ import {
   areThoughtMessagesEquivalentForRender,
 } from '@renderer/utils/messageRenderEquality';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
-import { formatToolSummary, parseToolSummary } from '@shared/utils/toolSummary';
 import { extractMarkdownPlainText } from '@shared/utils/markdownTextSearch';
+import { formatToolSummary, parseToolSummary } from '@shared/utils/toolSummary';
 import { ChevronDown, ChevronRight, ChevronUp, Maximize2 } from 'lucide-react';
+
 import {
   AnimatedHeightReveal,
   ENTRY_REVEAL_ANIMATION_MS,

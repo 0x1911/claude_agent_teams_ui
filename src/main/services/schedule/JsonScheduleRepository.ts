@@ -15,8 +15,8 @@ import { createLogger } from '@shared/utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type { Schedule, ScheduleRun } from '@shared/types';
 import type { ScheduleRepository } from './ScheduleRepository';
+import type { Schedule, ScheduleRun } from '@shared/types';
 
 const logger = createLogger('Service:JsonScheduleRepo');
 

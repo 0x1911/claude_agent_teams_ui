@@ -99,13 +99,13 @@ export function getCrossTeamSentMemberName(value: string | undefined): string | 
   return parseQualifiedRecipient(value)?.memberName ?? null;
 }
 
-function CrossTeamTeamBadge({
+const CrossTeamTeamBadge = ({
   teamName,
   onClick,
 }: {
   teamName: string;
   onClick?: (teamName: string) => void;
-}): React.JSX.Element {
+}): React.JSX.Element => {
   if (onClick) {
     return (
       <button
@@ -135,7 +135,7 @@ function CrossTeamTeamBadge({
       {teamName}
     </span>
   );
-}
+};
 
 interface ActivityItemProps {
   message: InboxMessage;

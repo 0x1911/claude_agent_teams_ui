@@ -65,7 +65,7 @@ export const OptionalSettingsSection = ({
     >
       <button
         type="button"
-        className="flex w-full items-start justify-between gap-3 px-3 py-3 text-left transition-colors hover:bg-[var(--color-surface-raised)]"
+        className="flex w-full items-start justify-between gap-3 p-3 text-left transition-colors hover:bg-[var(--color-surface-raised)]"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
       >

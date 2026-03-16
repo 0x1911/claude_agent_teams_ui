@@ -1,5 +1,3 @@
-import crypto from 'crypto';
-
 import { setCurrentMainOp } from '@main/services/infrastructure/EventLoopLagMonitor';
 import { getAppIconPath } from '@main/utils/appIcon';
 import { getAppDataPath } from '@main/utils/pathDecoder';
@@ -29,8 +27,8 @@ import {
   TEAM_LAUNCH,
   TEAM_LEAD_ACTIVITY,
   TEAM_LEAD_CONTEXT,
-  TEAM_MEMBER_SPAWN_STATUSES,
   TEAM_LIST,
+  TEAM_MEMBER_SPAWN_STATUSES,
   TEAM_PERMANENTLY_DELETE,
   TEAM_PREPARE_PROVISIONING,
   TEAM_PROCESS_ALIVE,
@@ -72,17 +70,18 @@ import {
 } from '@shared/utils/cliArgsParser';
 import { createLogger } from '@shared/utils/logger';
 import { isRateLimitMessage } from '@shared/utils/rateLimitDetector';
+import crypto from 'crypto';
 import { BrowserWindow, type IpcMain, type IpcMainInvokeEvent, Notification } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
 import { ConfigManager } from '../services/infrastructure/ConfigManager';
 import { NotificationManager } from '../services/infrastructure/NotificationManager';
+import { gitIdentityResolver } from '../services/parsing/GitIdentityResolver';
 import {
   buildActionModeAgentBlock,
   isAgentActionMode,
 } from '../services/team/actionModeInstructions';
-import { gitIdentityResolver } from '../services/parsing/GitIdentityResolver';
 import { TeamAttachmentStore } from '../services/team/TeamAttachmentStore';
 import { buildAddMemberSpawnMessage } from '../services/team/TeamProvisioningService';
 import { TeamTaskAttachmentStore } from '../services/team/TeamTaskAttachmentStore';
@@ -113,13 +112,13 @@ import type {
   GlobalTask,
   IpcResult,
   KanbanColumnId,
-  LeadContextUsage,
   LeadActivitySnapshot,
+  LeadContextUsage,
   LeadContextUsageSnapshot,
   MemberFullStats,
-  MemberSpawnStatusesSnapshot,
   MemberLogSummary,
   MemberSpawnStatusEntry,
+  MemberSpawnStatusesSnapshot,
   SendMessageRequest,
   SendMessageResult,
   TaskAttachmentMeta,
@@ -548,7 +547,10 @@ async function handlePermanentlyDeleteTeam(
       .rm(path.join(appData, 'attachments', validated.value!), { recursive: true, force: true })
       .catch(() => undefined);
     await fs.promises
-      .rm(path.join(appData, 'task-attachments', validated.value!), { recursive: true, force: true })
+      .rm(path.join(appData, 'task-attachments', validated.value!), {
+        recursive: true,
+        force: true,
+      })
       .catch(() => undefined);
     // Mark in backup registry AFTER successful deletion
     if (teamBackupService) {

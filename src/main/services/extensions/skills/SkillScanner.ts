@@ -1,10 +1,10 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import type { SkillCatalogItem, SkillDirectoryFlags } from '@shared/types/extensions';
-
 import { SkillMetadataParser, type SkillRelatedFiles } from './SkillMetadataParser';
+
 import type { ResolvedSkillRoot } from './SkillRootsResolver';
+import type { SkillCatalogItem, SkillDirectoryFlags } from '@shared/types/extensions';
 
 const SKILL_FILE_CANDIDATES = ['SKILL.md', 'Skill.md', 'skill.md'] as const;
 

@@ -10,12 +10,12 @@
 import { execCli } from '@main/utils/childProcess';
 import { createLogger } from '@shared/utils/logger';
 
+import type { McpCatalogAggregator } from '../catalog/McpCatalogAggregator';
 import type {
   McpCustomInstallRequest,
   McpInstallRequest,
   OperationResult,
 } from '@shared/types/extensions';
-import type { McpCatalogAggregator } from '../catalog/McpCatalogAggregator';
 
 const logger = createLogger('Extensions:McpInstall');
 

@@ -10,6 +10,8 @@ import { createLogger } from '@shared/utils/logger';
 import { Cron } from 'croner';
 import { randomUUID } from 'crypto';
 
+import type { ScheduledTaskExecutor } from './ScheduledTaskExecutor';
+import type { ScheduleRepository } from './ScheduleRepository';
 import type {
   CreateScheduleInput,
   Schedule,
@@ -18,8 +20,6 @@ import type {
   ScheduleRunStatus,
   UpdateSchedulePatch,
 } from '@shared/types';
-import type { ScheduleRepository } from './ScheduleRepository';
-import type { ScheduledTaskExecutor } from './ScheduledTaskExecutor';
 
 const logger = createLogger('Service:Scheduler');
 
@@ -511,7 +511,7 @@ export class SchedulerService {
 
   private async onCronTick(scheduleId: string): Promise<void> {
     const schedule = await this.repository.getSchedule(scheduleId);
-    if (!schedule || schedule.status !== 'active') {
+    if (schedule?.status !== 'active') {
       logger.debug(`Cron tick for ${scheduleId} skipped (not active)`);
       return;
     }
@@ -659,7 +659,7 @@ export class SchedulerService {
       }
 
       const freshSchedule = await this.repository.getSchedule(schedule.id);
-      if (!freshSchedule || freshSchedule.status !== 'active') {
+      if (freshSchedule?.status !== 'active') {
         await this.completeRun(retryRun, 'failed', exitCode, undefined, error);
         return false;
       }

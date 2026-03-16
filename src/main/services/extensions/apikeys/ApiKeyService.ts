@@ -9,12 +9,14 @@
  * Storage file: ~/.claude/api-keys.json
  */
 
-import { safeStorage } from 'electron';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import os from 'node:os';
+import path from 'node:path';
+
 import { createLogger } from '@shared/utils/logger';
+import { safeStorage } from 'electron';
+
 import type {
   ApiKeyEntry,
   ApiKeyLookupResult,

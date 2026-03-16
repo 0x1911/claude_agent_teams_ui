@@ -1,5 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 
+import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
+import { ImageLightbox } from '@renderer/components/team/attachments/ImageLightbox';
+import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useChipDraftPersistence } from '@renderer/hooks/useChipDraftPersistence';
@@ -7,20 +10,16 @@ import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { useTaskSuggestions } from '@renderer/hooks/useTaskSuggestions';
 import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
 import { useStore } from '@renderer/store';
+import { serializeChipsWithText } from '@renderer/types/inlineChip';
 import { buildReplyBlock } from '@renderer/utils/agentMessageFormatting';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
-import { serializeChipsWithText } from '@renderer/types/inlineChip';
 import {
   extractTaskRefsFromText,
   stripEncodedTaskReferenceMetadata,
 } from '@renderer/utils/taskReferenceUtils';
 import { MAX_TEXT_LENGTH } from '@shared/constants';
 import { ImagePlus, Mic, Send, Trash2, X } from 'lucide-react';
-
-import { MarkdownViewer } from '@renderer/components/chat/viewers/MarkdownViewer';
-import { ImageLightbox } from '@renderer/components/team/attachments/ImageLightbox';
-import { MemberBadge } from '@renderer/components/team/MemberBadge';
 
 import type { MentionSuggestion } from '@renderer/types/mention';
 import type { CommentAttachmentPayload, ResolvedTeamMember } from '@shared/types';

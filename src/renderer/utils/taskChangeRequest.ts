@@ -1,10 +1,11 @@
-import type { ReviewAPI } from '@shared/types/api';
-import type { TeamTaskWithKanban } from '@shared/types/team';
 import {
   getTaskChangeStateBucket,
   isTaskChangeSummaryCacheable,
   type TaskChangeStateBucket,
 } from '@shared/utils/taskChangeState';
+
+import type { ReviewAPI } from '@shared/types/api';
+import type { TeamTaskWithKanban } from '@shared/types/team';
 
 const TASK_SINCE_GRACE_MS = 2 * 60 * 1000;
 

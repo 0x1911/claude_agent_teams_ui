@@ -8,9 +8,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api } from '@renderer/api';
 import { Button } from '@renderer/components/ui/button';
-import { useTabIdOptional } from '@renderer/contexts/useTabUIContext';
-import { useExtensionsTabState } from '@renderer/hooks/useExtensionsTabState';
-import { useStore } from '@renderer/store';
 import { Tabs, TabsContent, TabsList } from '@renderer/components/ui/tabs';
 import {
   Tooltip,
@@ -18,14 +15,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@renderer/components/ui/tooltip';
+import { useTabIdOptional } from '@renderer/contexts/useTabUIContext';
+import { useExtensionsTabState } from '@renderer/hooks/useExtensionsTabState';
+import { useStore } from '@renderer/store';
 import { AlertTriangle, BookOpen, Info, Key, Plus, Puzzle, RefreshCw, Server } from 'lucide-react';
 
 import { ApiKeysPanel } from './apikeys/ApiKeysPanel';
-import { ExtensionsSubTabTrigger } from './ExtensionsSubTabTrigger';
 import { CustomMcpServerDialog } from './mcp/CustomMcpServerDialog';
 import { McpServersPanel } from './mcp/McpServersPanel';
 import { PluginsPanel } from './plugins/PluginsPanel';
 import { SkillsPanel } from './skills/SkillsPanel';
+import { ExtensionsSubTabTrigger } from './ExtensionsSubTabTrigger';
 
 export const ExtensionStoreView = (): React.JSX.Element => {
   const tabId = useTabIdOptional();

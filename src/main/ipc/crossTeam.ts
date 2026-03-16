@@ -7,10 +7,12 @@ import {
 import { createLogger } from '@shared/utils/logger';
 
 import { isAgentActionMode } from '../services/team/actionModeInstructions';
+
 import { validateTaskId, validateTeamName } from './guards';
+
 import type { CrossTeamService } from '../services/team/CrossTeamService';
-import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type { IpcResult, TaskRef } from '@shared/types';
+import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 
 const logger = createLogger('IPC:crossTeam');
 

@@ -1,24 +1,24 @@
 import * as React from 'react';
 
-import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
 import { PROSE_LINK } from '@renderer/constants/cssVariables';
+import { getTeamColorSet, getThemedBadge } from '@renderer/constants/teamColors';
 import { useFileSuggestions } from '@renderer/hooks/useFileSuggestions';
 import { useMentionDetection } from '@renderer/hooks/useMentionDetection';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { cn } from '@renderer/lib/utils';
 import { chipToken } from '@renderer/types/inlineChip';
 import {
-  doesSuggestionMatchQuery,
-  getSuggestionInsertionText,
-} from '@renderer/utils/mentionSuggestions';
-import { nameColorSet } from '@renderer/utils/projectColor';
-import { findTaskReferenceMatches } from '@renderer/utils/taskReferenceUtils';
-import {
   createChipFromSelection,
   findChipBoundary,
   reconcileChips,
   removeChipTokenFromText,
 } from '@renderer/utils/chipUtils';
+import {
+  doesSuggestionMatchQuery,
+  getSuggestionInsertionText,
+} from '@renderer/utils/mentionSuggestions';
+import { nameColorSet } from '@renderer/utils/projectColor';
+import { findTaskReferenceMatches } from '@renderer/utils/taskReferenceUtils';
 import {
   findUrlBoundary,
   findUrlMatches,
@@ -666,7 +666,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
 
         if (e.key === 'Backspace') {
           const urlBoundary = findUrlTokenBoundary(cursorPos);
-          if (urlBoundary && cursorPos === urlBoundary.end) {
+          if (cursorPos === urlBoundary?.end) {
             e.preventDefault();
             const newText = removeUrlMatchFromText(value, urlBoundary);
             onValueChange(newText);
@@ -676,7 +676,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
             return;
           }
           const taskBoundary = findEncodedTaskBoundary(cursorPos);
-          if (taskBoundary && cursorPos === taskBoundary.end) {
+          if (cursorPos === taskBoundary?.end) {
             e.preventDefault();
             const newText = value.slice(0, taskBoundary.start) + value.slice(taskBoundary.end);
             onValueChange(newText);
@@ -700,7 +700,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           }
         } else if (e.key === 'Delete') {
           const urlBoundary = findUrlTokenBoundary(cursorPos);
-          if (urlBoundary && cursorPos === urlBoundary.start) {
+          if (cursorPos === urlBoundary?.start) {
             e.preventDefault();
             const newText = removeUrlMatchFromText(value, urlBoundary);
             onValueChange(newText);
@@ -710,7 +710,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
             return;
           }
           const taskBoundary = findEncodedTaskBoundary(cursorPos);
-          if (taskBoundary && cursorPos === taskBoundary.start) {
+          if (cursorPos === taskBoundary?.start) {
             e.preventDefault();
             const newText = value.slice(0, taskBoundary.start) + value.slice(taskBoundary.end);
             onValueChange(newText);
@@ -733,13 +733,13 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           }
         } else if (e.key === 'ArrowLeft' && !e.shiftKey) {
           const urlBoundary = findUrlTokenBoundary(cursorPos);
-          if (urlBoundary && cursorPos === urlBoundary.end) {
+          if (cursorPos === urlBoundary?.end) {
             e.preventDefault();
             textarea.setSelectionRange(urlBoundary.start, urlBoundary.start);
             return;
           }
           const taskBoundary = findEncodedTaskBoundary(cursorPos);
-          if (taskBoundary && cursorPos === taskBoundary.end) {
+          if (cursorPos === taskBoundary?.end) {
             e.preventDefault();
             textarea.setSelectionRange(taskBoundary.start, taskBoundary.start);
             return;
@@ -753,13 +753,13 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           }
         } else if (e.key === 'ArrowRight' && !e.shiftKey) {
           const urlBoundary = findUrlTokenBoundary(cursorPos);
-          if (urlBoundary && cursorPos === urlBoundary.start) {
+          if (cursorPos === urlBoundary?.start) {
             e.preventDefault();
             textarea.setSelectionRange(urlBoundary.end, urlBoundary.end);
             return;
           }
           const taskBoundary = findEncodedTaskBoundary(cursorPos);
-          if (taskBoundary && cursorPos === taskBoundary.start) {
+          if (cursorPos === taskBoundary?.start) {
             e.preventDefault();
             textarea.setSelectionRange(taskBoundary.end, taskBoundary.end);
             return;
@@ -773,13 +773,13 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           }
         } else if (e.key === 'ArrowLeft' && e.shiftKey) {
           const urlBoundary = findUrlTokenBoundary(cursorPos);
-          if (urlBoundary && cursorPos === urlBoundary.end) {
+          if (cursorPos === urlBoundary?.end) {
             e.preventDefault();
             textarea.setSelectionRange(urlBoundary.start, selectionEnd);
             return;
           }
           const taskBoundary = findEncodedTaskBoundary(cursorPos);
-          if (taskBoundary && cursorPos === taskBoundary.end) {
+          if (cursorPos === taskBoundary?.end) {
             e.preventDefault();
             textarea.setSelectionRange(taskBoundary.start, selectionEnd);
             return;
@@ -793,13 +793,13 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           }
         } else if (e.key === 'ArrowRight' && e.shiftKey) {
           const urlBoundary = findUrlTokenBoundary(cursorPos);
-          if (urlBoundary && cursorPos === urlBoundary.start) {
+          if (cursorPos === urlBoundary?.start) {
             e.preventDefault();
             textarea.setSelectionRange(selectionStart, urlBoundary.end);
             return;
           }
           const taskBoundary = findEncodedTaskBoundary(cursorPos);
-          if (taskBoundary && cursorPos === taskBoundary.start) {
+          if (cursorPos === taskBoundary?.start) {
             e.preventDefault();
             textarea.setSelectionRange(selectionStart, taskBoundary.end);
             return;

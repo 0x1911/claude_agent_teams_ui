@@ -1,18 +1,17 @@
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createHash } from 'node:crypto';
 
+import { SkillScanner } from './SkillScanner';
+
+import type { ImportedSkillSourceFile } from './SkillImportService';
 import type {
   SkillDraftFile,
   SkillReviewFileChange,
   SkillReviewPreview,
   SkillReviewSummary,
 } from '@shared/types/extensions';
-
-import type { ImportedSkillSourceFile } from './SkillImportService';
-
-import { SkillScanner } from './SkillScanner';
 
 type SkillPlanInputFile =
   | { relativePath: string; isBinary: false; content: string }
@@ -73,7 +72,7 @@ export class SkillPlanService {
   async applyPlan(plan: SkillExecutionPlan): Promise<void> {
     const backupRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'skill-plan-backup-'));
     const createdPaths: string[] = [];
-    const backups: Array<{ absolutePath: string; backupPath: string }> = [];
+    const backups: { absolutePath: string; backupPath: string }[] = [];
 
     try {
       for (const [index, change] of plan.changes.entries()) {
@@ -200,7 +199,7 @@ export class SkillPlanService {
 
     const summary = changes.reduce<SkillReviewSummary>(
       (acc, change) => {
-        acc[`${change.action}d` as 'created' | 'updated' | 'deleted'] += 1;
+        acc[`${change.action}d`] += 1;
         if (change.isBinary) {
           acc.binary += 1;
         }

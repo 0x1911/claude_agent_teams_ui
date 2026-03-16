@@ -32,7 +32,7 @@ export const FullDiffLoadingBanner = ({
   return (
     <div className="bg-surface/95 border-b border-border px-4 py-3">
       <div className="bg-surface-raised/80 rounded-xl border border-border shadow-sm">
-        <div className="flex items-start gap-3 px-3 py-3">
+        <div className="flex items-start gap-3 p-3">
           <div className="relative mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-sidebar">
             <div className="absolute inset-1 rounded-lg bg-emerald-500/10 blur-sm" />
             <LoaderCircle

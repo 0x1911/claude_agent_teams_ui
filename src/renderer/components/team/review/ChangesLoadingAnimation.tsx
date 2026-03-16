@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+
 import { Check, FileCode, FileDiff, FileText, GitBranch, GitCommit, Search } from 'lucide-react';
 
 /* ── Fake diff lines for the mini-terminal ─────────────────────────── */
@@ -156,10 +157,7 @@ export const ChangesLoadingAnimation = (): React.JSX.Element => {
         </svg>
 
         {/* Rotating dashed orbit ring */}
-        <svg
-          className="clda-orbit-ring pointer-events-none absolute h-40 w-40"
-          viewBox="0 0 160 160"
-        >
+        <svg className="clda-orbit-ring pointer-events-none absolute size-40" viewBox="0 0 160 160">
           <circle
             cx="80"
             cy="80"

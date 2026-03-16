@@ -197,7 +197,7 @@ export const MemberDraftRow = ({
         <Button
           variant="outline"
           size="sm"
-          className="h-8 w-8 shrink-0 border-red-500/40 px-0 text-red-300 hover:bg-red-500/10 hover:text-red-200"
+          className="size-8 shrink-0 border-red-500/40 px-0 text-red-300 hover:bg-red-500/10 hover:text-red-200"
           aria-label={`Remove ${member.name || `member ${index + 1}`}`}
           title="Remove member"
           onClick={() => onRemove(member.id)}

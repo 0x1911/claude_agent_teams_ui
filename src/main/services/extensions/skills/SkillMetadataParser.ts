@@ -1,6 +1,9 @@
 import * as path from 'node:path';
 
 import { createLogger } from '@shared/utils/logger';
+import YAML from 'yaml';
+
+import type { ResolvedSkillRoot } from './SkillRootsResolver';
 import type {
   SkillCatalogItem,
   SkillDetail,
@@ -8,9 +11,6 @@ import type {
   SkillInvocationMode,
   SkillValidationIssue,
 } from '@shared/types/extensions';
-import YAML from 'yaml';
-
-import type { ResolvedSkillRoot } from './SkillRootsResolver';
 
 const logger = createLogger('Extensions:SkillParser');
 
@@ -203,7 +203,7 @@ export class SkillMetadataParser {
       };
     }
 
-    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/u);
+    const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/u.exec(content);
     if (!match) {
       return {
         rawFrontmatter: null,

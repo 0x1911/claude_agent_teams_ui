@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 
 import { LaunchTeamDialog } from '../dialogs/LaunchTeamDialog';
+
 import { ScheduleEmptyState } from './ScheduleEmptyState';
 import { ScheduleRunLogDialog } from './ScheduleRunLogDialog';
 import { ScheduleRunRow } from './ScheduleRunRow';
@@ -241,7 +242,6 @@ export const ScheduleSection = ({ teamName }: ScheduleSectionProps): React.JSX.E
       try {
         await deleteSchedule(id);
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('Failed to delete schedule:', err);
       }
     },
@@ -253,7 +253,6 @@ export const ScheduleSection = ({ teamName }: ScheduleSectionProps): React.JSX.E
       try {
         await triggerNow(id);
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('Failed to trigger schedule:', err);
       }
     },

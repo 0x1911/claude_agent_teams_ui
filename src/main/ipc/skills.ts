@@ -1,18 +1,3 @@
-import { createLogger } from '@shared/utils/logger';
-import type {
-  SkillCatalogItem,
-  SkillDeleteRequest,
-  SkillDetail,
-  SkillImportRequest,
-  SkillReviewPreview,
-  SkillUpsertRequest,
-} from '@shared/types/extensions';
-import type { IpcMain, IpcMainInvokeEvent } from 'electron';
-
-import type { SkillsCatalogService } from '../services/extensions/skills/SkillsCatalogService';
-import type { SkillsMutationService } from '../services/extensions/skills/SkillsMutationService';
-import type { SkillsWatcherService } from '../services/extensions/skills/SkillsWatcherService';
-
 import {
   SKILLS_APPLY_IMPORT,
   SKILLS_APPLY_UPSERT,
@@ -24,6 +9,20 @@ import {
   SKILLS_START_WATCHING,
   SKILLS_STOP_WATCHING,
 } from '@preload/constants/ipcChannels';
+import { createLogger } from '@shared/utils/logger';
+
+import type { SkillsCatalogService } from '../services/extensions/skills/SkillsCatalogService';
+import type { SkillsMutationService } from '../services/extensions/skills/SkillsMutationService';
+import type { SkillsWatcherService } from '../services/extensions/skills/SkillsWatcherService';
+import type {
+  SkillCatalogItem,
+  SkillDeleteRequest,
+  SkillDetail,
+  SkillImportRequest,
+  SkillReviewPreview,
+  SkillUpsertRequest,
+} from '@shared/types/extensions';
+import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 
 const logger = createLogger('IPC:skills');
 

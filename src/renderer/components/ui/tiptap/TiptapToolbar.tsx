@@ -1,3 +1,4 @@
+import { cn } from '@renderer/lib/utils';
 import { useCurrentEditor, useEditorState } from '@tiptap/react';
 import {
   Bold,
@@ -16,8 +17,6 @@ import {
   Undo2,
 } from 'lucide-react';
 
-import { cn } from '@renderer/lib/utils';
-
 import { Tooltip, TooltipContent, TooltipTrigger } from '../tooltip';
 
 import type { ToolbarConfig } from './types';
@@ -26,7 +25,7 @@ interface TiptapToolbarProps {
   config?: ToolbarConfig;
 }
 
-function ToolbarButton({
+const ToolbarButton = ({
   icon,
   active,
   disabled,
@@ -38,7 +37,7 @@ function ToolbarButton({
   disabled?: boolean;
   onClick: () => void;
   label: string;
-}) {
+}) => {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -65,13 +64,13 @@ function ToolbarButton({
       </TooltipContent>
     </Tooltip>
   );
-}
+};
 
-function Divider() {
+const Divider = () => {
   return <div className="mx-0.5 h-4 w-px bg-[var(--color-border)]" />;
-}
+};
 
-export function TiptapToolbar({ config }: TiptapToolbarProps) {
+export const TiptapToolbar = ({ config }: TiptapToolbarProps) => {
   const { editor } = useCurrentEditor();
 
   // useEditorState — КРИТИЧНО для v3!
@@ -89,8 +88,7 @@ export function TiptapToolbar({ config }: TiptapToolbarProps) {
         isBulletList: e.isActive('bulletList'),
         isOrderedList: e.isActive('orderedList'),
         isBlockquote: e.isActive('blockquote'),
-        headingLevel:
-          ([1, 2, 3] as const).find((l) => e.isActive('heading', { level: l })) ?? 0,
+        headingLevel: ([1, 2, 3] as const).find((l) => e.isActive('heading', { level: l })) ?? 0,
         canUndo: e.can().undo(),
         canRedo: e.can().redo(),
       };
@@ -268,4 +266,4 @@ export function TiptapToolbar({ config }: TiptapToolbarProps) {
       ))}
     </div>
   );
-}
+};

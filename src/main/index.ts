@@ -16,17 +16,17 @@
 // On Windows this saturates all threads, blocking the event loop.
 process.env.UV_THREADPOOL_SIZE ??= '16';
 
-import { CrossTeamService } from '@main/services/team/CrossTeamService';
-import { TeamConfigReader } from '@main/services/team/TeamConfigReader';
-import { TeamInboxWriter } from '@main/services/team/TeamInboxWriter';
+import { JsonScheduleRepository } from '@main/services/schedule/JsonScheduleRepository';
+import { ScheduledTaskExecutor } from '@main/services/schedule/ScheduledTaskExecutor';
+import { SchedulerService } from '@main/services/schedule/SchedulerService';
 import { ChangeExtractorService } from '@main/services/team/ChangeExtractorService';
+import { CrossTeamService } from '@main/services/team/CrossTeamService';
 import { FileContentResolver } from '@main/services/team/FileContentResolver';
 import { GitDiffFallback } from '@main/services/team/GitDiffFallback';
 import { ReviewApplierService } from '@main/services/team/ReviewApplierService';
 import { TeamBackupService } from '@main/services/team/TeamBackupService';
-import { JsonScheduleRepository } from '@main/services/schedule/JsonScheduleRepository';
-import { ScheduledTaskExecutor } from '@main/services/schedule/ScheduledTaskExecutor';
-import { SchedulerService } from '@main/services/schedule/SchedulerService';
+import { TeamConfigReader } from '@main/services/team/TeamConfigReader';
+import { TeamInboxWriter } from '@main/services/team/TeamInboxWriter';
 import {
   CONTEXT_CHANGED,
   SCHEDULE_CHANGE,
@@ -51,16 +51,32 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 
 import { cleanupEditorState, setEditorMainWindow } from './ipc/editor';
-import { setReviewMainWindow } from './ipc/review';
 import { initializeIpcHandlers, removeIpcHandlers } from './ipc/handlers';
+import { setReviewMainWindow } from './ipc/review';
+import {
+  ApiKeyService,
+  ExtensionFacadeService,
+  GlamaMcpEnrichmentService,
+  McpCatalogAggregator,
+  McpHealthDiagnosticsService,
+  McpInstallationStateService,
+  McpInstallService,
+  OfficialMcpRegistryService,
+  PluginCatalogService,
+  PluginInstallationStateService,
+  PluginInstallService,
+  SkillsCatalogService,
+  SkillsMutationService,
+  SkillsWatcherService,
+} from './services/extensions';
 import { startEventLoopLagMonitor } from './services/infrastructure/EventLoopLagMonitor';
 import { HttpServer } from './services/infrastructure/HttpServer';
-import { TeamInboxReader } from './services/team/TeamInboxReader';
 import {
   buildTeamControlApiBaseUrl,
   clearTeamControlApiState,
   writeTeamControlApiState,
 } from './services/team/TeamControlApiState';
+import { TeamInboxReader } from './services/team/TeamInboxReader';
 import { TeamSentMessagesStore } from './services/team/TeamSentMessagesStore';
 import { getAppIconPath } from './utils/appIcon';
 import { getProjectsBasePath, getTeamsBasePath, getTodosBasePath } from './utils/pathDecoder';
@@ -80,22 +96,6 @@ import {
   TeamProvisioningService,
   UpdaterService,
 } from './services';
-import {
-  ApiKeyService,
-  ExtensionFacadeService,
-  GlamaMcpEnrichmentService,
-  McpCatalogAggregator,
-  McpHealthDiagnosticsService,
-  McpInstallationStateService,
-  McpInstallService,
-  OfficialMcpRegistryService,
-  PluginCatalogService,
-  PluginInstallationStateService,
-  PluginInstallService,
-  SkillsCatalogService,
-  SkillsMutationService,
-  SkillsWatcherService,
-} from './services/extensions';
 
 import type { FileChangeEvent } from '@main/types';
 import type { TeamChangeEvent } from '@shared/types';

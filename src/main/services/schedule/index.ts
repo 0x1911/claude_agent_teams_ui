@@ -3,12 +3,12 @@
  */
 
 export { JsonScheduleRepository } from './JsonScheduleRepository';
-export type { ScheduleRepository } from './ScheduleRepository';
-export { ScheduledTaskExecutor } from './ScheduledTaskExecutor';
 export type {
   ExecutionRequest,
   InternalScheduleRun,
   ScheduledTaskResult,
 } from './ScheduledTaskExecutor';
-export { SchedulerService } from './SchedulerService';
+export { ScheduledTaskExecutor } from './ScheduledTaskExecutor';
+export type { ScheduleRepository } from './ScheduleRepository';
 export type { WarmUpFn } from './SchedulerService';
+export { SchedulerService } from './SchedulerService';

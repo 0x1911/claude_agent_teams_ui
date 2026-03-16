@@ -1,7 +1,7 @@
 import { TASK_CHANGE_SUMMARY_CACHE_SCHEMA_VERSION } from './taskChangeSummaryCacheTypes';
 
-import type { FileChangeSummary, TaskChangeSetV2 } from '@shared/types';
 import type { PersistedTaskChangeSummaryEntry } from './taskChangeSummaryCacheTypes';
+import type { FileChangeSummary, TaskChangeSetV2 } from '@shared/types';
 
 function normalizeIsoString(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim() === '') return null;

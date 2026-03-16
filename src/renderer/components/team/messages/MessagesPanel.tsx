@@ -3,9 +3,9 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { useStableTeamMentionMeta } from '@renderer/hooks/useStableTeamMentionMeta';
 import { useTeamMessagesExpanded } from '@renderer/hooks/useTeamMessagesExpanded';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
-import { useStableTeamMentionMeta } from '@renderer/hooks/useStableTeamMentionMeta';
 import { useStore } from '@renderer/store';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
@@ -16,8 +16,8 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   MessageSquare,
-  PanelLeftClose,
   PanelLeft,
+  PanelLeftClose,
   Search,
   X,
 } from 'lucide-react';
@@ -26,13 +26,14 @@ import { ActivityTimeline } from '../activity/ActivityTimeline';
 import { getThoughtGroupKey, groupTimelineItems } from '../activity/LeadThoughtsGroup';
 import { MessageExpandDialog } from '../activity/MessageExpandDialog';
 import { CollapsibleTeamSection } from '../CollapsibleTeamSection';
+
 import { MessageComposer } from './MessageComposer';
 import { MessagesFilterPopover } from './MessagesFilterPopover';
 import { StatusBlock } from './StatusBlock';
 
-import type { MessagesFilterState } from './MessagesFilterPopover';
-import type { ActionMode } from './ActionModeSelector';
 import type { TimelineItem } from '../activity/LeadThoughtsGroup';
+import type { ActionMode } from './ActionModeSelector';
+import type { MessagesFilterState } from './MessagesFilterPopover';
 import type { InboxMessage, ResolvedTeamMember, TaskRef, TeamTaskWithKanban } from '@shared/types';
 
 interface TimeWindow {
@@ -631,7 +632,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         </>
       }
       defaultOpen
-      action={<div className="flex items-center gap-2 pl-2 pr-2">{searchAndFilterBar}</div>}
+      action={<div className="flex items-center gap-2 px-2">{searchAndFilterBar}</div>}
     >
       {messagesContent}
     </CollapsibleTeamSection>

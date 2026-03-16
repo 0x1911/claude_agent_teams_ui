@@ -1,14 +1,13 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 
 import { useStore } from '@renderer/store';
-import { createLogger } from '@shared/utils/logger';
-import { AlertTriangle, Bug, Check, Copy, RefreshCw } from 'lucide-react';
-
 import {
+  type BugReportContext,
   buildBugReportText,
   buildGitHubBugReportUrl,
-  type BugReportContext,
 } from '@renderer/utils/bugReportUtils';
+import { createLogger } from '@shared/utils/logger';
+import { AlertTriangle, Bug, Check, Copy, RefreshCw } from 'lucide-react';
 
 const logger = createLogger('Component:ErrorBoundary');
 

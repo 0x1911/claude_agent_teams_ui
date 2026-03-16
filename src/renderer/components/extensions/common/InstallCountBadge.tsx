@@ -2,9 +2,8 @@
  * InstallCountBadge — formatted download count with icon.
  */
 
-import { Download } from 'lucide-react';
-
 import { formatInstallCount } from '@shared/utils/extensionNormalizers';
+import { Download } from 'lucide-react';
 
 interface InstallCountBadgeProps {
   count: number;

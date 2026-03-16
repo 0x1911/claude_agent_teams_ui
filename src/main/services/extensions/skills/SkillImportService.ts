@@ -101,13 +101,11 @@ export class SkillImportService {
     }
   }
 
-  private async walkDirectory(
-    rootDir: string
-  ): Promise<{
-    files: Array<{ absolutePath: string; relativePath: string }>;
+  private async walkDirectory(rootDir: string): Promise<{
+    files: { absolutePath: string; relativePath: string }[];
     hiddenEntriesSkipped: number;
   }> {
-    const allFiles: Array<{ absolutePath: string; relativePath: string }> = [];
+    const allFiles: { absolutePath: string; relativePath: string }[] = [];
     let hiddenEntriesSkipped = 0;
     let totalBytes = 0;
 

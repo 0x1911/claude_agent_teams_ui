@@ -14,18 +14,18 @@ import {
   ArrowRightLeft,
   Bell,
   BellRing,
+  CheckCircle2,
+  CirclePlus,
   Clock,
   ExternalLink,
   EyeOff,
+  GitBranch,
   HelpCircle,
   Inbox,
   Info,
   Mail,
   MessageSquare,
   PartyPopper,
-  CirclePlus,
-  CheckCircle2,
-  GitBranch,
   Send,
   Users,
   Volume2,
@@ -39,7 +39,9 @@ import type { NotificationTrigger } from '@renderer/types/data';
 import type { TeamReviewState, TeamTaskStatus } from '@shared/types';
 
 /** Notification targets span workflow status plus the explicit review axis. */
-type NotifiableStatus = TeamTaskStatus | Extract<TeamReviewState, 'review' | 'needsFix' | 'approved'>;
+type NotifiableStatus =
+  | TeamTaskStatus
+  | Extract<TeamReviewState, 'review' | 'needsFix' | 'approved'>;
 
 // Snooze duration options
 const SNOOZE_OPTIONS = [

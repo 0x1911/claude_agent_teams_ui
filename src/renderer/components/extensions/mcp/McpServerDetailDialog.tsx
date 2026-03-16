@@ -5,6 +5,9 @@
 
 import { useEffect, useState } from 'react';
 
+import { api } from '@renderer/api';
+import { Badge } from '@renderer/components/ui/badge';
+import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -12,8 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog';
-import { Badge } from '@renderer/components/ui/badge';
-import { Button } from '@renderer/components/ui/button';
 import { Input } from '@renderer/components/ui/input';
 import { Label } from '@renderer/components/ui/label';
 import {
@@ -24,12 +25,11 @@ import {
   SelectValue,
 } from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
-import { api } from '@renderer/api';
+import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
 import { ExternalLink, Lock, Plus, Star, Trash2, Wrench } from 'lucide-react';
 
 import { InstallButton } from '../common/InstallButton';
 import { SourceBadge } from '../common/SourceBadge';
-import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
 
 import type { McpCatalogItem, McpHeaderDef, McpServerDiagnostic } from '@shared/types/extensions';
 
@@ -214,7 +214,7 @@ export const McpServerDetailDialog = ({
             {hasIcon && (
               <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised">
                 <img
-                  src={server.iconUrl!}
+                  src={server.iconUrl}
                   alt=""
                   className="size-8 rounded object-contain"
                   onError={() => setImgError(true)}

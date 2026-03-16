@@ -10,20 +10,13 @@
 import type { CliArgsValidationResult } from '../utils/cliArgsParser';
 import type { CliInstallerAPI } from './cliInstaller';
 import type { EditorAPI, EditorFileChangeEvent, ProjectAPI } from './editor';
-import type { McpCatalogAPI, PluginCatalogAPI, ApiKeysAPI, SkillsCatalogAPI } from './extensions';
+import type { ApiKeysAPI, McpCatalogAPI, PluginCatalogAPI, SkillsCatalogAPI } from './extensions';
 import type {
   AppConfig,
   DetectedError,
   NotificationTrigger,
   TriggerTestResult,
 } from './notifications';
-import type {
-  CreateScheduleInput,
-  Schedule,
-  ScheduleChangeEvent,
-  ScheduleRun,
-  UpdateSchedulePatch,
-} from './schedule';
 import type {
   AgentChangeSet,
   ApplyReviewRequest,
@@ -36,6 +29,13 @@ import type {
   SnippetDiff,
   TaskChangeSetV2,
 } from './review';
+import type {
+  CreateScheduleInput,
+  Schedule,
+  ScheduleChangeEvent,
+  ScheduleRun,
+  UpdateSchedulePatch,
+} from './schedule';
 import type {
   AddMemberRequest,
   AddTaskCommentRequest,

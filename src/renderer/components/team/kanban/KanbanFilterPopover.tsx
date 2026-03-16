@@ -4,9 +4,8 @@ import { Button } from '@renderer/components/ui/button';
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
-import { Crown, Filter } from 'lucide-react';
-
 import { displayMemberName } from '@renderer/utils/memberHelpers';
+import { Crown, Filter } from 'lucide-react';
 
 import type { Session } from '@renderer/types/data';
 import type { KanbanColumnId, ResolvedTeamMember } from '@shared/types';

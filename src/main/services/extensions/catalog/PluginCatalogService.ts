@@ -8,12 +8,13 @@
  * - Deduplicates concurrent requests
  */
 
-import https from 'node:https';
 import http from 'node:http';
+import https from 'node:https';
 
-import { createLogger } from '@shared/utils/logger';
-import type { PluginCatalogItem } from '@shared/types/extensions';
 import { buildPluginId } from '@shared/utils/extensionNormalizers';
+import { createLogger } from '@shared/utils/logger';
+
+import type { PluginCatalogItem } from '@shared/types/extensions';
 
 const logger = createLogger('Extensions:PluginCatalog');
 
@@ -260,7 +261,7 @@ export class PluginCatalogService {
 
       const json = JSON.parse(response.body) as MarketplaceJson;
       const items = this.parseMarketplace(json);
-      const etag = (response.headers['etag'] as string) ?? null;
+      const etag = (response.headers.etag as string) ?? null;
 
       this.cache = { items, etag, fetchedAt: Date.now() };
       logger.info(`Fetched ${items.length} plugins from marketplace "${json.name}"`);
@@ -311,7 +312,7 @@ export class PluginCatalogService {
    * e.g. https://github.com/org/repo → https://raw.githubusercontent.com/org/repo/main/README.md
    */
   private buildReadmeUrl(repoUrl: string): string | null {
-    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+    const match = /github\.com\/([^/]+)\/([^/]+)/.exec(repoUrl);
     if (!match) return null;
     const [, owner, repo] = match;
     return `https://raw.githubusercontent.com/${owner}/${repo}/main/README.md`;

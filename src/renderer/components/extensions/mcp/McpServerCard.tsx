@@ -5,20 +5,18 @@
 
 import { useState } from 'react';
 
+import { api } from '@renderer/api';
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
-import { api } from '@renderer/api';
 import { formatCompactNumber, formatRelativeTime } from '@renderer/utils/formatters';
-import { Cloud, Clock, Globe, KeyRound, Lock, Monitor, Star, Tag, Wrench } from 'lucide-react';
-
-// eslint-disable-next-line @typescript-eslint/no-deprecated -- lucide naming migration, alias is stable
+import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
+import { Clock, Cloud, Globe, KeyRound, Lock, Monitor, Star, Tag, Wrench } from 'lucide-react';
 import { Github as GithubIcon } from 'lucide-react';
 
 import { InstallButton } from '../common/InstallButton';
 import { SourceBadge } from '../common/SourceBadge';
-import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
 
 import type { McpCatalogItem, McpServerDiagnostic } from '@shared/types/extensions';
 
@@ -82,7 +80,7 @@ export const McpServerCard = ({
         {hasIcon && (
           <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-raised">
             <img
-              src={server.iconUrl!}
+              src={server.iconUrl}
               alt=""
               className="size-7 rounded object-contain"
               onError={() => setImgError(true)}

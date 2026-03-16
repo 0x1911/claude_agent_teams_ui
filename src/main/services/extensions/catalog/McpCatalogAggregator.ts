@@ -7,12 +7,13 @@
  * - Provides getById() for secure install flow
  */
 
-import { createLogger } from '@shared/utils/logger';
-import type { McpCatalogItem, McpSearchResult } from '@shared/types/extensions';
 import { normalizeRepoUrl } from '@shared/utils/extensionNormalizers';
+import { createLogger } from '@shared/utils/logger';
 
-import { OfficialMcpRegistryService } from './OfficialMcpRegistryService';
-import { GlamaMcpEnrichmentService } from './GlamaMcpEnrichmentService';
+import { type GlamaMcpEnrichmentService } from './GlamaMcpEnrichmentService';
+import { type OfficialMcpRegistryService } from './OfficialMcpRegistryService';
+
+import type { McpCatalogItem, McpSearchResult } from '@shared/types/extensions';
 
 const logger = createLogger('Extensions:McpAggregator');
 

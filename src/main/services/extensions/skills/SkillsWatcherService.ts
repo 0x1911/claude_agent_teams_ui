@@ -1,10 +1,10 @@
-import { createLogger } from '@shared/utils/logger';
-import type { SkillWatcherEvent } from '@shared/types/extensions';
 import { isPathWithinRoot } from '@main/utils/pathValidation';
+import { createLogger } from '@shared/utils/logger';
 import { watch } from 'chokidar';
 
 import { SkillRootsResolver } from './SkillRootsResolver';
 
+import type { SkillWatcherEvent } from '@shared/types/extensions';
 import type { FSWatcher } from 'chokidar';
 
 const logger = createLogger('Extensions:SkillsWatcher');

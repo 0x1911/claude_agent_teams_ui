@@ -6,12 +6,6 @@ import {
   ImageLightbox,
   LightboxLockProvider,
 } from '@renderer/components/team/attachments/ImageLightbox';
-import {
-  getTeamColorSet,
-  getThemedBadge,
-  getThemedBorder,
-  getThemedText,
-} from '@renderer/constants/teamColors';
 import { CollapsibleTeamSection } from '@renderer/components/team/CollapsibleTeamSection';
 import { FileIcon } from '@renderer/components/team/editor/FileIcon';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
@@ -30,19 +24,25 @@ import { Input } from '@renderer/components/ui/input';
 import { MemberSelect } from '@renderer/components/ui/MemberSelect';
 import { TiptapEditor } from '@renderer/components/ui/tiptap';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
-import { getLegacyCutoff, getReadCommentIds } from '@renderer/services/commentReadStorage';
-import { useStore } from '@renderer/store';
+import {
+  getTeamColorSet,
+  getThemedBadge,
+  getThemedBorder,
+  getThemedText,
+} from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useViewportCommentRead } from '@renderer/hooks/useViewportCommentRead';
+import { getLegacyCutoff, getReadCommentIds } from '@renderer/services/commentReadStorage';
+import { useStore } from '@renderer/store';
 import { isImageMimeType } from '@renderer/utils/attachmentUtils';
 import {
+  agentAvatarUrl,
   buildMemberColorMap,
+  displayMemberName,
   KANBAN_COLUMN_DISPLAY,
   REVIEW_STATE_DISPLAY,
   TASK_STATUS_LABELS,
   TASK_STATUS_STYLES,
-  agentAvatarUrl,
-  displayMemberName,
 } from '@renderer/utils/memberHelpers';
 import { buildTaskChangeRequestOptions, deriveTaskSince } from '@renderer/utils/taskChangeRequest';
 import { linkifyTaskIdsInMarkdown, parseTaskLinkHref } from '@renderer/utils/taskReferenceUtils';
@@ -78,9 +78,10 @@ import {
   X,
 } from 'lucide-react';
 
+import { SourceMessageAttachments } from '../attachments/SourceMessageAttachments';
+
 import { WorkflowTimeline } from './StatusHistoryTimeline';
 import { TaskAttachments } from './TaskAttachments';
-import { SourceMessageAttachments } from '../attachments/SourceMessageAttachments';
 import { TaskCommentAwaitingReply } from './TaskCommentAwaitingReply';
 import { TaskCommentInput } from './TaskCommentInput';
 import { TaskCommentsSection } from './TaskCommentsSection';

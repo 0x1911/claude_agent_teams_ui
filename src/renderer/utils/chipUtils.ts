@@ -3,13 +3,12 @@
  */
 
 import { chipToken } from '@renderer/types/inlineChip';
-import { getSuggestionInsertionText } from '@renderer/utils/mentionSuggestions';
-
-import type { MentionSuggestion } from '@renderer/types/mention';
 import { getCodeFenceLanguage } from '@renderer/utils/buildSelectionAction';
+import { getSuggestionInsertionText } from '@renderer/utils/mentionSuggestions';
 import { getBasename } from '@shared/utils/platformPath';
 
 import type { InlineChip } from '@renderer/types/inlineChip';
+import type { MentionSuggestion } from '@renderer/types/mention';
 import type { EditorSelectionAction } from '@shared/types/editor';
 
 // =============================================================================

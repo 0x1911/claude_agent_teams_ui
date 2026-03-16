@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
-import { Copy, Check, Pencil, Trash2 } from 'lucide-react';
+import { Check, Copy, Pencil, Trash2 } from 'lucide-react';
 
 import type { ApiKeyEntry } from '@shared/types/extensions';
 

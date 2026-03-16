@@ -1,10 +1,11 @@
-import { cn } from '@renderer/lib/utils';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@renderer/components/ui/tooltip';
+import { cn } from '@renderer/lib/utils';
+
 import type { AgentActionMode } from '@shared/types';
 
 export type ActionMode = AgentActionMode;

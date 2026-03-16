@@ -4,8 +4,8 @@ import { api } from '@renderer/api';
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
-import { useStore } from '@renderer/store';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { useStore } from '@renderer/store';
 import {
   AlertTriangle,
   ArrowUpAZ,
@@ -25,8 +25,8 @@ import { SkillDetailDialog } from './SkillDetailDialog';
 import { SkillEditorDialog } from './SkillEditorDialog';
 import { SkillImportDialog } from './SkillImportDialog';
 
-import type { SkillCatalogItem, SkillDetail } from '@shared/types/extensions';
 import type { SkillsSortState } from '@renderer/hooks/useExtensionsTabState';
+import type { SkillCatalogItem, SkillDetail } from '@shared/types/extensions';
 
 const SUCCESS_BANNER_MS = 2500;
 const NEW_SKILL_HIGHLIGHT_MS = 4000;
@@ -233,7 +233,7 @@ export const SkillsPanel = ({
 
           <div className="flex w-full flex-col gap-3 xl:w-auto xl:min-w-[32rem] xl:max-w-[40rem]">
             <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center xl:justify-end">
-              <div className="w-full lg:min-w-[18rem] lg:flex-1 xl:w-80 xl:flex-none">
+              <div className="w-full lg:min-w-72 lg:flex-1 xl:w-80 xl:flex-none">
                 <SearchInput
                   value={skillsSearchQuery}
                   onChange={setSkillsSearchQuery}
@@ -318,7 +318,7 @@ export const SkillsPanel = ({
             ['personal', 'Personal'],
             ['needs-attention', 'Needs attention'],
             ['has-scripts', 'Has scripts'],
-          ] as Array<[SkillsQuickFilter, string]>
+          ] as [SkillsQuickFilter, string][]
         ).map(([value, label]) => (
           <Button
             key={value}

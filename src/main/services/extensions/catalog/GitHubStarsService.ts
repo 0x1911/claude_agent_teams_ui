@@ -9,8 +9,8 @@
 
 import https from 'node:https';
 
-import { createLogger } from '@shared/utils/logger';
 import { parseGitHubOwnerRepo } from '@shared/utils/extensionNormalizers';
+import { createLogger } from '@shared/utils/logger';
 
 const logger = createLogger('Extensions:GitHubStars');
 
@@ -39,7 +39,7 @@ export class GitHubStarsService {
    */
   async fetchStars(repositoryUrls: string[]): Promise<Record<string, number>> {
     const result: Record<string, number> = {};
-    const tasks: Array<{ url: string; owner: string; repo: string }> = [];
+    const tasks: { url: string; owner: string; repo: string }[] = [];
 
     for (const url of repositoryUrls) {
       const parsed = parseGitHubOwnerRepo(url);
@@ -107,10 +107,10 @@ export class GitHubStarsService {
    * Run async tasks with a concurrency limit.
    */
   private async withConcurrencyLimit(
-    tasks: Array<() => Promise<void>>,
+    tasks: (() => Promise<void>)[],
     limit: number
-  ): Promise<Array<'ok' | 'error'>> {
-    const results: Array<'ok' | 'error'> = [];
+  ): Promise<('ok' | 'error')[]> {
+    const results: ('ok' | 'error')[] = [];
     let index = 0;
 
     const run = async (): Promise<void> => {

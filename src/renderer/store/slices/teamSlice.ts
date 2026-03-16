@@ -1,11 +1,11 @@
 import { api } from '@renderer/api';
+import { normalizePath } from '@renderer/utils/pathNormalize';
 import {
   buildTaskChangePresenceKey,
   buildTaskChangeRequestOptions,
   isTaskSummaryCacheableForOptions,
   type TaskChangeRequestOptions,
 } from '@renderer/utils/taskChangeRequest';
-import { normalizePath } from '@renderer/utils/pathNormalize';
 import { IpcError, unwrapIpc } from '@renderer/utils/unwrapIpc';
 import { createLogger } from '@shared/utils/logger';
 import { getTaskKanbanColumn } from '@shared/utils/reviewState';
@@ -79,6 +79,8 @@ async function pollProvisioningStatus(
   }
 }
 
+import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
+
 import type { AppState } from '../types';
 import type { AppConfig } from '@renderer/types/data';
 import type {
@@ -106,7 +108,6 @@ import type {
   ToolApprovalSettings,
   UpdateKanbanPatch,
 } from '@shared/types';
-import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
 import type { StateCreator } from 'zustand';
 
 // --- Clarification notification tracking ---
@@ -212,7 +213,13 @@ function detectStatusChangeNotifications(
     fireStatusChangeNotification(
       task,
       fromLabel,
-      becameApproved ? 'approved' : becameReview ? 'review' : becameNeedsFix ? 'needsFix' : undefined,
+      becameApproved
+        ? 'approved'
+        : becameReview
+          ? 'review'
+          : becameNeedsFix
+            ? 'needsFix'
+            : undefined,
       !statusChangeEnabled
     );
   }

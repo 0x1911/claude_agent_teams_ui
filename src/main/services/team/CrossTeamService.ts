@@ -1,5 +1,5 @@
-import { CROSS_TEAM_SENT_SOURCE, CROSS_TEAM_SOURCE, formatCrossTeamText } from '@shared/constants';
 import { getClaudeBasePath, getTeamsBasePath } from '@main/utils/pathDecoder';
+import { CROSS_TEAM_SENT_SOURCE, CROSS_TEAM_SOURCE, formatCrossTeamText } from '@shared/constants';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
 import * as agentTeamsControllerModule from 'agent-teams-controller';

@@ -13,6 +13,7 @@ import { useStore } from '@renderer/store';
 import { AlertTriangle, Clock, Loader2, Terminal } from 'lucide-react';
 
 import { CliLogsRichView } from '../CliLogsRichView';
+
 import { RunStatusBadge } from './ScheduleStatusBadge';
 
 import type { ScheduleRun } from '@shared/types';

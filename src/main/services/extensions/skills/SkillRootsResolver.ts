@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 
 import { getHomeDir } from '@main/utils/pathDecoder';
+
 import type { SkillRootKind, SkillScope } from '@shared/types/extensions';
 
 export interface ResolvedSkillRoot {
@@ -10,7 +11,7 @@ export interface ResolvedSkillRoot {
   rootPath: string;
 }
 
-const USER_ROOTS: Array<{ rootKind: SkillRootKind; segments: string[] }> = [
+const USER_ROOTS: { rootKind: SkillRootKind; segments: string[] }[] = [
   { rootKind: 'claude', segments: ['.claude', 'skills'] },
   { rootKind: 'cursor', segments: ['.cursor', 'skills'] },
   { rootKind: 'agents', segments: ['.agents', 'skills'] },

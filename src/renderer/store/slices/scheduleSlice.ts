@@ -2,13 +2,13 @@ import { api } from '@renderer/api';
 import { createLogger } from '@shared/utils/logger';
 
 import type { AppState } from '../types';
-import type { StateCreator } from 'zustand';
 import type {
   CreateScheduleInput,
   Schedule,
   ScheduleRun,
   UpdateSchedulePatch,
 } from '@shared/types';
+import type { StateCreator } from 'zustand';
 
 const logger = createLogger('scheduleSlice');
 

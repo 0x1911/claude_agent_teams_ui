@@ -2,12 +2,13 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import { createLogger } from '@shared/utils/logger';
-import type { SkillCatalogItem, SkillDetail } from '@shared/types/extensions';
 
 import { SkillMetadataParser } from './SkillMetadataParser';
-import { SkillRootsResolver, type ResolvedSkillRoot } from './SkillRootsResolver';
+import { type ResolvedSkillRoot, SkillRootsResolver } from './SkillRootsResolver';
 import { SkillScanner } from './SkillScanner';
 import { SkillValidator } from './SkillValidator';
+
+import type { SkillCatalogItem, SkillDetail } from '@shared/types/extensions';
 
 const logger = createLogger('Extensions:SkillsCatalog');
 

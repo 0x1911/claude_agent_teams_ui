@@ -8,9 +8,8 @@ import {
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { Layers } from 'lucide-react';
 
-import { buildMessageContext, resolveMessageRenderProps } from './activityMessageContext';
-
 import { ActivityItem, isNoiseMessage } from './ActivityItem';
+import { buildMessageContext, resolveMessageRenderProps } from './activityMessageContext';
 import { AnimatedHeightReveal } from './AnimatedHeightReveal';
 import { findNewestMessageIndex, resolveTimelineCollapseState } from './collapseState';
 import {

@@ -23,10 +23,10 @@ import {
   Zap,
 } from 'lucide-react';
 
+import { LaunchTeamDialog } from '../team/dialogs/LaunchTeamDialog';
 import { ScheduleRunLogDialog } from '../team/schedule/ScheduleRunLogDialog';
 import { ScheduleRunRow } from '../team/schedule/ScheduleRunRow';
 import { ScheduleStatusBadge } from '../team/schedule/ScheduleStatusBadge';
-import { LaunchTeamDialog } from '../team/dialogs/LaunchTeamDialog';
 
 import type { Schedule, ScheduleRun, ScheduleStatus } from '@shared/types';
 
@@ -34,7 +34,7 @@ import type { Schedule, ScheduleRun, ScheduleStatus } from '@shared/types';
 // Constants
 // =============================================================================
 
-const STATUS_OPTIONS: Array<{ value: ScheduleStatus | 'all'; label: string }> = [
+const STATUS_OPTIONS: { value: ScheduleStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'active', label: 'Active' },
   { value: 'paused', label: 'Paused' },

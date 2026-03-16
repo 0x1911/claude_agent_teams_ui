@@ -10,15 +10,15 @@ import type {
   ApiKeyStorageStatus,
 } from './apikey';
 import type { InstallScope, OperationResult } from './common';
-import type { EnrichedPlugin, PluginInstallRequest } from './plugin';
 import type {
   InstalledMcpEntry,
   McpCatalogItem,
   McpCustomInstallRequest,
   McpInstallRequest,
-  McpServerDiagnostic,
   McpSearchResult,
+  McpServerDiagnostic,
 } from './mcp';
+import type { EnrichedPlugin, PluginInstallRequest } from './plugin';
 import type {
   SkillCatalogItem,
   SkillDeleteRequest,

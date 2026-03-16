@@ -5,9 +5,9 @@ import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
 import { FileText, Search, Terminal } from 'lucide-react';
 
-import type { ToolApprovalRequest } from '@shared/types';
-
 import { ToolApprovalSettingsPanel } from './dialogs/ToolApprovalSettingsPanel';
+
+import type { ToolApprovalRequest } from '@shared/types';
 
 // ---------------------------------------------------------------------------
 // Tool icon mapping

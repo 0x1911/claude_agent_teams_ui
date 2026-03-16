@@ -6,30 +6,6 @@
  * Phase 5: install/uninstall mutations.
  */
 
-import { createLogger } from '@shared/utils/logger';
-import type {
-  ApiKeyEntry,
-  ApiKeyLookupResult,
-  ApiKeySaveRequest,
-  ApiKeyStorageStatus,
-  EnrichedPlugin,
-  InstalledMcpEntry,
-  McpCatalogItem,
-  McpCustomInstallRequest,
-  McpInstallRequest,
-  McpServerDiagnostic,
-  McpSearchResult,
-  OperationResult,
-  PluginInstallRequest,
-} from '@shared/types/extensions';
-import type { IpcMain, IpcMainInvokeEvent } from 'electron';
-
-import type { ExtensionFacadeService } from '../services/extensions/ExtensionFacadeService';
-import type { PluginInstallService } from '../services/extensions/install/PluginInstallService';
-import type { McpInstallService } from '../services/extensions/install/McpInstallService';
-import type { ApiKeyService } from '../services/extensions/apikeys/ApiKeyService';
-import type { McpHealthDiagnosticsService } from '../services/extensions/state/McpHealthDiagnosticsService';
-
 import {
   API_KEYS_DELETE,
   API_KEYS_LIST,
@@ -50,8 +26,31 @@ import {
   PLUGIN_INSTALL,
   PLUGIN_UNINSTALL,
 } from '@preload/constants/ipcChannels';
+import { createLogger } from '@shared/utils/logger';
 
 import { GitHubStarsService } from '../services/extensions/catalog/GitHubStarsService';
+
+import type { ApiKeyService } from '../services/extensions/apikeys/ApiKeyService';
+import type { ExtensionFacadeService } from '../services/extensions/ExtensionFacadeService';
+import type { McpInstallService } from '../services/extensions/install/McpInstallService';
+import type { PluginInstallService } from '../services/extensions/install/PluginInstallService';
+import type { McpHealthDiagnosticsService } from '../services/extensions/state/McpHealthDiagnosticsService';
+import type {
+  ApiKeyEntry,
+  ApiKeyLookupResult,
+  ApiKeySaveRequest,
+  ApiKeyStorageStatus,
+  EnrichedPlugin,
+  InstalledMcpEntry,
+  McpCatalogItem,
+  McpCustomInstallRequest,
+  McpInstallRequest,
+  McpSearchResult,
+  McpServerDiagnostic,
+  OperationResult,
+  PluginInstallRequest,
+} from '@shared/types/extensions';
+import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 
 const logger = createLogger('IPC:extensions');
 

@@ -1,5 +1,5 @@
-import { getTaskChangeSummariesBasePath } from '@main/utils/pathDecoder';
 import { atomicWriteAsync } from '@main/utils/atomicWrite';
+import { getTaskChangeSummariesBasePath } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';

@@ -5,8 +5,6 @@
 
 import { useEffect, useState } from 'react';
 
-import { Check, Loader2, Trash2 } from 'lucide-react';
-
 import { Button } from '@renderer/components/ui/button';
 import {
   Tooltip,
@@ -15,6 +13,7 @@ import {
   TooltipTrigger,
 } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
+import { Check, Loader2, Trash2 } from 'lucide-react';
 
 import type { ExtensionOperationState } from '@shared/types/extensions';
 
@@ -28,7 +27,7 @@ interface InstallButtonProps {
   errorMessage?: string;
 }
 
-export function InstallButton({
+export const InstallButton = ({
   state,
   isInstalled,
   onInstall,
@@ -36,7 +35,7 @@ export function InstallButton({
   disabled,
   size = 'sm',
   errorMessage,
-}: InstallButtonProps) {
+}: InstallButtonProps) => {
   const cliStatus = useStore((s) => s.cliStatus);
   const cliMissing = cliStatus !== null && !cliStatus.installed;
   const isDisabled = disabled || cliMissing;
@@ -52,7 +51,7 @@ export function InstallButton({
   if (state === 'pending') {
     return (
       <Button size={size} variant="outline" disabled>
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <Loader2 className="size-3.5 animate-spin" />
         <span className="ml-1.5">
           {pendingAction === 'uninstall' ? 'Removing...' : 'Installing...'}
         </span>
@@ -63,7 +62,7 @@ export function InstallButton({
   if (state === 'success') {
     return (
       <Button size={size} variant="outline" disabled className="text-green-400">
-        <Check className="h-3.5 w-3.5" />
+        <Check className="size-3.5" />
         <span className="ml-1.5">Done</span>
       </Button>
     );
@@ -121,7 +120,7 @@ export function InstallButton({
       }}
       disabled={isDisabled}
     >
-      <Trash2 className="h-3.5 w-3.5" />
+      <Trash2 className="size-3.5" />
       <span className="ml-1.5">Uninstall</span>
     </Button>
   ) : (
@@ -153,4 +152,4 @@ export function InstallButton({
   }
 
   return button;
-}
+};

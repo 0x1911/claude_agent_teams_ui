@@ -11,10 +11,11 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
+import { getClaudeBasePath } from '@main/utils/pathDecoder';
 import { createLogger } from '@shared/utils/logger';
+
 import type { InstalledPluginEntry } from '@shared/types/extensions';
 import type { InstallScope } from '@shared/types/extensions';
-import { getClaudeBasePath } from '@main/utils/pathDecoder';
 
 const logger = createLogger('Extensions:PluginState');
 
@@ -29,24 +30,24 @@ interface InstalledPluginsJson {
   version: number;
   plugins: Record<
     string, // qualifiedName
-    Array<{
+    {
       scope: string;
       installPath?: string;
       version?: string;
       installedAt?: string;
       lastUpdated?: string;
       gitCommitSha?: string;
-    }>
+    }[]
   >;
 }
 
 interface InstallCountsJson {
   version: number;
   fetchedAt: string;
-  counts: Array<{
+  counts: {
     plugin: string; // qualifiedName format
     unique_installs: number;
-  }>;
+  }[];
 }
 
 // ── Cache ──────────────────────────────────────────────────────────────────

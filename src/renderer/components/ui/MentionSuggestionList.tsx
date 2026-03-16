@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
-import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { FileIcon } from '@renderer/components/team/editor/FileIcon';
+import { MemberBadge } from '@renderer/components/team/MemberBadge';
 import { getTeamColorSet, getThemedText } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { nameColorSet } from '@renderer/utils/projectColor';

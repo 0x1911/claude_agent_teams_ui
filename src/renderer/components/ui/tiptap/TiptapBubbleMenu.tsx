@@ -1,10 +1,9 @@
+import { cn } from '@renderer/lib/utils';
 import { useCurrentEditor, useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import { Bold, Code, Italic, Strikethrough } from 'lucide-react';
 
-import { cn } from '@renderer/lib/utils';
-
-export function TiptapBubbleMenu() {
+export const TiptapBubbleMenu = () => {
   const { editor } = useCurrentEditor();
 
   const state = useEditorState({
@@ -73,4 +72,4 @@ export function TiptapBubbleMenu() {
       </button>
     </BubbleMenu>
   );
-}
+};

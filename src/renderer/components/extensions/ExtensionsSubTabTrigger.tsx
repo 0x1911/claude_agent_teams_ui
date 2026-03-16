@@ -1,9 +1,8 @@
-import type { LucideIcon } from 'lucide-react';
-
 import { TabsTrigger } from '@renderer/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
-
 import { Info } from 'lucide-react';
+
+import type { LucideIcon } from 'lucide-react';
 
 interface ExtensionsSubTabTriggerProps {
   value: 'plugins' | 'mcp-servers' | 'skills' | 'api-keys';
@@ -21,7 +20,7 @@ export const ExtensionsSubTabTrigger = ({
   return (
     <TabsTrigger
       value={value}
-      className="relative gap-1.5 rounded-b-none pr-7 data-[state=active]:z-10 data-[state=active]:-mb-px data-[state=active]:bg-[var(--color-surface)] data-[state=active]:shadow-none data-[state=active]:after:absolute data-[state=active]:after:-bottom-px data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-1 data-[state=active]:after:bg-[var(--color-surface)] data-[state=active]:after:content-['']"
+      className="relative gap-1.5 rounded-b-none pr-7 data-[state=active]:z-10 data-[state=active]:-mb-px data-[state=active]:bg-[var(--color-surface)] data-[state=active]:shadow-none data-[state=active]:after:absolute data-[state=active]:after:inset-x-0 data-[state=active]:after:-bottom-px data-[state=active]:after:h-1 data-[state=active]:after:bg-[var(--color-surface)] data-[state=active]:after:content-['']"
     >
       <Icon className="size-3.5" />
       {label}

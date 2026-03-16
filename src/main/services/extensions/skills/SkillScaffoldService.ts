@@ -2,9 +2,10 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import { isPathWithinRoot, validateFileName } from '@main/utils/pathValidation';
-import type { SkillDraftFile, SkillRootKind, SkillScope } from '@shared/types/extensions';
 
 import { SkillRootsResolver } from './SkillRootsResolver';
+
+import type { SkillDraftFile, SkillRootKind, SkillScope } from '@shared/types/extensions';
 
 export class SkillScaffoldService {
   constructor(private readonly rootsResolver = new SkillRootsResolver()) {}

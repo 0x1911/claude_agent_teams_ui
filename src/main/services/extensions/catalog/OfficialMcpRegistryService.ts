@@ -6,10 +6,11 @@
  * Filters for _meta.isLatest to pick only latest versions.
  */
 
-import https from 'node:https';
 import http from 'node:http';
+import https from 'node:https';
 
 import { createLogger } from '@shared/utils/logger';
+
 import type {
   McpAuthHeaderDef,
   McpCatalogItem,

@@ -99,7 +99,7 @@ export const TeamProvisioningBanner = ({
 
   if (isReady) {
     const readyMessage = allTeammatesOnline
-      ? `Team launched — all ${teamMembers!.length} teammates online`
+      ? `Team launched — all ${teamMembers.length} teammates online`
       : 'Team launched — teammates may still be starting';
 
     return (

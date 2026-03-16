@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 
 import { isElectronMode } from '@renderer/api';
 import { useStore } from '@renderer/store';
-import { Bell, Puzzle, Settings, Users, PanelRight } from 'lucide-react';
+import { Bell, PanelRight, Puzzle, Settings, Users } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { MoreMenu } from './MoreMenu';

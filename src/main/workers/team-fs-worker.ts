@@ -707,8 +707,8 @@ async function readTasksDirForTeam(
           ? (parsed.attachments as unknown[])
           : undefined,
         sourceMessageId:
-          typeof parsed.sourceMessageId === 'string' && (parsed.sourceMessageId as string).trim()
-            ? (parsed.sourceMessageId as string).trim()
+          typeof parsed.sourceMessageId === 'string' && parsed.sourceMessageId.trim()
+            ? parsed.sourceMessageId.trim()
             : undefined,
         sourceMessage:
           parsed.sourceMessage &&

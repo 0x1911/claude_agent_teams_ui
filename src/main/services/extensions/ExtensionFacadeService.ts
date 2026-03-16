@@ -7,6 +7,12 @@
  */
 
 import { createLogger } from '@shared/utils/logger';
+
+import { type McpCatalogAggregator } from './catalog/McpCatalogAggregator';
+import { type PluginCatalogService } from './catalog/PluginCatalogService';
+import { type McpInstallationStateService } from './state/McpInstallationStateService';
+import { type PluginInstallationStateService } from './state/PluginInstallationStateService';
+
 import type {
   EnrichedPlugin,
   InstalledMcpEntry,
@@ -14,11 +20,6 @@ import type {
   McpSearchResult,
   PluginCatalogItem,
 } from '@shared/types/extensions';
-
-import { PluginCatalogService } from './catalog/PluginCatalogService';
-import { McpCatalogAggregator } from './catalog/McpCatalogAggregator';
-import { PluginInstallationStateService } from './state/PluginInstallationStateService';
-import { McpInstallationStateService } from './state/McpInstallationStateService';
 
 const logger = createLogger('Extensions:Facade');
 

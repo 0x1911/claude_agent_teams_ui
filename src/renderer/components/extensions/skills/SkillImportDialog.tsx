@@ -255,7 +255,7 @@ export const SkillImportDialog = ({
                 <X className="mr-1.5 size-3.5" />
                 Cancel
               </Button>
-              <p className="min-w-[16rem] flex-1 text-sm text-text-muted">
+              <p className="min-w-64 flex-1 text-sm text-text-muted">
                 Review the copied files first, then confirm the import in the next step.
               </p>
               <Button

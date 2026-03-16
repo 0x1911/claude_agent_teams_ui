@@ -1,6 +1,6 @@
-import type { TaskHistoryEvent, TeamReviewState } from '@shared/types';
-
 import { getDerivedReviewState } from './taskHistory';
+
+import type { TaskHistoryEvent, TeamReviewState } from '@shared/types';
 
 export type TaskChangeStateBucket = 'approved' | 'review' | 'completed' | 'active';
 

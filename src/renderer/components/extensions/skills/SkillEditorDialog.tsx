@@ -26,13 +26,13 @@ import { useStore } from '@renderer/store';
 import { FileSearch, RotateCcw, X } from 'lucide-react';
 
 import { SkillCodeEditor } from './SkillCodeEditor';
-import { SkillReviewDialog } from './SkillReviewDialog';
 import {
   buildSkillDraftFiles,
   buildSkillTemplate,
   readSkillTemplateContent,
   updateSkillTemplateFrontmatter,
 } from './skillDraftUtils';
+import { SkillReviewDialog } from './SkillReviewDialog';
 
 import type {
   SkillDetail,
@@ -792,7 +792,7 @@ export const SkillEditorDialog = ({
                 <X className="mr-1.5 size-3.5" />
                 Cancel
               </Button>
-              <div className="min-w-[16rem] flex-1">
+              <div className="min-w-64 flex-1">
                 <p className="text-sm text-text-muted">
                   Review the file changes first, then confirm save in the next step.
                 </p>

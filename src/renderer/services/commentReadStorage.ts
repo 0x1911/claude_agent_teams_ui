@@ -262,7 +262,7 @@ async function load(): Promise<void> {
         const merged = { ...cache };
         for (const [k, v] of Object.entries(stored)) {
           if (!v || typeof v !== 'object') continue;
-          const entry = v as TaskReadEntry;
+          const entry = v;
           const prev = merged[k];
           if (!prev) {
             merged[k] = entry;

@@ -53,8 +53,8 @@ export const PluginCard = ({ plugin, index, onClick }: PluginCardProps): React.J
       }`}
     >
       {plugin.source === 'official' && (
-        <div className="pointer-events-none absolute -left-[1px] -top-[1px] size-16 overflow-hidden">
-          <div className="absolute left-[-24px] top-[4px] w-[80px] rotate-[-45deg] bg-blue-500/90 text-center text-[9px] font-semibold leading-[18px] text-white shadow-sm">
+        <div className="pointer-events-none absolute -left-px -top-px size-16 overflow-hidden">
+          <div className="absolute left-[-24px] top-[4px] w-[80px] -rotate-45 bg-blue-500/90 text-center text-[9px] font-semibold leading-[18px] text-white shadow-sm">
             Official
           </div>
         </div>

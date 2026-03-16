@@ -577,7 +577,7 @@ export class ChangeExtractorService {
 
   private async parseJSONLFilesWithConcurrency(
     paths: string[]
-  ): Promise<Array<{ snippets: SnippetDiff[]; mtime: number }>> {
+  ): Promise<{ snippets: SnippetDiff[]; mtime: number }[]> {
     if (paths.length === 0) return [];
 
     const results = new Array<{ snippets: SnippetDiff[]; mtime: number }>(paths.length);

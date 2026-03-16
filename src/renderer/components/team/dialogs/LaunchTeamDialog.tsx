@@ -17,12 +17,12 @@ import {
 import { Input } from '@renderer/components/ui/input';
 import { Label } from '@renderer/components/ui/label';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
+import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useChipDraftPersistence } from '@renderer/hooks/useChipDraftPersistence';
 import { useDraftPersistence } from '@renderer/hooks/useDraftPersistence';
 import { useFileListCacheWarmer } from '@renderer/hooks/useFileListCacheWarmer';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { useStore } from '@renderer/store';
-import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { normalizePath } from '@renderer/utils/pathNormalize';
@@ -38,12 +38,13 @@ import {
   X,
 } from 'lucide-react';
 
+import { CronScheduleInput } from '../schedule/CronScheduleInput';
+
 import { AdvancedCliSection } from './AdvancedCliSection';
 import { EffortLevelSelector } from './EffortLevelSelector';
 import { OptionalSettingsSection } from './OptionalSettingsSection';
 import { ProjectPathSelector } from './ProjectPathSelector';
 import { computeEffectiveTeamModel, TeamModelSelector } from './TeamModelSelector';
-import { CronScheduleInput } from '../schedule/CronScheduleInput';
 
 import type { ActiveTeamRef } from './CreateTeamDialog';
 import type { MentionSuggestion } from '@renderer/types/mention';
@@ -112,7 +113,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   const { isLight } = useTheme();
   const isLaunch = props.mode === 'launch';
   const isSchedule = props.mode === 'schedule';
-  const schedule = isSchedule ? ((props as LaunchDialogScheduleMode).schedule ?? null) : null;
+  const schedule = isSchedule ? (props.schedule ?? null) : null;
   const isEditing = isSchedule && !!schedule;
 
   // Team name: always present for launch mode, may be absent in schedule mode (standalone page)
@@ -338,7 +339,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   // Clear stale provisioning error when dialog opens
   useEffect(() => {
     if (!open || !isLaunch) return;
-    (props as LaunchDialogLaunchMode).clearProvisioningError?.(effectiveTeamName);
+    props.clearProvisioningError?.(effectiveTeamName);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isLaunch, effectiveTeamName]);
 
@@ -443,9 +444,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   }, [open, repositoryGroups]);
 
   // Pre-select defaultProjectPath (launch mode) or first project
-  const defaultProjectPath = isLaunch
-    ? (props as LaunchDialogLaunchMode).defaultProjectPath
-    : undefined;
+  const defaultProjectPath = isLaunch ? props.defaultProjectPath : undefined;
 
   useEffect(() => {
     if (!open || cwdMode !== 'project' || selectedProjectPath || projects.length === 0) return;
@@ -466,7 +465,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   // Launch-only: conflict detection
   // ---------------------------------------------------------------------------
 
-  const activeTeams = isLaunch ? (props as LaunchDialogLaunchMode).activeTeams : undefined;
+  const activeTeams = isLaunch ? props.activeTeams : undefined;
 
   const conflictingTeam = useMemo(() => {
     if (!isLaunch || !activeTeams?.length || !effectiveCwd) return null;
@@ -487,7 +486,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   // ---------------------------------------------------------------------------
 
   const storeMembers = useStore((s) => s.selectedTeamData?.members ?? []);
-  const members = isLaunch ? (props as LaunchDialogLaunchMode).members : storeMembers;
+  const members = isLaunch ? props.members : storeMembers;
 
   const colorMap = useMemo(() => buildMemberColorMap(members), [members]);
   const mentionSuggestions = useMemo<MentionSuggestion[]>(
@@ -564,7 +563,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
   // Error
   // ---------------------------------------------------------------------------
 
-  const provisioningError = isLaunch ? (props as LaunchDialogLaunchMode).provisioningError : null;
+  const provisioningError = isLaunch ? props.provisioningError : null;
   const activeError = localError ?? provisioningError;
 
   // ---------------------------------------------------------------------------
@@ -586,7 +585,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     void (async () => {
       try {
         if (isLaunch) {
-          await (props as LaunchDialogLaunchMode).onLaunch({
+          await props.onLaunch({
             teamName: effectiveTeamName,
             cwd: effectiveCwd,
             prompt: promptDraft.value.trim() || undefined,

@@ -18,8 +18,8 @@ import {
   keymap,
   lineNumbers,
 } from '@codemirror/view';
-import { baseEditorTheme } from '@renderer/utils/codemirrorTheme';
 import { getSyncLanguageExtension } from '@renderer/utils/codemirrorLanguages';
+import { baseEditorTheme } from '@renderer/utils/codemirrorTheme';
 
 const skillEditorTheme = EditorView.theme({
   '&': {

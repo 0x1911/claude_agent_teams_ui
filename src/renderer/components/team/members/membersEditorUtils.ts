@@ -1,6 +1,6 @@
 import { CUSTOM_ROLE, NO_ROLE } from '@renderer/constants/teamRoles';
-import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
+import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
 
 import type { MemberDraft } from './membersEditorTypes';
 import type { MentionSuggestion } from '@renderer/types/mention';
@@ -37,7 +37,7 @@ export function createMemberDraft(initial?: Partial<MemberDraft>): MemberDraft {
 }
 
 export function buildMemberDraftColorMap(
-  members: ReadonlyArray<Pick<MemberDraft, 'name'>>
+  members: readonly Pick<MemberDraft, 'name'>[]
 ): Map<string, string> {
   return buildMemberColorMap(
     members

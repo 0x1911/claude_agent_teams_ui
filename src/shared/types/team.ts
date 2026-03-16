@@ -155,7 +155,7 @@ export interface SourceMessageSnapshot {
   /** Message source type (e.g. "user_sent", "inbox"). */
   source?: string;
   /** Attachment metadata references (IDs only, no blobs). */
-  attachments?: Array<{ id: string; filename: string; mimeType: string; size: number }>;
+  attachments?: { id: string; filename: string; mimeType: string; size: number }[];
 }
 
 // Fields are validated in TeamTaskReader.getTasks() using `satisfies Record<keyof TeamTask, unknown>`.

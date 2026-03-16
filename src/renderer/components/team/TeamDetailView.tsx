@@ -32,6 +32,7 @@ import {
   type TaskChangeRequestOptions,
 } from '@renderer/utils/taskChangeRequest';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
+import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 import { deriveTaskDisplayId, formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
   AlertTriangle,
@@ -50,11 +51,9 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
-import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 import { useShallow } from 'zustand/react/shallow';
 
 import { AddMemberDialog } from './dialogs/AddMemberDialog';
-import type { AddMemberEntry } from './dialogs/AddMemberDialog';
 import { CreateTaskDialog } from './dialogs/CreateTaskDialog';
 import { EditTeamDialog } from './dialogs/EditTeamDialog';
 import { LaunchTeamDialog } from './dialogs/LaunchTeamDialog';
@@ -67,16 +66,18 @@ import { KanbanSearchInput } from './kanban/KanbanSearchInput';
 import { TrashDialog } from './kanban/TrashDialog';
 import { MemberDetailDialog } from './members/MemberDetailDialog';
 
+import type { AddMemberEntry } from './dialogs/AddMemberDialog';
+
 const ProjectEditorOverlay = lazy(() =>
   import('./editor/ProjectEditorOverlay').then((m) => ({ default: m.ProjectEditorOverlay }))
 );
 import { MemberList } from './members/MemberList';
 import { MessagesPanel } from './messages/MessagesPanel';
 import { ChangeReviewDialog } from './review/ChangeReviewDialog';
+import { ScheduleSection } from './schedule/ScheduleSection';
 import { ClaudeLogsSection } from './ClaudeLogsSection';
 import { CollapsibleTeamSection } from './CollapsibleTeamSection';
 import { ProcessesSection } from './ProcessesSection';
-import { ScheduleSection } from './schedule/ScheduleSection';
 import { TeamProvisioningBanner } from './TeamProvisioningBanner';
 import { TeamSessionsSection } from './TeamSessionsSection';
 

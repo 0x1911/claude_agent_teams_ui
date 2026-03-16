@@ -181,7 +181,7 @@ export const ConfigEditorDialog = ({
             keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap]),
             baseEditorTheme,
             configEditorTheme,
-            // eslint-disable-next-line sonarjs/no-nested-functions -- CodeMirror listener callback within useEffect setup
+
             EditorView.updateListener.of((update) => {
               if (update.docChanged) {
                 const text = update.state.doc.toString();

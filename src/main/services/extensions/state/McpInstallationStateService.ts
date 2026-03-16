@@ -12,9 +12,10 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-import { createLogger } from '@shared/utils/logger';
-import type { InstalledMcpEntry } from '@shared/types/extensions';
 import { getHomeDir } from '@main/utils/pathDecoder';
+import { createLogger } from '@shared/utils/logger';
+
+import type { InstalledMcpEntry } from '@shared/types/extensions';
 
 const logger = createLogger('Extensions:McpState');
 

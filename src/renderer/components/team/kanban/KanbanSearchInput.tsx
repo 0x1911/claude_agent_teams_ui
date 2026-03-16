@@ -39,7 +39,7 @@ export const KanbanSearchInput = ({
 
   // Detect `#` trigger and extract filter text after it
   const hashMatch = useMemo(() => {
-    const match = value.match(/#(\S*)$/);
+    const match = /#(\S*)$/.exec(value);
     return match ? match[1] : null;
   }, [value]);
 

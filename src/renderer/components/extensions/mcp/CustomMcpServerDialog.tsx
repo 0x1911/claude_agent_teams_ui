@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { api } from '@renderer/api';
 import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
@@ -23,7 +24,6 @@ import {
   SelectValue,
 } from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
-import { api } from '@renderer/api';
 import { Plus, Server, Trash2 } from 'lucide-react';
 
 import type {

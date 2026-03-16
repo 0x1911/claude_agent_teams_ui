@@ -93,7 +93,7 @@ export const CROSS_TEAM_PREFIX_RE = new RegExp(
 
 /** Parse metadata from a cross-team prefix line. */
 export function parseCrossTeamPrefix(text: string): ParsedCrossTeamPrefix | null {
-  const match = text.match(CROSS_TEAM_PREFIX_RE);
+  const match = CROSS_TEAM_PREFIX_RE.exec(text);
   if (!match?.groups) return null;
 
   const attrs = parseCrossTeamAttributes(match.groups.attrs ?? '');

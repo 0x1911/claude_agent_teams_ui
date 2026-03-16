@@ -1,9 +1,7 @@
 /* eslint-disable no-param-reassign -- ProvisioningRun object is intentionally mutated as a state tracker throughout the provisioning lifecycle */
 import { ConfigManager } from '@main/services/infrastructure/ConfigManager';
 import { killProcessTree, spawnCli } from '@main/utils/childProcess';
-import { shouldAutoAllow } from '@main/utils/toolApprovalRules';
 import { FileReadTimeoutError, readFileUtf8WithTimeout } from '@main/utils/fsRead';
-import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
 import {
   encodePath,
   extractBaseDir,
@@ -14,6 +12,8 @@ import {
   getTasksBasePath,
   getTeamsBasePath,
 } from '@main/utils/pathDecoder';
+import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
+import { shouldAutoAllow } from '@main/utils/toolApprovalRules';
 import {
   AGENT_BLOCK_CLOSE,
   AGENT_BLOCK_OPEN,
@@ -21,8 +21,8 @@ import {
 } from '@shared/constants/agentBlocks';
 import {
   CROSS_TEAM_PREFIX_TAG,
-  CROSS_TEAM_SOURCE,
   CROSS_TEAM_SENT_SOURCE,
+  CROSS_TEAM_SOURCE,
   parseCrossTeamPrefix,
   stripCrossTeamPrefix,
 } from '@shared/constants/crossTeam';
@@ -41,14 +41,14 @@ import {
 import { createCliAutoSuffixNameGuard, parseNumericSuffixName } from '@shared/utils/teamMemberName';
 import { extractToolPreview, formatToolSummaryFromCalls } from '@shared/utils/toolSummary';
 import * as agentTeamsControllerModule from 'agent-teams-controller';
-import { spawn, type ChildProcess } from 'child_process';
+import { type ChildProcess, type spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { atomicWriteAsync } from './atomicWrite';
 import { buildActionModeProtocol } from './actionModeInstructions';
+import { atomicWriteAsync } from './atomicWrite';
 import { ClaudeBinaryResolver } from './ClaudeBinaryResolver';
 import { withFileLock } from './fileLock';
 import { withInboxLock } from './inboxLock';
@@ -231,10 +231,10 @@ interface ProvisioningRun {
     rejectOnce: (error: string) => void;
     timeoutHandle: NodeJS.Timeout;
   } | null;
-  activeCrossTeamReplyHints: Array<{
+  activeCrossTeamReplyHints: {
     toTeam: string;
     conversationId: string;
-  }>;
+  }[];
   /** Monotonic counter for individual lead assistant messages. */
   leadMsgSeq: number;
   /** Accumulated tool_use details between text messages. */
@@ -1122,11 +1122,11 @@ interface CachedProbeResult {
   cachedAtMs: number;
 }
 
-type ProbeResult = {
+interface ProbeResult {
   claudePath: string;
   authSource: ProvisioningAuthSource;
   warning?: string;
-};
+}
 
 type AuthWarningSource = 'probe' | 'stdout' | 'stderr' | 'assistant' | 'pre-complete';
 
@@ -1607,21 +1607,21 @@ export class TeamProvisioningService {
   private async matchCrossTeamLeadInboxMessages(
     teamName: string,
     leadName: string,
-    deliveredBlocks: Array<{
+    deliveredBlocks: {
       teammateId: string;
       content: string;
       toTeam: string;
       conversationId: string;
-    }>
+    }[]
   ): Promise<
-    Array<{
+    {
       teammateId: string;
       content: string;
       toTeam: string;
       conversationId: string;
       messageId: string;
       wasRead: boolean;
-    }>
+    }[]
   > {
     if (deliveredBlocks.length === 0) return [];
 
@@ -1633,14 +1633,14 @@ export class TeamProvisioningService {
     }
 
     const usedMessageIds = new Set<string>();
-    const matches: Array<{
+    const matches: {
       teammateId: string;
       content: string;
       toTeam: string;
       conversationId: string;
       messageId: string;
       wasRead: boolean;
-    }> = [];
+    }[] = [];
     for (const block of deliveredBlocks) {
       const matchesBlock = (message: InboxMessage, requireExactText: boolean): boolean => {
         if (message.source !== CROSS_TEAM_SOURCE) return false;
@@ -1816,7 +1816,7 @@ export class TeamProvisioningService {
   private rememberPendingInboxRelayCandidates(
     run: ProvisioningRun,
     recipient: string,
-    messages: Array<Pick<InboxMessage, 'messageId' | 'text' | 'summary'>>
+    messages: Pick<InboxMessage, 'messageId' | 'text' | 'summary'>[]
   ): string[] {
     const candidates = this.prunePendingInboxRelayCandidates(run);
     const queuedAtMs = Date.now();
@@ -4167,7 +4167,7 @@ export class TeamProvisioningService {
         (mistakenToolHint ? { teamName: mistakenToolHint.toTeam, memberName: 'team-lead' } : null);
       if (crossTeamRecipient && this.crossTeamSender) {
         const inferredReplyMeta =
-          mistakenToolHint && mistakenToolHint.toTeam === crossTeamRecipient.teamName
+          mistakenToolHint?.toTeam === crossTeamRecipient.teamName
             ? {
                 conversationId: mistakenToolHint.conversationId,
                 replyToConversationId: mistakenToolHint.conversationId,

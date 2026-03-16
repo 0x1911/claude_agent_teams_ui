@@ -65,7 +65,7 @@ export function buildSkillTemplate(input: SkillDraftTemplateInput): string {
 
 export function readSkillTemplateContent(rawContent: string): SkillTemplateParseResult {
   const content = rawContent.replace(/^\uFEFF/u, '');
-  const match = content.match(SKILL_FRONTMATTER_PATTERN);
+  const match = SKILL_FRONTMATTER_PATTERN.exec(content);
   if (!match) {
     return {
       hasStructuredSections: false,
@@ -130,7 +130,7 @@ export function updateSkillTemplateFrontmatter(
   input: SkillDraftTemplateInput
 ): string {
   const content = rawContent.replace(/^\uFEFF/u, '');
-  const match = content.match(SKILL_FRONTMATTER_PATTERN);
+  const match = SKILL_FRONTMATTER_PATTERN.exec(content);
   const body = match ? (match[2] ?? '') : content;
 
   let data: Record<string, unknown> = {};

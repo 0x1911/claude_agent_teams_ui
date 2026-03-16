@@ -1,7 +1,5 @@
 import React from 'react';
 
-import { Info } from 'lucide-react';
-
 import { Checkbox } from '@renderer/components/ui/checkbox';
 import { Label } from '@renderer/components/ui/label';
 import {
@@ -10,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@renderer/components/ui/tooltip';
+import { Info } from 'lucide-react';
 
 interface LimitContextCheckboxProps {
   id: string;

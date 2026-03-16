@@ -11,12 +11,13 @@ import { CARD_ICON_MUTED } from '@renderer/constants/cssVariables';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { agentAvatarUrl } from '@renderer/utils/memberHelpers';
 
+import { MemberBadge } from '../MemberBadge';
+
 import { ActivityItem } from './ActivityItem';
 import { buildMessageContext, resolveMessageRenderProps } from './activityMessageContext';
-import { MemberBadge } from '../MemberBadge';
 import { ThoughtBodyContent } from './ThoughtBodyContent';
 
-import type { TimelineItem, LeadThoughtGroup } from './LeadThoughtsGroup';
+import type { LeadThoughtGroup, TimelineItem } from './LeadThoughtsGroup';
 import type { InboxMessage, ResolvedTeamMember } from '@shared/types';
 
 function formatTime(timestamp: string): string {

@@ -65,8 +65,8 @@ import {
   registerSessionHandlers,
   removeSessionHandlers,
 } from './sessions';
-import { initializeSshHandlers, registerSshHandlers, removeSshHandlers } from './ssh';
 import { initializeSkillsHandlers, registerSkillsHandlers, removeSkillsHandlers } from './skills';
+import { initializeSshHandlers, registerSshHandlers, removeSshHandlers } from './ssh';
 import {
   initializeSubagentHandlers,
   registerSubagentHandlers,
@@ -103,18 +103,18 @@ import type {
   TeamProvisioningService,
   UpdaterService,
 } from '../services';
-import type { HttpServer } from '../services/infrastructure/HttpServer';
-import type { CrossTeamService } from '../services/team/CrossTeamService';
-import type { TeamBackupService } from '../services/team/TeamBackupService';
+import type { ApiKeyService } from '../services/extensions/apikeys/ApiKeyService';
 import type { ExtensionFacadeService } from '../services/extensions/ExtensionFacadeService';
 import type { McpInstallService } from '../services/extensions/install/McpInstallService';
 import type { PluginInstallService } from '../services/extensions/install/PluginInstallService';
-import type { ApiKeyService } from '../services/extensions/apikeys/ApiKeyService';
-import type { McpHealthDiagnosticsService } from '../services/extensions/state/McpHealthDiagnosticsService';
 import type { SkillsCatalogService } from '../services/extensions/skills/SkillsCatalogService';
 import type { SkillsMutationService } from '../services/extensions/skills/SkillsMutationService';
 import type { SkillsWatcherService } from '../services/extensions/skills/SkillsWatcherService';
+import type { McpHealthDiagnosticsService } from '../services/extensions/state/McpHealthDiagnosticsService';
+import type { HttpServer } from '../services/infrastructure/HttpServer';
 import type { SchedulerService } from '../services/schedule/SchedulerService';
+import type { CrossTeamService } from '../services/team/CrossTeamService';
+import type { TeamBackupService } from '../services/team/TeamBackupService';
 
 /**
  * Initializes IPC handlers with service registry.

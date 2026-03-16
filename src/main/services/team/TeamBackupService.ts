@@ -300,7 +300,8 @@ export class TeamBackupService {
         if (raw && isValidConfig(raw)) {
           const parsed = JSON.parse(raw) as Record<string, unknown>;
           manifest.displayName = typeof parsed.name === 'string' ? parsed.name : undefined;
-          manifest.projectPath = typeof parsed.projectPath === 'string' ? parsed.projectPath : undefined;
+          manifest.projectPath =
+            typeof parsed.projectPath === 'string' ? parsed.projectPath : undefined;
         }
       } catch {
         // best-effort
@@ -392,7 +393,7 @@ export class TeamBackupService {
       }
 
       const cached = manifest.fileStats[descriptor.relPath];
-      if (cached && cached.mtime === stat.mtimeMs && cached.size === stat.size) {
+      if (cached?.mtime === stat.mtimeMs && cached.size === stat.size) {
         return false; // not dirty
       }
 
@@ -431,7 +432,7 @@ export class TeamBackupService {
       if (stat.size > MAX_FILE_SIZE_BYTES) return; // skip oversized silently during shutdown
 
       const cached = manifest.fileStats[descriptor.relPath];
-      if (cached && cached.mtime === stat.mtimeMs && cached.size === stat.size) return;
+      if (cached?.mtime === stat.mtimeMs && cached.size === stat.size) return;
 
       const destPath = path.join(backupDir, descriptor.relPath);
 
@@ -572,10 +573,7 @@ export class TeamBackupService {
     return count > 0;
   }
 
-  private async restoreGenericPartial(
-    teamName: string,
-    manifest: BackupManifest
-  ): Promise<number> {
+  private async restoreGenericPartial(teamName: string, manifest: BackupManifest): Promise<number> {
     const backupDir = this.getBackupDir(teamName);
     const backupFiles = await this.enumerateBackupFiles(teamName);
     let count = 0;
@@ -892,10 +890,20 @@ export class TeamBackupService {
       return path.join(getTasksBasePath(), teamName, relPath.slice('tasks/'.length));
     }
     if (relPath.startsWith('attachments/')) {
-      return path.join(getAppDataPath(), 'attachments', teamName, relPath.slice('attachments/'.length));
+      return path.join(
+        getAppDataPath(),
+        'attachments',
+        teamName,
+        relPath.slice('attachments/'.length)
+      );
     }
     if (relPath.startsWith('task-attachments/')) {
-      return path.join(getAppDataPath(), 'task-attachments', teamName, relPath.slice('task-attachments/'.length));
+      return path.join(
+        getAppDataPath(),
+        'task-attachments',
+        teamName,
+        relPath.slice('task-attachments/'.length)
+      );
     }
     return path.join(getTeamsBasePath(), teamName, relPath);
   }

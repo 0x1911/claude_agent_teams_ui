@@ -1,16 +1,17 @@
-import { EditorContent, EditorContext } from '@tiptap/react';
+import './tiptapStyles.css';
+
 import { useMemo } from 'react';
 
 import { cn } from '@renderer/lib/utils';
+import { EditorContent, EditorContext } from '@tiptap/react';
 
 import { TiptapBubbleMenu } from './TiptapBubbleMenu';
 import { TiptapToolbar } from './TiptapToolbar';
-import type { TiptapEditorProps } from './types';
 import { useTiptapEditor } from './useTiptapEditor';
 
-import './tiptapStyles.css';
+import type { TiptapEditorProps } from './types';
 
-export function TiptapEditor({
+export const TiptapEditor = ({
   content,
   onChange,
   placeholder,
@@ -23,7 +24,7 @@ export function TiptapEditor({
   extensions,
   className,
   disabled = false,
-}: TiptapEditorProps) {
+}: TiptapEditorProps) => {
   const isEditable = editable && !disabled;
   const { editor } = useTiptapEditor({
     content,
@@ -69,4 +70,4 @@ export function TiptapEditor({
       </div>
     </EditorContext.Provider>
   );
-}
+};

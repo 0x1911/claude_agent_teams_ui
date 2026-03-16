@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { ScheduleStatus, ScheduleRunStatus } from '@shared/types';
+import type { ScheduleRunStatus, ScheduleStatus } from '@shared/types';
 
 // =============================================================================
 // Schedule Status Badge

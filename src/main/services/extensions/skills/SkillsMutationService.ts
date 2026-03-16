@@ -1,6 +1,15 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
+import { isPathWithinRoot, validateFileName } from '@main/utils/pathValidation';
+import { shell } from 'electron';
+
+import { SkillImportService } from './SkillImportService';
+import { SkillPlanService } from './SkillPlanService';
+import { SkillRootsResolver } from './SkillRootsResolver';
+import { SkillScaffoldService } from './SkillScaffoldService';
+import { SkillsCatalogService } from './SkillsCatalogService';
+
 import type {
   SkillDeleteRequest,
   SkillDetail,
@@ -8,15 +17,6 @@ import type {
   SkillReviewPreview,
   SkillUpsertRequest,
 } from '@shared/types/extensions';
-import { shell } from 'electron';
-
-import { isPathWithinRoot, validateFileName } from '@main/utils/pathValidation';
-
-import { SkillImportService } from './SkillImportService';
-import { SkillPlanService } from './SkillPlanService';
-import { SkillScaffoldService } from './SkillScaffoldService';
-import { SkillRootsResolver } from './SkillRootsResolver';
-import { SkillsCatalogService } from './SkillsCatalogService';
 
 export class SkillsMutationService {
   constructor(

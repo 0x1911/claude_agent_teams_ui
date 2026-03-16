@@ -8,8 +8,8 @@
 import { execCli } from '@main/utils/childProcess';
 import { createLogger } from '@shared/utils/logger';
 
-import type { OperationResult, PluginInstallRequest } from '@shared/types/extensions';
 import type { PluginCatalogService } from '../catalog/PluginCatalogService';
+import type { OperationResult, PluginInstallRequest } from '@shared/types/extensions';
 
 const logger = createLogger('Extensions:PluginInstall');
 

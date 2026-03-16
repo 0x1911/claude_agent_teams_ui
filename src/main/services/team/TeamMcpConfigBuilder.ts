@@ -1,11 +1,10 @@
+import { getHomeDir } from '@main/utils/pathDecoder';
+import { createLogger } from '@shared/utils/logger';
 import { execFile } from 'child_process';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-
-import { getHomeDir } from '@main/utils/pathDecoder';
-import { createLogger } from '@shared/utils/logger';
 
 import { atomicWriteAsync } from './atomicWrite';
 

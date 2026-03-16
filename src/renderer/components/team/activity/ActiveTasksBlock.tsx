@@ -93,7 +93,7 @@ export const ActiveTasksBlock = ({
                   className="size-5 rounded-full bg-[var(--color-surface-raised)]"
                   loading="lazy"
                 />
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
+                <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5">
                   <span
                     className={`absolute inline-flex size-full animate-ping rounded-full ${dotPing} opacity-70`}
                   />

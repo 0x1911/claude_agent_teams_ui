@@ -42,7 +42,7 @@ export const WorkflowTimeline = ({ events, memberColorMap }: WorkflowTimelinePro
             {/* Content */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-xs text-[var(--color-text-secondary)]">
+                <div className="flex w-full items-center gap-2 rounded p-1.5 text-xs text-[var(--color-text-secondary)]">
                   <span className="shrink-0 font-mono text-[10px] text-[var(--color-text-muted)]">
                     {time}
                   </span>

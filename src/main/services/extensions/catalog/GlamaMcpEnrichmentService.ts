@@ -9,10 +9,11 @@
  * Cursor-based pagination (after), no auth required.
  */
 
-import https from 'node:https';
 import http from 'node:http';
+import https from 'node:https';
 
 import { createLogger } from '@shared/utils/logger';
+
 import type { McpCatalogItem, McpHostingType, McpToolDef } from '@shared/types/extensions';
 
 const logger = createLogger('Extensions:GlamaMcp');

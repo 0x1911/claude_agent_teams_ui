@@ -3,11 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@renderer/api';
 import { AttachmentPreviewList } from '@renderer/components/team/attachments/AttachmentPreviewList';
 import { DropZoneOverlay } from '@renderer/components/team/attachments/DropZoneOverlay';
-import { ActionModeSelector } from '@renderer/components/team/messages/ActionModeSelector';
 import { MemberBadge } from '@renderer/components/team/MemberBadge';
+import { ActionModeSelector } from '@renderer/components/team/messages/ActionModeSelector';
 import { MentionableTextarea } from '@renderer/components/ui/MentionableTextarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
+import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useComposerDraft } from '@renderer/hooks/useComposerDraft';
 import { useTaskSuggestions } from '@renderer/hooks/useTaskSuggestions';
 import { useTeamSuggestions } from '@renderer/hooks/useTeamSuggestions';
@@ -17,7 +18,6 @@ import { isTeamProvisioningActive } from '@renderer/store/slices/teamSlice';
 import { serializeChipsWithText } from '@renderer/types/inlineChip';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import { buildMemberColorMap } from '@renderer/utils/memberHelpers';
-import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { nameColorSet } from '@renderer/utils/projectColor';
 import {
   extractTaskRefsFromText,
@@ -27,8 +27,8 @@ import { MAX_TEXT_LENGTH } from '@shared/constants';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { AlertCircle, Check, ChevronDown, ImagePlus, Mic, Search, Send } from 'lucide-react';
 
-import type { MentionSuggestion } from '@renderer/types/mention';
 import type { ActionMode } from '@renderer/components/team/messages/ActionModeSelector';
+import type { MentionSuggestion } from '@renderer/types/mention';
 import type {
   AttachmentPayload,
   ResolvedTeamMember,
@@ -84,7 +84,6 @@ export const MessageComposer = ({
         (externalTextareaRef as React.MutableRefObject<HTMLTextAreaElement | null>).current = node;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalTextareaRef]);
   const [recipient, setRecipient] = useState<string>(() => {
     const lead = members.find((m) => isLeadMember(m));

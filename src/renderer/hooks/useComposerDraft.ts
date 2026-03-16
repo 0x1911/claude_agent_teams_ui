@@ -25,7 +25,7 @@ import {
 } from '@renderer/utils/attachmentUtils';
 
 import type { InlineChip } from '@renderer/types/inlineChip';
-import type { AttachmentPayload, AgentActionMode } from '@shared/types';
+import type { AgentActionMode, AttachmentPayload } from '@shared/types';
 
 // ---------------------------------------------------------------------------
 // Types
