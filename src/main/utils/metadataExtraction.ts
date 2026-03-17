@@ -51,21 +51,35 @@ export async function extractCwd(
   }
 
   const fileStream = fsProvider.createReadStream(filePath, { encoding: 'utf8' });
-  let bytes = 0;
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    fileStream.destroy();
-  }, JSONL_HEAD_TIMEOUT_MS);
-  fileStream.on('data', (chunk: string) => {
-    bytes += byteLen(chunk);
-    if (bytes > JSONL_HEAD_MAX_BYTES) {
-      fileStream.destroy();
-    }
-  });
   const rl = readline.createInterface({
     input: fileStream,
     crlfDelay: Infinity,
+  });
+
+  let bytes = 0;
+  let timedOut = false;
+  let cleaned = false;
+
+  // Close readline FIRST so `for await` exits, then destroy the stream.
+  // Calling only stream.destroy() can leave readline hanging when it has
+  // a partial line buffered (e.g. a 400KB+ JSONL line read in 64KB chunks).
+  const cleanup = (): void => {
+    if (cleaned) return;
+    cleaned = true;
+    rl.close();
+    fileStream.destroy();
+  };
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    cleanup();
+  }, JSONL_HEAD_TIMEOUT_MS);
+
+  fileStream.on('data', (chunk: string) => {
+    bytes += byteLen(chunk);
+    if (bytes > JSONL_HEAD_MAX_BYTES) {
+      cleanup();
+    }
   });
 
   try {
@@ -84,8 +98,6 @@ export async function extractCwd(
       }
       // Only conversational entries have cwd
       if ('cwd' in entry && entry.cwd) {
-        rl.close();
-        fileStream.destroy();
         return entry.cwd;
       }
     }
@@ -95,8 +107,7 @@ export async function extractCwd(
     }
   } finally {
     clearTimeout(timer);
-    rl.close();
-    fileStream.destroy();
+    cleanup();
   }
 
   return null;
@@ -122,21 +133,32 @@ export async function extractFirstUserMessagePreview(
   }
 
   const fileStream = fsProvider.createReadStream(filePath, { encoding: 'utf8' });
-  let bytes = 0;
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    fileStream.destroy();
-  }, JSONL_HEAD_TIMEOUT_MS);
-  fileStream.on('data', (chunk: string) => {
-    bytes += byteLen(chunk);
-    if (bytes > JSONL_HEAD_MAX_BYTES) {
-      fileStream.destroy();
-    }
-  });
   const rl = readline.createInterface({
     input: fileStream,
     crlfDelay: Infinity,
+  });
+
+  let bytes = 0;
+  let timedOut = false;
+  let cleaned = false;
+
+  const cleanup = (): void => {
+    if (cleaned) return;
+    cleaned = true;
+    rl.close();
+    fileStream.destroy();
+  };
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    cleanup();
+  }, JSONL_HEAD_TIMEOUT_MS);
+
+  fileStream.on('data', (chunk: string) => {
+    bytes += byteLen(chunk);
+    if (bytes > JSONL_HEAD_MAX_BYTES) {
+      cleanup();
+    }
   });
 
   let commandFallback: { text: string; timestamp: string } | null = null;
@@ -182,8 +204,7 @@ export async function extractFirstUserMessagePreview(
     return commandFallback;
   } finally {
     clearTimeout(timer);
-    rl.close();
-    fileStream.destroy();
+    cleanup();
   }
 
   return commandFallback;

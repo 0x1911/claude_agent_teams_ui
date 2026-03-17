@@ -518,10 +518,15 @@ const ProjectsGrid = ({
   const [visibleProjects, setVisibleProjects] = useState(maxProjects);
 
   useEffect(() => {
-    if (repositoryGroups.length === 0 && !repositoryGroupsLoading) {
+    if (repositoryGroups.length === 0 && !repositoryGroupsLoading && !repositoryGroupsError) {
       void fetchRepositoryGroups();
     }
-  }, [repositoryGroups.length, repositoryGroupsLoading, fetchRepositoryGroups]);
+  }, [
+    repositoryGroups.length,
+    repositoryGroupsLoading,
+    repositoryGroupsError,
+    fetchRepositoryGroups,
+  ]);
 
   useEffect(() => {
     if (repositoryGroups.length > 0 && !hasFetchedTasksRef.current && !repositoryGroupsLoading) {

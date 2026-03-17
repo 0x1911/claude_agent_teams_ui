@@ -168,7 +168,7 @@ export class ProjectScanner {
       const projectArrays = await this.collectFulfilledInBatches(
         projectDirs,
         this.fsProvider.type === 'ssh' ? 8 : ProjectScanner.LOCAL_PROJECT_BATCH,
-        async (dir) => this.scanProject(dir.name)
+        async (dir) => this.scanProjectWithTimeout(dir.name)
       );
 
       // Flatten and sort by most recent
@@ -312,6 +312,31 @@ export class ProjectScanner {
   // Project Scanning (continued)
   // ===========================================================================
 
+  // Per-project scan timeout: prevents a single slow directory from blocking
+  // the entire scan batch (e.g. a project with 1000+ session files on slow I/O).
+  private static readonly SCAN_PROJECT_TIMEOUT_MS = 15_000;
+
+  /**
+   * Scans a single project directory with a timeout guard.
+   * Returns empty array if the scan exceeds the timeout.
+   */
+  private async scanProjectWithTimeout(encodedName: string): Promise<Project[]> {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const timeout = new Promise<Project[]>((resolve) => {
+      timer = setTimeout(() => {
+        logger.warn(
+          `[scanProject] timeout after ${ProjectScanner.SCAN_PROJECT_TIMEOUT_MS}ms project=${encodedName}`
+        );
+        resolve([]);
+      }, ProjectScanner.SCAN_PROJECT_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([this.scanProject(encodedName), timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   /**
    * Scans a single project directory and returns project metadata.
    * If sessions have different cwd values, splits into multiple projects.
@@ -319,7 +344,9 @@ export class ProjectScanner {
   private async scanProject(encodedName: string): Promise<Project[]> {
     try {
       const projectPath = path.join(this.projectsDir, encodedName);
+      const readdirStart = Date.now();
       const entries = await this.fsProvider.readdir(projectPath);
+      const readdirMs = Date.now() - readdirStart;
 
       // Get session files (.jsonl at root level)
       const sessionFiles = entries.filter(
@@ -328,6 +355,12 @@ export class ProjectScanner {
 
       if (sessionFiles.length === 0) {
         return [];
+      }
+
+      if (sessionFiles.length > 200 || readdirMs > 500) {
+        logger.debug(
+          `[scanProject] ${encodedName} readdir=${readdirMs}ms entries=${entries.length} jsonl=${sessionFiles.length}`
+        );
       }
 
       // Collect file stats and cwd for each session
@@ -346,6 +379,8 @@ export class ProjectScanner {
       const MAX_CWD_SPLIT_FILES = 80;
       const shouldSplitByCwd =
         this.fsProvider.type !== 'ssh' && sessionFiles.length <= MAX_CWD_SPLIT_FILES;
+
+      const sessionStatStart = Date.now();
       const sessionInfos = await this.collectFulfilledInBatches(
         sessionFiles,
         this.fsProvider.type === 'ssh' ? 32 : ProjectScanner.LOCAL_SESSION_BATCH,
@@ -375,6 +410,13 @@ export class ProjectScanner {
 
       if (sessionInfos.length === 0) {
         return [];
+      }
+
+      const sessionStatMs = Date.now() - sessionStatStart;
+      if (sessionFiles.length > 200 || sessionStatMs > 1000) {
+        logger.debug(
+          `[scanProject] ${encodedName} sessionStat=${sessionStatMs}ms files=${sessionFiles.length} infos=${sessionInfos.length}`
+        );
       }
 
       // Group sessions by cwd
