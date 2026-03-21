@@ -104,6 +104,7 @@ const RESPOND_TIMEOUT_MS = 10_000;
 export const ToolApprovalSheet: React.FC = () => {
   const pendingApprovals = useStore((s) => s.pendingApprovals);
   const respondToToolApproval = useStore((s) => s.respondToToolApproval);
+  const updateToolApprovalSettings = useStore((s) => s.updateToolApprovalSettings);
   const teams = useStore((s) => s.teams);
   const selectedTeamName = useStore((s) => s.selectedTeamName);
   const { isLight } = useTheme();
@@ -280,6 +281,32 @@ export const ToolApprovalSheet: React.FC = () => {
             }}
           >
             Deny
+          </button>
+
+          <div className="mx-1 h-4 w-px" style={{ backgroundColor: 'var(--color-border)' }} />
+
+          <button
+            type="button"
+            onClick={() => void updateToolApprovalSettings({ autoAllowAll: true })}
+            className="rounded-md px-2.5 py-1.5 text-[10px] transition-colors"
+            style={{
+              color: 'var(--color-text-muted)',
+              backgroundColor: 'var(--color-surface-raised)',
+            }}
+            onMouseEnter={(e) => {
+              Object.assign(e.currentTarget.style, {
+                color: 'var(--color-text-secondary)',
+                backgroundColor: 'var(--color-border-emphasis)',
+              });
+            }}
+            onMouseLeave={(e) => {
+              Object.assign(e.currentTarget.style, {
+                color: 'var(--color-text-muted)',
+                backgroundColor: 'var(--color-surface-raised)',
+              });
+            }}
+          >
+            Allow all
           </button>
         </div>
         {pendingApprovals.length > 1 && (
