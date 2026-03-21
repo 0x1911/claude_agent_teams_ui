@@ -238,7 +238,6 @@ pnpm dist            # macOS + Windows + Linux
 - [ ] CLI runtime: Run not only on a local PC but in any headless/console environment (web UI), e.g. VPS, remote server, etc.
 - [ ] 2 modes: current (agent teams), and a new mode: regular subagents (no communication between them)
 - [ ] Visual workflow editor ([@xyflow/react](https://github.com/xyflow/xyflow)) for building and orchestrating agent pipelines with drag & drop
-- [ ] Install skills, MCP, and integrations via an intuitive UI, and only for selected agents
 - [ ] Planning mode to organize agent plans before execution
 - [ ] Curate what context each agent sees (files, docs, MCP servers, skills)
 - [ ] Multi-model support: proxy layer to use other popular LLMs (GPT, Gemini, DeepSeek, Llama, etc.), including offline/local models

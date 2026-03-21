@@ -407,9 +407,22 @@ export const TeamListView = (): React.JSX.Element => {
   const permanentlyDeleteTeam = useStore((s) => s.permanentlyDeleteTeam);
 
   const handleDeleteTeam = useCallback(
-    (teamName: string, e: React.MouseEvent) => {
+    (teamName: string, isDraft: boolean, e: React.MouseEvent) => {
       e.stopPropagation();
       void (async () => {
+        if (isDraft) {
+          const confirmed = await confirm({
+            title: 'Delete draft',
+            message: `Delete draft team "${teamName}"? This cannot be undone.`,
+            confirmLabel: 'Delete',
+            cancelLabel: 'Cancel',
+            variant: 'danger',
+          });
+          if (confirmed) {
+            void api.teams.deleteDraft(teamName).catch(() => {});
+          }
+          return;
+        }
         const confirmed = await confirm({
           title: 'Move to trash',
           message: `Move team "${teamName}" to trash? You can restore it later.`,
@@ -529,7 +542,10 @@ export const TeamListView = (): React.JSX.Element => {
         setLaunchDialogDefaultPath(data.config.projectPath ?? projectPath);
         setLaunchDialogOpen(true);
       } catch (err) {
-        console.error('Failed to load team data for launch dialog:', err);
+        // Draft teams (no config.json) throw TEAM_DRAFT — expected, use fallback
+        if (!(err instanceof Error && err.message.includes('TEAM_DRAFT'))) {
+          console.error('Failed to load team data for launch dialog:', err);
+        }
         // Fallback: open dialog with minimal data
         setLaunchDialogTeamName(teamName);
         setLaunchDialogMembers([]);
@@ -840,24 +856,28 @@ export const TeamListView = (): React.JSX.Element => {
                           </TooltipContent>
                         </Tooltip>
                       )}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-300 group-hover:opacity-100"
-                            onClick={(e) => handleCopyTeam(team.teamName, e)}
-                          >
-                            <Copy size={14} />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">Copy team</TooltipContent>
-                      </Tooltip>
+                      {!team.pendingCreate && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-blue-500/10 hover:text-blue-300 group-hover:opacity-100"
+                              onClick={(e) => handleCopyTeam(team.teamName, e)}
+                            >
+                              <Copy size={14} />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">Copy team</TooltipContent>
+                        </Tooltip>
+                      )}
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <button
                             type="button"
                             className="shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition-opacity hover:bg-red-500/10 hover:text-red-300 group-hover:opacity-100"
-                            onClick={(e) => handleDeleteTeam(team.teamName, e)}
+                            onClick={(e) =>
+                              handleDeleteTeam(team.teamName, !!team.pendingCreate, e)
+                            }
                           >
                             <Trash2 size={14} />
                           </button>

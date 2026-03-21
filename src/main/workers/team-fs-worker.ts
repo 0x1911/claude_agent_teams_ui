@@ -316,6 +316,57 @@ function dropCliProvisionerMembers(
   }
 }
 
+/**
+ * Reads a draft team summary from team.meta.json when config.json is missing.
+ * Returns null if team.meta.json doesn't exist or is invalid.
+ */
+async function readDraftTeamMeta(
+  teamsDir: string,
+  teamName: string
+): Promise<Record<string, unknown> | null> {
+  const metaPath = path.join(teamsDir, teamName, 'team.meta.json');
+  try {
+    const stat = await fs.promises.stat(metaPath);
+    if (!stat.isFile() || stat.size > 256 * 1024) return null;
+    const raw = await fs.promises.readFile(metaPath, 'utf8');
+    const meta = JSON.parse(raw) as Record<string, unknown>;
+    if (meta?.version !== 1 || typeof meta?.cwd !== 'string') return null;
+
+    const displayName =
+      typeof meta.displayName === 'string' && meta.displayName.trim()
+        ? meta.displayName.trim()
+        : teamName;
+
+    // Read members.meta.json for member count
+    let memberCount = 0;
+    try {
+      const membersPath = path.join(teamsDir, teamName, 'members.meta.json');
+      const membersRaw = await fs.promises.readFile(membersPath, 'utf8');
+      const membersData = JSON.parse(membersRaw) as { members?: unknown[] };
+      if (Array.isArray(membersData?.members)) {
+        memberCount = membersData.members.length;
+      }
+    } catch {
+      // best-effort
+    }
+
+    return {
+      teamName,
+      displayName,
+      description: typeof meta.description === 'string' ? meta.description : '',
+      memberCount,
+      taskCount: 0,
+      lastActivity:
+        typeof meta.createdAt === 'number' ? new Date(meta.createdAt).toISOString() : null,
+      color: typeof meta.color === 'string' ? meta.color : undefined,
+      projectPath: typeof meta.cwd === 'string' ? meta.cwd : undefined,
+      pendingCreate: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function listTeams(
   payload: ListTeamsPayload
 ): Promise<{ teams: unknown[]; diag: ListTeamsDiag }> {
@@ -358,9 +409,16 @@ async function listTeams(
     try {
       stat = await fs.promises.stat(configPath);
     } catch {
+      // Fallback: check for draft team (team.meta.json without config.json)
+      const draft = await readDraftTeamMeta(payload.teamsDir, teamName);
+      if (draft) return draft;
       return skip('config_stat_failed');
     }
-    if (!stat.isFile()) return skip('config_not_file');
+    if (!stat.isFile()) {
+      const draft = await readDraftTeamMeta(payload.teamsDir, teamName);
+      if (draft) return draft;
+      return skip('config_not_file');
+    }
     if (stat.size > payload.maxConfigBytes) return skip('config_too_large');
 
     let config: ParsedConfig | null = null;

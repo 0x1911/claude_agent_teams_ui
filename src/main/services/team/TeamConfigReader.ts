@@ -11,6 +11,7 @@ import * as path from 'path';
 
 import { getTeamFsWorkerClient } from './TeamFsWorkerClient';
 import { TeamMembersMetaStore } from './TeamMembersMetaStore';
+import { TeamMetaStore } from './TeamMetaStore';
 
 import type { TeamConfig, TeamMember, TeamSummary, TeamSummaryMember } from '@shared/types';
 
@@ -152,8 +153,8 @@ export class TeamConfigReader {
 
       // Skip non-regular files (pipes, sockets, etc.) — readFile could hang on them
       if (!stat?.isFile()) {
-        logger.debug(`Skipping team dir with missing/non-file config: ${teamName}`);
-        return null;
+        // Fallback: check for draft team (team.meta.json without config.json)
+        return this.readDraftTeamSummary(teamsDir, teamName);
       }
 
       // Safety: refuse to touch extremely large configs. Even "head" parsing can be misleading,
@@ -279,6 +280,57 @@ export class TeamConfigReader {
       return summary;
     } catch {
       logger.debug(`Skipping team dir without valid config: ${teamName}`);
+      return null;
+    }
+  }
+
+  /**
+   * Checks for a draft team (team.meta.json exists without config.json).
+   * This happens when provisioning failed before CLI's TeamCreate could run.
+   */
+  private async readDraftTeamSummary(
+    teamsDir: string,
+    teamName: string
+  ): Promise<TeamSummary | null> {
+    const metaPath = path.join(teamsDir, teamName, 'team.meta.json');
+    try {
+      const metaStat = await fs.promises.stat(metaPath);
+      if (!metaStat.isFile() || metaStat.size > 256 * 1024) {
+        return null;
+      }
+      const metaRaw = await readFileUtf8WithTimeout(metaPath, PER_TEAM_READ_TIMEOUT_MS);
+      const meta = JSON.parse(metaRaw) as Record<string, unknown>;
+      if (meta?.version !== 1 || typeof meta?.cwd !== 'string') {
+        return null;
+      }
+
+      const displayName =
+        typeof meta.displayName === 'string' && meta.displayName.trim()
+          ? meta.displayName.trim()
+          : teamName;
+
+      let memberCount = 0;
+      try {
+        const metaStore = new TeamMembersMetaStore();
+        const members = await metaStore.getMembers(teamName);
+        memberCount = members.length;
+      } catch {
+        // best-effort
+      }
+
+      return {
+        teamName,
+        displayName,
+        description: typeof meta.description === 'string' ? meta.description : '',
+        memberCount,
+        taskCount: 0,
+        lastActivity:
+          typeof meta.createdAt === 'number' ? new Date(meta.createdAt).toISOString() : null,
+        color: typeof meta.color === 'string' ? meta.color : undefined,
+        projectPath: typeof meta.cwd === 'string' ? meta.cwd : undefined,
+        pendingCreate: true,
+      };
+    } catch {
       return null;
     }
   }

@@ -34,6 +34,7 @@ import { TeamInboxWriter } from './TeamInboxWriter';
 import { TeamKanbanManager } from './TeamKanbanManager';
 import { TeamMemberResolver } from './TeamMemberResolver';
 import { TeamMembersMetaStore } from './TeamMembersMetaStore';
+import { TeamMetaStore } from './TeamMetaStore';
 import { TeamSentMessagesStore } from './TeamSentMessagesStore';
 import { TeamTaskCommentNotificationJournal } from './TeamTaskCommentNotificationJournal';
 import { TeamTaskReader } from './TeamTaskReader';
@@ -113,7 +114,8 @@ export class TeamDataService {
         teamName,
         claudeDir: getClaudeBasePath(),
       }),
-    private readonly taskCommentNotificationJournal: TeamTaskCommentNotificationJournal = new TeamTaskCommentNotificationJournal()
+    private readonly taskCommentNotificationJournal: TeamTaskCommentNotificationJournal = new TeamTaskCommentNotificationJournal(),
+    private readonly teamMetaStore: TeamMetaStore = new TeamMetaStore()
   ) {}
 
   private getController(teamName: string): AgentTeamsController {
@@ -1611,6 +1613,7 @@ export class TeamDataService {
     const teamDir = path.join(getTeamsBasePath(), request.teamName);
     const configPath = path.join(teamDir, 'config.json');
 
+    // Check if team already exists (config.json = fully created by CLI)
     try {
       await fs.promises.access(configPath, fs.constants.F_OK);
       throw new Error(`Team already exists: ${request.teamName}`);
@@ -1625,17 +1628,18 @@ export class TeamDataService {
     await fs.promises.mkdir(tasksDir, { recursive: true });
 
     const joinedAt = Date.now();
-    const config: Record<string, unknown> = {
-      name: request.displayName?.trim() || request.teamName,
-      description: request.description?.trim() || undefined,
-      color: request.color?.trim() || undefined,
-    };
-    if (request.cwd?.trim()) {
-      config.projectPath = request.cwd.trim();
-      config.projectPathHistory = [request.cwd.trim()];
-    }
 
-    await atomicWriteAsync(configPath, JSON.stringify(config, null, 2));
+    // Save team-level metadata to team.meta.json (NOT config.json).
+    // config.json is CLI territory — created by TeamCreate during provisioning.
+    // team.meta.json preserves user's configuration for the Launch flow.
+    await this.teamMetaStore.writeMeta(request.teamName, {
+      displayName: request.displayName,
+      description: request.description,
+      color: request.color,
+      cwd: request.cwd?.trim() || '',
+      createdAt: joinedAt,
+    });
+
     await this.membersMetaStore.writeMembers(
       request.teamName,
       request.members.map((member) => ({
