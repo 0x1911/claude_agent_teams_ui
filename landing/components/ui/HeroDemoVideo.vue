@@ -12,6 +12,7 @@ const showControls = ref(true);
 const isLoaded = ref(false);
 const hasError = ref(false);
 const progress = ref(0);
+const loadProgress = ref(0);
 const hideTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 
 let intObserver: IntersectionObserver | null = null;
@@ -64,6 +65,13 @@ function onSeek(e: MouseEvent) {
   showControlsBriefly();
 }
 
+function updateLoadProgress() {
+  const video = videoRef.value;
+  if (!video || !video.duration || !video.buffered.length) return;
+  const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+  loadProgress.value = Math.round((bufferedEnd / video.duration) * 100);
+}
+
 function showControlsBriefly() {
   showControls.value = true;
   if (hideTimer.value) clearTimeout(hideTimer.value);
@@ -88,8 +96,10 @@ function onMouseLeave() {
 onMounted(() => {
   const video = videoRef.value;
   if (video) {
-    video.addEventListener('loadeddata', () => { isLoaded.value = true; });
+    // canplay fires earlier than loadeddata — enough to show first frame
+    video.addEventListener('canplay', () => { isLoaded.value = true; }, { once: true });
     video.addEventListener('error', () => { hasError.value = true; });
+    video.addEventListener('progress', updateLoadProgress);
     video.addEventListener('ended', () => {
       isPlaying.value = false;
       showControls.value = true;
@@ -113,6 +123,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (hideTimer.value) clearTimeout(hideTimer.value);
   if (intObserver) { intObserver.disconnect(); intObserver = null; }
+  videoRef.value?.removeEventListener('progress', updateLoadProgress);
 });
 </script>
 
@@ -126,7 +137,18 @@ onUnmounted(() => {
     <!-- Loading skeleton -->
     <div v-if="!isLoaded && !hasError" class="hero-video__skeleton">
       <div class="hero-video__skeleton-pulse" />
-      <v-icon :icon="mdiPlay" size="48" class="hero-video__skeleton-icon" />
+      <div class="hero-video__skeleton-content">
+        <div class="hero-video__skeleton-spinner" />
+        <span class="hero-video__skeleton-label">
+          {{ loadProgress > 0 ? `${loadProgress}%` : t('hero.watchDemo') }}
+        </span>
+      </div>
+      <div class="hero-video__skeleton-bar">
+        <div
+          class="hero-video__skeleton-bar-fill"
+          :style="{ width: `${loadProgress}%` }"
+        />
+      </div>
     </div>
 
     <!-- Error fallback -->
@@ -141,7 +163,7 @@ onUnmounted(() => {
       ref="videoRef"
       class="hero-video__player"
       :class="{ 'hero-video__player--loaded': isLoaded }"
-      preload="metadata"
+      preload="auto"
       muted
       playsinline
       @timeupdate="onTimeUpdate"
@@ -256,14 +278,56 @@ onUnmounted(() => {
   animation: skeletonPulse 2s ease-in-out infinite;
 }
 
-.hero-video__skeleton-icon {
-  color: rgba(0, 240, 255, 0.4);
+.hero-video__skeleton-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
   z-index: 1;
+}
+
+.hero-video__skeleton-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 240, 255, 0.15);
+  border-top-color: rgba(0, 240, 255, 0.7);
+  animation: spinnerRotate 0.8s linear infinite;
+}
+
+.hero-video__skeleton-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 240, 255, 0.6);
+  font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.05em;
+}
+
+.hero-video__skeleton-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 0 0 16px 16px;
+  overflow: hidden;
+}
+
+.hero-video__skeleton-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00f0ff, #ff00ff);
+  border-radius: 2px;
+  transition: width 0.3s ease;
 }
 
 @keyframes skeletonPulse {
   0%, 100% { opacity: 0.3; }
   50% { opacity: 0.8; }
+}
+
+@keyframes spinnerRotate {
+  to { transform: rotate(360deg); }
 }
 
 /* ─── Error fallback ─── */

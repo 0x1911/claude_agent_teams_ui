@@ -318,21 +318,21 @@ export const SendMessageDialog = ({
       e.preventDefault();
       dragCounterRef.current = 0;
       setIsDragOver(false);
-      if (!isLeadRecipient) {
+      if (!supportsAttachments) {
         const files = e.dataTransfer?.files;
         if (files?.length) {
           showFileRestrictionError();
         }
         return;
       }
-      if (canAttach) handleDrop(e);
+      handleDrop(e);
     },
-    [isLeadRecipient, canAttach, handleDrop, showFileRestrictionError]
+    [supportsAttachments, handleDrop, showFileRestrictionError]
   );
 
   const handlePasteWrapper = useCallback(
     (e: React.ClipboardEvent) => {
-      if (!isLeadRecipient) {
+      if (!supportsAttachments) {
         const hasFiles = Array.from(e.clipboardData.items).some((item) => item.kind === 'file');
         if (hasFiles) {
           e.preventDefault();
@@ -340,9 +340,9 @@ export const SendMessageDialog = ({
         }
         return;
       }
-      if (canAttach) handlePaste(e);
+      handlePaste(e);
     },
-    [isLeadRecipient, canAttach, handlePaste, showFileRestrictionError]
+    [supportsAttachments, handlePaste, showFileRestrictionError]
   );
 
   return (
