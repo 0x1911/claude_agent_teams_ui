@@ -1175,4 +1175,6 @@ export class HttpAPIClient implements ElectronAPI {
       return () => {};
     },
   };
+
+  getPathForFile = (_file: File): string => '';
 }

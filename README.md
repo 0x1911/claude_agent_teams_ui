@@ -10,7 +10,7 @@
   <a href="docs/screenshots/6.png"><img src="docs/screenshots/6.png" width="65" alt="Settings" /></a>
 </p>
 
-<h1 align="center">Claude Agent Teams UI</h1>
+<h1 align="center"><a href="https://777genius.github.io/claude_agent_teams_ui/">Claude Agent Teams UI</a></h1>
 
 <p align="center">
   <strong><code>You're the CTO, agents are your team. They handle tasks themselves, message each other, review each other. You just look at the kanban board and drink coffee.</code></strong>

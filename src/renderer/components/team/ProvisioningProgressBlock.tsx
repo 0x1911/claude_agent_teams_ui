@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@renderer/components/ui/button';
 import { cn } from '@renderer/lib/utils';
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react';
 
 import { MarkdownViewer } from '../chat/viewers/MarkdownViewer';
 
@@ -37,6 +37,10 @@ export interface ProvisioningProgressBlockProps {
   loading?: boolean;
   /** Cancel button label and handler */
   onCancel?: (() => void) | null;
+  /** Success message shown inside the block header (e.g. "Team launched — all N teammates online") */
+  successMessage?: string | null;
+  /** Dismiss handler — renders an X button in the block header top-right */
+  onDismiss?: (() => void) | null;
   /** ISO timestamp when provisioning started */
   startedAt?: string;
   /** PID of the CLI process */
@@ -127,6 +131,8 @@ export const ProvisioningProgressBlock = ({
   errorStepIndex,
   loading = false,
   onCancel,
+  successMessage,
+  onDismiss,
   startedAt,
   pid,
   cliLogsTail,
@@ -191,6 +197,33 @@ export const ProvisioningProgressBlock = ({
         className
       )}
     >
+      {successMessage ? (
+        <div className="mb-1.5 flex items-center gap-2">
+          <CheckCircle2 size={14} className="shrink-0 text-[var(--step-done-text)]" />
+          <p className="flex-1 text-xs text-[var(--step-success-text)]">{successMessage}</p>
+          {onDismiss ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 shrink-0 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              onClick={onDismiss}
+            >
+              <X size={12} />
+            </Button>
+          ) : null}
+        </div>
+      ) : onDismiss ? (
+        <div className="flex justify-end">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 shrink-0 p-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            onClick={onDismiss}
+          >
+            <X size={12} />
+          </Button>
+        </div>
+      ) : null}
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {loading ? (

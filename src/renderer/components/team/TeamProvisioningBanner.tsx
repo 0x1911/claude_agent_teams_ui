@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@renderer/components/ui/button';
 import { useStore } from '@renderer/store';
 import { getCurrentProvisioningProgressForTeam } from '@renderer/store/slices/teamSlice';
-import { CheckCircle2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { ProvisioningProgressBlock } from './ProvisioningProgressBlock';
@@ -114,18 +114,6 @@ export const TeamProvisioningBanner = ({
 
     return (
       <div className="mb-3">
-        <div className="flex items-center gap-2 rounded-md border border-[var(--step-done-border)] bg-[var(--step-done-bg)] px-3 py-2">
-          <CheckCircle2 size={14} className="shrink-0 text-[var(--step-done-text)]" />
-          <p className="flex-1 text-xs text-[var(--step-success-text)]">{readyMessage}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-6 shrink-0 border-[var(--step-done-border)] px-2 text-xs text-[var(--step-done-text)] hover:bg-[var(--step-done-bg)]"
-            onClick={() => setDismissed(true)}
-          >
-            <X size={12} />
-          </Button>
-        </div>
         <ProvisioningProgressBlock
           key={progress.runId}
           title="Launch details"
@@ -138,6 +126,8 @@ export const TeamProvisioningBanner = ({
           assistantOutput={progress.assistantOutput}
           defaultLiveOutputOpen={false}
           onCancel={null}
+          successMessage={readyMessage}
+          onDismiss={() => setDismissed(true)}
         />
       </div>
     );

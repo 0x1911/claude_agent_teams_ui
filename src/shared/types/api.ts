@@ -832,6 +832,9 @@ export interface ElectronAPI {
 
   // Extension Store — API Keys Management (Electron-only, optional)
   apiKeys?: ApiKeysAPI;
+
+  /** Get absolute file path for a File object (works in sandboxed renderers). */
+  getPathForFile: (file: File) => string;
 }
 
 // =============================================================================

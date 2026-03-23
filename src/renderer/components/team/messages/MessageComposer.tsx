@@ -412,8 +412,6 @@ export const MessageComposer = ({
       onDrop={handleDropWrapper}
       onPaste={handlePasteWrapper}
     >
-      <DropZoneOverlay active={isDragOver} rejected={!supportsAttachments} />
-
       <div className="mb-1 space-y-2">
         <div className="flex items-center gap-2">
           {isLeadRecipient ? (
@@ -842,103 +840,106 @@ export const MessageComposer = ({
         ) : null}
       </div>
 
-      <MentionableTextarea
-        ref={textareaRef}
-        id={`compose-${teamName}`}
-        placeholder={
-          isProvisioning
-            ? 'Team is launching... message will be queued for inbox delivery.'
-            : isCrossTeam
-              ? `Cross-team message to ${targetDisplayName ?? 'team'}...`
-              : 'Write a message... (Enter to send, Shift+Enter for new line)'
-        }
-        value={draft.text}
-        onValueChange={draft.setText}
-        suggestions={mentionSuggestions}
-        teamSuggestions={teamMentionSuggestions}
-        taskSuggestions={taskSuggestions}
-        chips={draft.chips}
-        onChipRemove={draft.removeChip}
-        projectPath={projectPath}
-        onFileChipInsert={draft.addChip}
-        onModEnter={handleSend}
-        onShiftTab={handleCycleActionMode}
-        dismissMentionsRef={dismissMentionsRef}
-        minRows={2}
-        maxRows={6}
-        maxLength={MAX_TEXT_LENGTH}
-        disabled={sending}
-        hintText={crossTeamHintText}
-        cornerActionLeft={
-          <ActionModeSelector
-            value={actionMode}
-            onChange={setActionMode}
-            showDelegate={canDelegate}
-          />
-        }
-        cornerAction={
-          <div className="flex items-center gap-2">
-            {/* NOTE: ContextRing disabled — usage formula is inaccurate */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex shrink-0 items-center rounded-full p-1.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-secondary)]"
-                  onClick={() => void window.electronAPI.openExternal('https://voicetext.site')}
-                >
-                  <Mic size={14} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Voice to text</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex">
+      <div className="relative">
+        <DropZoneOverlay active={isDragOver} rejected={!supportsAttachments} />
+        <MentionableTextarea
+          ref={textareaRef}
+          id={`compose-${teamName}`}
+          placeholder={
+            isProvisioning
+              ? 'Team is launching... message will be queued for inbox delivery.'
+              : isCrossTeam
+                ? `Cross-team message to ${targetDisplayName ?? 'team'}...`
+                : 'Write a message... (Enter to send, Shift+Enter for new line)'
+          }
+          value={draft.text}
+          onValueChange={draft.setText}
+          suggestions={mentionSuggestions}
+          teamSuggestions={teamMentionSuggestions}
+          taskSuggestions={taskSuggestions}
+          chips={draft.chips}
+          onChipRemove={draft.removeChip}
+          projectPath={projectPath}
+          onFileChipInsert={draft.addChip}
+          onModEnter={handleSend}
+          onShiftTab={handleCycleActionMode}
+          dismissMentionsRef={dismissMentionsRef}
+          minRows={2}
+          maxRows={6}
+          maxLength={MAX_TEXT_LENGTH}
+          disabled={sending}
+          hintText={crossTeamHintText}
+          cornerActionLeft={
+            <ActionModeSelector
+              value={actionMode}
+              onChange={setActionMode}
+              showDelegate={canDelegate}
+            />
+          }
+          cornerAction={
+            <div className="flex items-center gap-2">
+              {/* NOTE: ContextRing disabled — usage formula is inaccurate */}
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex shrink-0 items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!canSend}
-                    onClick={handleSend}
+                    className="inline-flex shrink-0 items-center rounded-full p-1.5 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-raised)] hover:text-[var(--color-text-secondary)]"
+                    onClick={() => void window.electronAPI.openExternal('https://voicetext.site')}
                   >
-                    <Send size={12} />
-                    Send
+                    <Mic size={14} />
                   </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">Voice to text</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex">
+                    <button
+                      type="button"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white shadow-sm transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!canSend}
+                      onClick={handleSend}
+                    >
+                      <Send size={12} />
+                      Send
+                    </button>
+                  </span>
+                </TooltipTrigger>
+                {isProvisioning && !sending ? (
+                  <TooltipContent side="top">
+                    Sending unavailable while team is launching
+                  </TooltipContent>
+                ) : null}
+              </Tooltip>
+            </div>
+          }
+          footerRight={
+            <div className="flex items-center gap-2">
+              {sendError ? (
+                <span className="inline-flex items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-400">
+                  <AlertCircle size={10} className="shrink-0" />
+                  {sendError}
                 </span>
-              </TooltipTrigger>
-              {isProvisioning && !sending ? (
-                <TooltipContent side="top">
-                  Sending unavailable while team is launching
-                </TooltipContent>
+              ) : lastResult?.deduplicated ? (
+                <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
+                  <Check size={10} className="shrink-0" />
+                  Reused recent cross-team request
+                </span>
               ) : null}
-            </Tooltip>
-          </div>
-        }
-        footerRight={
-          <div className="flex items-center gap-2">
-            {sendError ? (
-              <span className="inline-flex items-center gap-1 rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] text-red-400">
-                <AlertCircle size={10} className="shrink-0" />
-                {sendError}
-              </span>
-            ) : lastResult?.deduplicated ? (
-              <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300">
-                <Check size={10} className="shrink-0" />
-                Reused recent cross-team request
-              </span>
-            ) : null}
-            {remaining < 200 ? (
-              <span
-                className={`text-[10px] ${remaining < 100 ? 'text-yellow-400' : 'text-[var(--color-text-muted)]'}`}
-              >
-                {remaining} chars left
-              </span>
-            ) : null}
-            {draft.isSaved ? (
-              <span className="text-[10px] text-[var(--color-text-muted)]">Saved</span>
-            ) : null}
-          </div>
-        }
-      />
+              {remaining < 200 ? (
+                <span
+                  className={`text-[10px] ${remaining < 100 ? 'text-yellow-400' : 'text-[var(--color-text-muted)]'}`}
+                >
+                  {remaining} chars left
+                </span>
+              ) : null}
+              {draft.isSaved ? (
+                <span className="text-[10px] text-[var(--color-text-muted)]">Saved</span>
+              ) : null}
+            </div>
+          }
+        />
+      </div>
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import { WINDOW_ZOOM_FACTOR_CHANGED_CHANNEL } from '@shared/constants';
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 import {
   API_KEYS_DELETE,
@@ -1490,6 +1490,8 @@ const electronAPI: ElectronAPI = {
       invokeIpcWithResult<ApiKeyLookupResult[]>(API_KEYS_LOOKUP, envVarNames),
     getStorageStatus: () => invokeIpcWithResult<ApiKeyStorageStatus>(API_KEYS_STORAGE_STATUS),
   },
+
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
 };
 
 // Use contextBridge to securely expose the API to the renderer process

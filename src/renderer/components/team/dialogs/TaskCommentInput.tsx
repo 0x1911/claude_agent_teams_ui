@@ -96,7 +96,12 @@ export const TaskCommentInput = ({
       const supported: File[] = [];
       for (const file of fileArray) {
         if (categorizeFile(file) === 'unsupported') {
-          const filePath = (file as { path?: string }).path;
+          let filePath = '';
+          try {
+            filePath = window.electronAPI.getPathForFile(file);
+          } catch {
+            // Clipboard files: no path available
+          }
           if (filePath) {
             const current = draft.value;
             draft.setValue(current ? filePath + '\n' + current : filePath + '\n');

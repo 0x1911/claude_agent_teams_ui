@@ -79,7 +79,7 @@ export const ReviewDialog = ({
         }
       }}
     >
-      <DialogContent className="sm:max-w-4xl">
+      <DialogContent className="w-[600px]">
         <DialogHeader>
           <DialogTitle>Request Changes</DialogTitle>
           <DialogDescription>Task #{taskId ? deriveTaskDisplayId(taskId) : ''}</DialogDescription>

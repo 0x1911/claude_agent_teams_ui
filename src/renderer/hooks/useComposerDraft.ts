@@ -331,9 +331,17 @@ export function useComposerDraft(teamName: string): UseComposerDraftResult {
       const unsupportedPaths: string[] = [];
       for (const f of fileArray) {
         if (categorizeFile(f) === 'unsupported') {
-          const p = (f as { path?: string }).path;
-          if (p) unsupportedPaths.push(p);
-          else setAttachmentError(`Unsupported file: ${f.name}`);
+          let filePath = '';
+          try {
+            filePath = window.electronAPI.getPathForFile(f);
+          } catch {
+            // Clipboard files or non-Electron: no path available
+          }
+          if (filePath) {
+            unsupportedPaths.push(filePath);
+          } else {
+            setAttachmentError(`Unsupported file: ${f.name}`);
+          }
         } else {
           supported.push(f);
         }

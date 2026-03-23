@@ -362,10 +362,18 @@ export const MemberLogsTab = ({
   const previewHasMore = allPreviewMessages.length > previewVisibleCount;
 
   const previewOnline = useMemo((): boolean => {
+    if (!previewLog) return false;
+    // Primary signal: the session file is still being written to
+    if (previewLog.isOngoing) return true;
+    // Secondary: check message freshness with generous windows
     const newest = previewMessages[0];
     if (!newest) return false;
-    return Date.now() - newest.timestamp.getTime() <= 10_000;
-  }, [previewMessages]);
+    const ageMs = Date.now() - newest.timestamp.getTime();
+    // Task actively in progress — agent may pause between visible outputs
+    if (taskStatus === 'in_progress') return ageMs <= 60_000;
+    // Completed/other tasks — shorter window
+    return ageMs <= 15_000;
+  }, [previewLog, previewMessages, taskStatus]);
 
   const expandedLogSummary = useMemo(() => {
     if (!expandedId) return null;
