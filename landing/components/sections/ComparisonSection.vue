@@ -4,6 +4,7 @@ const { t } = useI18n()
 interface CellValue {
   status: string
   note?: string
+  noteLink?: string
 }
 
 interface ComparisonRow {
@@ -154,7 +155,7 @@ const rows = computed<ComparisonRow[]>(() => [
   },
   {
     feature: t('comparison.features.multiAgent'),
-    us: { status: 'soon', note: 'In development' },
+    us: { status: 'soon', note: 'In development', noteLink: 'https://github.com/Alishahryar1/free-claude-code' },
     vibeKanban: { status: 'yes', note: '6+ agents' },
     aperant: { status: 'yes', note: '11 providers' },
     cursor: { status: 'yes', note: 'Multi-model' },
@@ -260,8 +261,17 @@ function getStatusIcon(status: string): string {
                       {{ getStatusIcon((row[comp.key as keyof ComparisonRow] as CellValue).status) }}
                     </template>
                   </span>
+                  <a
+                    v-if="(row[comp.key as keyof ComparisonRow] as CellValue).noteLink && (row[comp.key as keyof ComparisonRow] as CellValue).status !== 'text'"
+                    :href="(row[comp.key as keyof ComparisonRow] as CellValue).noteLink"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="comparison-table__cell-note comparison-table__cell-note--link"
+                  >
+                    {{ (row[comp.key as keyof ComparisonRow] as CellValue).note }}
+                  </a>
                   <span
-                    v-if="(row[comp.key as keyof ComparisonRow] as CellValue).note && (row[comp.key as keyof ComparisonRow] as CellValue).status !== 'text'"
+                    v-else-if="(row[comp.key as keyof ComparisonRow] as CellValue).note && (row[comp.key as keyof ComparisonRow] as CellValue).status !== 'text'"
                     class="comparison-table__cell-note"
                   >
                     {{ (row[comp.key as keyof ComparisonRow] as CellValue).note }}
@@ -421,6 +431,19 @@ function getStatusIcon(status: string): string {
   white-space: normal;
 }
 
+.comparison-table__cell-note--link {
+  color: #00d4e6;
+  text-decoration: underline;
+  text-decoration-color: rgba(0, 212, 230, 0.3);
+  text-underline-offset: 2px;
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+
+.comparison-table__cell-note--link:hover {
+  color: #00f0ff;
+  text-decoration-color: rgba(0, 240, 255, 0.6);
+}
+
 /* Cell status variants */
 .comparison-table__cell--yes .comparison-table__cell-content {
   color: #39ff14;
@@ -531,6 +554,16 @@ function getStatusIcon(status: string): string {
 
 .v-theme--light .comparison-table__cell-note {
   color: #94a3b8;
+}
+
+.v-theme--light .comparison-table__cell-note--link {
+  color: #0891b2;
+  text-decoration-color: rgba(8, 145, 178, 0.3);
+}
+
+.v-theme--light .comparison-table__cell-note--link:hover {
+  color: #0e7490;
+  text-decoration-color: rgba(14, 116, 144, 0.6);
 }
 
 .v-theme--light .comparison-table__cell--yes .comparison-table__cell-content {

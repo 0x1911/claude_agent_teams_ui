@@ -38,8 +38,7 @@ yarn-error.log*
 *.tsbuildinfo
 
 .pnpm-store/
-package-lock.json
-!landing/package-lock.json
+/package-lock.json
 notification_example/
 temp/
 .claude/
