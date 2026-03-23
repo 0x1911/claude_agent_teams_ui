@@ -278,7 +278,11 @@ function notifyUnblockedOwners(context, completedTask) {
                 );
             }
 
+            // Stable comment ID prevents duplicates when completeTask is called
+            // multiple times for the same task (e.g. agent retry). addTaskComment
+            // in taskStore.js deduplicates by id (line 485).
             addTaskComment(context, blockedTask.id, {
+                id: `dep-resolved-${completedTask.id}-${blockedTask.id}`,
                 text: lines.join('\n'),
                 from: 'system',
             });
