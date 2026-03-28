@@ -44,6 +44,9 @@ export function drawAgents(
     // Hexagonal body with interior fill
     drawHexBody(ctx, x, y, r, color, node.state, time, isSelected, isHovered);
 
+    // Avatar: first letter of name centered inside hexagon
+    drawAvatar(ctx, x, y, r, node.label, color, node.kind === 'lead');
+
     // Breathing animation + spawn/waiting effects
     drawBreathing(ctx, x, y, r, node.state, time, node.spawnStatus);
 
@@ -205,6 +208,25 @@ function drawBreathing(
     ctx.lineWidth = 1;
     ctx.stroke();
   }
+}
+
+function drawAvatar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  name: string,
+  color: string,
+  isLead: boolean,
+): void {
+  const letter = name.charAt(0).toUpperCase();
+  const fontSize = isLead ? Math.round(r * 0.6) : Math.round(r * 0.7);
+
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = hexWithAlpha(color, 0.9);
+  ctx.fillText(letter, x, y + 1);
 }
 
 function drawLabel(
