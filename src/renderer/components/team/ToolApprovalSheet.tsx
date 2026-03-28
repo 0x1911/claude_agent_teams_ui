@@ -22,6 +22,30 @@ import type { ToolApprovalRequest } from '@shared/types';
 // Tool icon mapping
 // ---------------------------------------------------------------------------
 
+/** Human-readable tool name for the approval header */
+function getToolDisplayName(toolName: string): string {
+  switch (toolName) {
+    case 'AskUserQuestion':
+      return 'Question';
+    case 'Bash':
+      return 'Terminal';
+    case 'Read':
+      return 'Read File';
+    case 'Edit':
+      return 'Edit File';
+    case 'Write':
+      return 'Write File';
+    case 'NotebookEdit':
+      return 'Edit Notebook';
+    case 'Grep':
+      return 'Search Content';
+    case 'Glob':
+      return 'Find Files';
+    default:
+      return toolName;
+  }
+}
+
 function getToolIcon(toolName: string): React.JSX.Element {
   const cls = 'size-4 shrink-0';
   switch (toolName) {
@@ -132,10 +156,12 @@ export const ToolApprovalSheet: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [diffExpanded, setDiffExpanded] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
 
-  // Clear error when current approval changes
+  // Clear error + selection when current approval changes
   useEffect(() => {
     setError(null);
+    setSelectedOptions(new Set());
   }, [current?.requestId]);
 
   const handleRespond = useCallback(
@@ -166,6 +192,21 @@ export const ToolApprovalSheet: React.FC = () => {
     },
     [current, disabled, respondToToolApproval]
   );
+
+  const isAskQuestion = current?.toolName === 'AskUserQuestion';
+  const hasSelection = selectedOptions.size > 0;
+
+  const handleOptionSelect = useCallback((label: string, multiSelect: boolean) => {
+    setSelectedOptions((prev) => {
+      const next = multiSelect ? new Set(prev) : new Set<string>();
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
@@ -222,7 +263,7 @@ export const ToolApprovalSheet: React.FC = () => {
             )}
             {getToolIcon(current.toolName)}
             <span className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>
-              {current.toolName}
+              {getToolDisplayName(current.toolName)}
             </span>
           </div>
           <div className="flex items-center gap-2.5">
@@ -247,6 +288,8 @@ export const ToolApprovalSheet: React.FC = () => {
           toolName={current.toolName}
           toolInput={current.toolInput}
           projectPath={selectedTeamData?.config?.projectPath}
+          selectedOptions={isAskQuestion ? selectedOptions : undefined}
+          onOptionSelect={isAskQuestion ? handleOptionSelect : undefined}
         />
 
         {/* Diff preview (Write/Edit/NotebookEdit only) */}
@@ -280,19 +323,30 @@ export const ToolApprovalSheet: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={disabled}
+              disabled={disabled || (isAskQuestion && !hasSelection)}
               onClick={() => handleRespond(true)}
               className="rounded-md px-3.5 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-50"
-              style={{ backgroundColor: 'rgb(5, 150, 105)' }}
+              style={{
+                backgroundColor:
+                  isAskQuestion && !hasSelection
+                    ? 'var(--color-surface-raised)'
+                    : 'rgb(5, 150, 105)',
+                color: isAskQuestion && !hasSelection ? 'var(--color-text-muted)' : undefined,
+              }}
               onMouseEnter={(e) => {
-                if (!disabled)
+                if (!disabled && !(isAskQuestion && !hasSelection))
                   Object.assign(e.currentTarget.style, { backgroundColor: 'rgb(16, 185, 129)' });
               }}
               onMouseLeave={(e) => {
-                Object.assign(e.currentTarget.style, { backgroundColor: 'rgb(5, 150, 105)' });
+                Object.assign(e.currentTarget.style, {
+                  backgroundColor:
+                    isAskQuestion && !hasSelection
+                      ? 'var(--color-surface-raised)'
+                      : 'rgb(5, 150, 105)',
+                });
               }}
             >
-              Allow
+              {isAskQuestion ? 'Submit' : 'Allow'}
             </button>
             <button
               type="button"
@@ -375,10 +429,14 @@ const ToolInputPreview = ({
   toolName,
   toolInput,
   projectPath,
+  selectedOptions,
+  onOptionSelect,
 }: {
   toolName: string;
   toolInput: Record<string, unknown>;
   projectPath?: string;
+  selectedOptions?: Set<string>;
+  onOptionSelect?: (label: string, multiSelect: boolean) => void;
 }): React.JSX.Element => {
   const text = renderToolInput(toolName, toolInput, projectPath);
   const fileName = getToolInputFileName(toolName, toolInput);
@@ -423,33 +481,51 @@ const ToolInputPreview = ({
             )}
             {Array.isArray(q.options) && (
               <div className="space-y-1.5">
-                {q.options.map((opt, oi) => (
-                  <div
-                    key={oi}
-                    className="flex items-start gap-2 rounded px-2 py-1.5"
-                    style={{ backgroundColor: 'var(--color-surface-raised)' }}
-                  >
-                    <span
-                      className="mt-0.5 text-[10px]"
-                      style={{ color: 'var(--color-text-muted)' }}
+                {q.options.map((opt, oi) => {
+                  const optKey = opt.label ?? `opt-${oi}`;
+                  const isSelected = selectedOptions?.has(optKey) ?? false;
+                  return (
+                    <button
+                      key={oi}
+                      type="button"
+                      onClick={() => onOptionSelect?.(optKey, q.multiSelect ?? false)}
+                      className="flex w-full items-start gap-2 rounded px-2 py-1.5 text-left transition-colors"
+                      style={{
+                        backgroundColor: isSelected
+                          ? 'rgba(5, 150, 105, 0.15)'
+                          : 'var(--color-surface-raised)',
+                        border: isSelected
+                          ? '1px solid rgba(5, 150, 105, 0.4)'
+                          : '1px solid transparent',
+                      }}
                     >
-                      {q.multiSelect ? '☐' : '○'}
-                    </span>
-                    <div className="min-w-0">
-                      <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
-                        {opt.label}
+                      <span
+                        className="mt-0.5 text-[10px]"
+                        style={{
+                          color: isSelected ? 'rgb(52, 211, 153)' : 'var(--color-text-muted)',
+                        }}
+                      >
+                        {q.multiSelect ? (isSelected ? '☑' : '☐') : isSelected ? '◉' : '○'}
                       </span>
-                      {opt.description && (
-                        <p
-                          className="mt-0.5 text-[10px]"
-                          style={{ color: 'var(--color-text-muted)' }}
+                      <div className="min-w-0">
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: isSelected ? 'rgb(52, 211, 153)' : 'var(--color-text)' }}
                         >
-                          {opt.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                          {opt.label}
+                        </span>
+                        {opt.description && (
+                          <p
+                            className="mt-0.5 text-[10px]"
+                            style={{ color: 'var(--color-text-muted)' }}
+                          >
+                            {opt.description}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
