@@ -60,7 +60,7 @@ export function GraphControls({
   const nameColor = teamColor ?? '#aaeeff';
 
   return (
-    <div className="absolute top-10 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
+    <div className="absolute top-2 left-20 right-3 flex items-center justify-between pointer-events-none z-10">
       {/* Left: team name + status indicator */}
       <div className="flex items-center pointer-events-auto">
         <div
