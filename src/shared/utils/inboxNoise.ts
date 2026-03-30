@@ -47,6 +47,8 @@ export interface PermissionSuggestion {
   rules?: { toolName: string }[];
   behavior?: string;
   destination?: string;
+  /** Permission mode name (for type: "setMode"). FACT: observed values: "acceptEdits", "bypassPermissions" */
+  mode?: string;
 }
 
 /** Parsed teammate permission request from inbox message. */

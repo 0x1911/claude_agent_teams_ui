@@ -6384,6 +6384,37 @@ export class TeamProvisioningService {
     }
 
     for (const suggestion of suggestions) {
+      // Handle "setMode" suggestions (e.g. Write/Edit tools suggest acceptEdits mode)
+      // FACT: Write/Edit permission_requests have permission_suggestions:
+      //   { type: "setMode", mode: "acceptEdits", destination: "session" }
+      // Since we can't change session mode of a subprocess, we translate to addRules.
+      if (suggestion.type === 'setMode') {
+        const mode = typeof suggestion.mode === 'string' ? suggestion.mode : '';
+        let toolNames: string[] = [];
+        if (mode === 'acceptEdits') {
+          toolNames = ['Edit', 'Write', 'NotebookEdit'];
+        } else if (mode === 'bypassPermissions') {
+          // Broad approval — add common tools
+          toolNames = ['Edit', 'Write', 'NotebookEdit', 'Bash', 'Read', 'Grep', 'Glob'];
+        }
+        if (toolNames.length > 0) {
+          const settingsPath = path.join(projectCwd, '.claude', 'settings.local.json');
+          try {
+            await this.addPermissionRulesToSettings(settingsPath, toolNames, 'allow');
+            logger.info(
+              `[${run.teamName}] Applied setMode "${mode}" for ${agentId}: ${toolNames.join(', ')} in ${settingsPath}`
+            );
+          } catch (error) {
+            logger.error(
+              `[${run.teamName}] Failed to apply setMode: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
+          }
+        }
+        continue;
+      }
+
       if (suggestion.type !== 'addRules' || !Array.isArray(suggestion.rules)) continue;
 
       let toolNames = suggestion.rules
