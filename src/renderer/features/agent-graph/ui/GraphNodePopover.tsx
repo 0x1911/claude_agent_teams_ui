@@ -155,29 +155,7 @@ function MemberPopoverContent({
         )}
       </div>
 
-      {/* Context usage for lead */}
-      {node.kind === 'lead' && node.contextUsage != null && node.contextUsage > 0 && (
-        <div className="mt-2">
-          <div className="flex items-center justify-between text-[10px] text-[var(--color-text-muted)]">
-            <span>Context</span>
-            <span>{Math.round(node.contextUsage * 100)}%</span>
-          </div>
-          <div className="mt-0.5 h-1 rounded-full bg-[var(--color-border)]">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${Math.min(100, node.contextUsage * 100)}%`,
-                background:
-                  node.contextUsage > 0.9
-                    ? '#ef4444'
-                    : node.contextUsage > 0.8
-                      ? '#f59e0b'
-                      : '#22c55e',
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {/* TODO: Context usage disabled — LeadContextUsage.percent unreliable (jumps) */}
 
       {/* Current task indicator — reuses same pattern as MemberCard */}
       {node.currentTaskId && node.currentTaskSubject && (
