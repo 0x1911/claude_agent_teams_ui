@@ -109,6 +109,19 @@ export function GraphControls({
       </div>
 
       <div className="absolute right-3 top-3 z-10 flex items-center gap-2 pointer-events-none">
+        <div
+          className="pointer-events-auto flex items-center rounded-lg px-1 py-0.5 backdrop-blur-sm"
+          style={{
+            background: 'rgba(8, 12, 24, 0.8)',
+            border: '1px solid rgba(100, 200, 255, 0.08)',
+          }}
+        >
+          <ToolbarButton
+            onClick={() => toggle('paused')}
+            icon={filters.paused ? <Play size={14} /> : <Pause size={14} />}
+          />
+        </div>
+
         <div ref={settingsRef} className="relative pointer-events-auto">
           <div
             className="flex items-center gap-0.5 rounded-lg px-1 py-0.5 backdrop-blur-sm"
@@ -152,14 +165,6 @@ export function GraphControls({
                 onClick={() => toggle('showEdges')}
                 icon={filters.showEdges ? <Eye size={13} /> : <EyeOff size={13} />}
                 label="Edges"
-                block
-              />
-              <div className="my-1 h-px bg-[rgba(100,200,255,0.08)]" />
-              <ToolbarToggle
-                active={!filters.paused}
-                onClick={() => toggle('paused')}
-                icon={filters.paused ? <Play size={13} /> : <Pause size={13} />}
-                label={filters.paused ? 'Resume' : 'Pause'}
                 block
               />
             </div>
