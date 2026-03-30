@@ -91,7 +91,7 @@ export function GraphControls({
 
   return (
     <>
-      <div className="absolute left-3 top-3 z-10 flex items-center gap-3 pointer-events-none">
+      <div className="absolute left-20 top-3 z-10 flex items-center gap-3 pointer-events-none">
         <div
           className="pointer-events-auto flex items-center gap-2 rounded-lg px-3 py-1.5 backdrop-blur-sm"
           style={{
