@@ -474,14 +474,16 @@ export const MemberLogsTab = ({
           setError(e instanceof Error ? e.message : 'Unknown error');
         }
       } finally {
+        if (didBeginRefreshing) endRefreshing();
         if (!cancelled) {
           setLoading(false);
-          if (didBeginRefreshing) endRefreshing();
         }
       }
     };
 
-    void load();
+    if (isTabActive || !hasLoadedRef.current) {
+      void load();
+    }
 
     const interval = shouldAutoRefresh && isTabActive ? setInterval(() => void load(), 5000) : null;
 
