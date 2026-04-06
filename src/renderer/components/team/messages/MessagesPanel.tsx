@@ -9,6 +9,7 @@ import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStore } from '@renderer/store';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
+import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import {
   CheckCheck,
   ChevronsDownUp,
@@ -189,6 +190,16 @@ export const MessagesPanel = memo(function MessagesPanel({
     });
   }, [messages, timeWindow, messagesFilter, messagesSearchQuery]);
 
+  const replyCandidateMessages = useMemo(
+    () =>
+      messages.filter(
+        (m) =>
+          m.messageKind !== 'task_comment_notification' &&
+          !isInboxNoiseMessage(typeof m.text === 'string' ? m.text : '')
+      ),
+    [messages]
+  );
+
   // Resolve the expanded item from filtered messages
   const expandedItem = useMemo<TimelineItem | null>(() => {
     if (!expandedItemKey) return null;
@@ -250,7 +261,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     const next = { ...pendingRepliesByMember };
     let changed = false;
     for (const [memberName, sentAtMs] of Object.entries(pendingRepliesByMember)) {
-      const hasReply = messages.some((m) => {
+      const hasReply = replyCandidateMessages.some((m) => {
         if (m.from !== memberName) return false;
         const ts = Date.parse(m.timestamp);
         return Number.isFinite(ts) && ts > sentAtMs;
@@ -261,7 +272,7 @@ export const MessagesPanel = memo(function MessagesPanel({
       }
     }
     if (changed) onPendingReplyChange(() => next);
-  }, [messages, pendingRepliesByMember, onPendingReplyChange]);
+  }, [replyCandidateMessages, pendingRepliesByMember, onPendingReplyChange]);
 
   const handleSend = useCallback(
     (

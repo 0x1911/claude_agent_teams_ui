@@ -565,10 +565,23 @@ export const TeamDetailView = ({
 
   // Fetch initial spawn statuses when provisioning starts
   useEffect(() => {
-    if (teamName && (isTeamProvisioning || memberSpawnStatuses == null)) {
+    const leadActivity = teamName ? leadActivityByTeam[teamName] : undefined;
+    const shouldFetchSpawnStatuses =
+      Boolean(teamName) &&
+      (isTeamProvisioning ||
+        (memberSpawnStatuses == null &&
+          (data?.isAlive === true || leadActivity === 'active' || leadActivity === 'idle')));
+    if (teamName && shouldFetchSpawnStatuses) {
       void fetchMemberSpawnStatuses(teamName);
     }
-  }, [isTeamProvisioning, memberSpawnStatuses, teamName, fetchMemberSpawnStatuses]);
+  }, [
+    data?.isAlive,
+    fetchMemberSpawnStatuses,
+    isTeamProvisioning,
+    leadActivityByTeam,
+    memberSpawnStatuses,
+    teamName,
+  ]);
 
   // Convert Record<string, MemberSpawnStatusEntry> → Map<string, MemberSpawnEntry>
   const memberSpawnStatusMap = useMemo(() => {

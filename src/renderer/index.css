@@ -1134,9 +1134,21 @@ body {
   line-height: 0.875rem;
 }
 
-/* Hide per-item timestamps and chevrons in compact CLI logs */
-.cli-logs-compact .base-item-timestamp,
+/* Hide chevrons in compact CLI logs, but keep per-item timestamps visible */
 .cli-logs-compact .base-item-chevron {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .cli-logs-compact .base-item-timestamp {
+    display: none;
+  }
+}
+
+.cli-logs-sidebar .base-item-timestamp,
+.cli-logs-sidebar .base-item-tokens,
+.cli-logs-sidebar .base-item-status-dot,
+.cli-logs-sidebar .base-item-notification-dot {
   display: none;
 }
 

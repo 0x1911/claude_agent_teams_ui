@@ -52,6 +52,8 @@ interface CliLogsRichViewProps {
   style?: React.CSSProperties;
   /** Content rendered at the very bottom of the scroll container (e.g. "Show more" button). */
   footer?: React.ReactNode;
+  /** When true, hide compact inline metadata and expose it via hover tooltip instead. */
+  compactMetaInTooltip?: boolean;
 
   // ── Controlled mode (optional — all-or-nothing) ──────────────────────
   /** When provided, the component uses external expansion state. */
@@ -136,11 +138,13 @@ const FlatGroupItem = ({
   expandedItemIds,
   onItemClick,
   searchQueryOverride,
+  compactMetaInTooltip,
 }: {
   group: StreamJsonGroup;
   expandedItemIds: Set<string>;
   onItemClick: (itemId: string) => void;
   searchQueryOverride?: string;
+  compactMetaInTooltip?: boolean;
 }): React.JSX.Element => {
   const groupItemIds = useMemo(
     () => scopedItemIds(expandedItemIds, group.id),
@@ -160,6 +164,8 @@ const FlatGroupItem = ({
         aiGroupId={group.id}
         searchQueryOverride={searchQueryOverride}
         previewMaxLength={500}
+        timestampFormat="HH:mm"
+        showItemMetaTooltip={compactMetaInTooltip}
       />
     </div>
   );
@@ -175,6 +181,7 @@ const StreamGroup = ({
   expandedItemIds,
   onItemClick,
   searchQueryOverride,
+  compactMetaInTooltip,
 }: {
   group: StreamJsonGroup;
   isExpanded: boolean;
@@ -182,6 +189,7 @@ const StreamGroup = ({
   expandedItemIds: Set<string>;
   onItemClick: (itemId: string) => void;
   searchQueryOverride?: string;
+  compactMetaInTooltip?: boolean;
 }): React.JSX.Element => {
   // Scope item IDs to this group to avoid cross-group collisions
   const groupItemIds = useMemo(
@@ -233,6 +241,8 @@ const StreamGroup = ({
             aiGroupId={group.id}
             searchQueryOverride={searchQueryOverride}
             previewMaxLength={500}
+            timestampFormat="HH:mm"
+            showItemMetaTooltip={compactMetaInTooltip}
           />
         </div>
       )}
@@ -344,6 +354,7 @@ export const CliLogsRichView = ({
   className,
   style,
   footer,
+  compactMetaInTooltip = false,
   viewerState: controlledState,
   onViewerStateChange,
 }: CliLogsRichViewProps): React.JSX.Element => {
@@ -608,6 +619,7 @@ export const CliLogsRichView = ({
             expandedItemIds={expandedItemIds}
             onItemClick={handleItemClick}
             searchQueryOverride={searchQueryOverride}
+            compactMetaInTooltip={compactMetaInTooltip}
           />
         ) : (
           <StreamGroup
@@ -618,6 +630,7 @@ export const CliLogsRichView = ({
             expandedItemIds={expandedItemIds}
             onItemClick={handleItemClick}
             searchQueryOverride={searchQueryOverride}
+            compactMetaInTooltip={compactMetaInTooltip}
           />
         )
       )}

@@ -28,6 +28,7 @@ interface ClaudeLogsPanelProps {
   viewerMaxHeight?: number;
   /** Extra className for the panel wrapper. */
   className?: string;
+  compactMetaInTooltip?: boolean;
 }
 
 // =============================================================================
@@ -39,6 +40,7 @@ export const ClaudeLogsPanel = ({
   viewerClassName,
   viewerMaxHeight,
   className,
+  compactMetaInTooltip = false,
 }: ClaudeLogsPanelProps): React.JSX.Element => {
   const {
     data,
@@ -135,6 +137,7 @@ export const ClaudeLogsPanel = ({
             style={viewerMaxHeight ? { maxHeight: `${viewerMaxHeight}px` } : undefined}
             containerRefCallback={containerRefCallback}
             onScroll={handleScroll}
+            compactMetaInTooltip={compactMetaInTooltip}
             viewerState={viewerState}
             onViewerStateChange={onViewerStateChange}
             footer={

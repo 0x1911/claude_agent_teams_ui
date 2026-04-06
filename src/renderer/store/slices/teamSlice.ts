@@ -18,6 +18,13 @@ const logger = createLogger('teamSlice');
 
 const TEAM_GET_DATA_TIMEOUT_MS = 30_000;
 const TEAM_FETCH_TIMEOUT_MS = 30_000;
+const MEMBER_SPAWN_STATUSES_IPC_RETRY_BACKOFF_MS = 5_000;
+const inFlightTeamDataRequests = new Map<string, Promise<TeamData>>();
+const pendingFreshTeamDataRefreshes = new Set<string>();
+const memberSpawnStatusesIpcBackoffUntilByTeam = new Map<string, number>();
+type RefreshTeamDataOptions = {
+  withDedup?: boolean;
+};
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -55,6 +62,76 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return Promise.race([promise, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
   });
+}
+
+function fetchTeamDataDeduped(teamName: string): Promise<TeamData> {
+  const existing = inFlightTeamDataRequests.get(teamName);
+  if (existing) {
+    return existing;
+  }
+
+  const request = withTimeout(
+    unwrapIpc('team:getData', () => api.teams.getData(teamName)),
+    TEAM_GET_DATA_TIMEOUT_MS,
+    `team:getData(${teamName})`
+  ).finally(() => {
+    if (inFlightTeamDataRequests.get(teamName) === request) {
+      inFlightTeamDataRequests.delete(teamName);
+    }
+  });
+
+  inFlightTeamDataRequests.set(teamName, request);
+  return request;
+}
+
+function fetchTeamDataFresh(teamName: string): Promise<TeamData> {
+  return withTimeout(
+    unwrapIpc('team:getData', () => api.teams.getData(teamName)),
+    TEAM_GET_DATA_TIMEOUT_MS,
+    `team:getData(${teamName})`
+  );
+}
+
+function compareInboxMessagesByTimestamp(a: InboxMessage, b: InboxMessage): number {
+  const aTime = Date.parse(a.timestamp);
+  const bTime = Date.parse(b.timestamp);
+  const aValid = Number.isFinite(aTime);
+  const bValid = Number.isFinite(bTime);
+  if (aValid && bValid && aTime !== bTime) {
+    return aTime - bTime;
+  }
+  if (aValid !== bValid) {
+    return aValid ? -1 : 1;
+  }
+  const aId = typeof a.messageId === 'string' ? a.messageId : '';
+  const bId = typeof b.messageId === 'string' ? b.messageId : '';
+  return aId.localeCompare(bId);
+}
+
+function upsertLocalSentMessage(data: TeamData, message: InboxMessage): TeamData {
+  const nextMessages = [...data.messages];
+  const messageId = typeof message.messageId === 'string' ? message.messageId.trim() : '';
+  if (messageId.length > 0) {
+    const existingIndex = nextMessages.findIndex(
+      (candidate) =>
+        typeof candidate.messageId === 'string' && candidate.messageId.trim() === messageId
+    );
+    if (existingIndex >= 0) {
+      nextMessages[existingIndex] = {
+        ...nextMessages[existingIndex],
+        ...message,
+      };
+    } else {
+      nextMessages.push(message);
+    }
+  } else {
+    nextMessages.push(message);
+  }
+  nextMessages.sort(compareInboxMessagesByTimestamp);
+  return {
+    ...data,
+    messages: nextMessages,
+  };
 }
 
 async function refreshTaskChangePresenceForUpdatedTask(
@@ -136,6 +213,7 @@ import type {
   CrossTeamSendRequest,
   EffortLevel,
   GlobalTask,
+  InboxMessage,
   KanbanColumnId,
   LeadActivityState,
   LeadContextUsage,
@@ -650,7 +728,7 @@ export interface TeamSlice {
     teamName: string,
     opts?: { skipProjectAutoSelect?: boolean; allowReloadWhileProvisioning?: boolean }
   ) => Promise<void>;
-  refreshTeamData: (teamName: string) => Promise<void>;
+  refreshTeamData: (teamName: string, opts?: RefreshTeamDataOptions) => Promise<void>;
   sendTeamMessage: (teamName: string, request: SendMessageRequest) => Promise<void>;
   crossTeamTargets: {
     teamName: string;
@@ -931,8 +1009,13 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   launchParamsByTeam: loadAllLaunchParams(),
   fetchMemberSpawnStatuses: async (teamName: string) => {
     if (!api.teams?.getMemberSpawnStatuses) return;
+    const backoffUntil = memberSpawnStatusesIpcBackoffUntilByTeam.get(teamName) ?? 0;
+    if (backoffUntil > Date.now()) {
+      return;
+    }
     try {
       const snapshot = await api.teams.getMemberSpawnStatuses(teamName);
+      memberSpawnStatusesIpcBackoffUntilByTeam.delete(teamName);
       set((prev) => {
         if (snapshot.runId != null && prev.ignoredRuntimeRunIds[snapshot.runId] === teamName) {
           return {};
@@ -980,7 +1063,14 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           },
         };
       });
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("No handler registered for 'team:memberSpawnStatuses'")) {
+        memberSpawnStatusesIpcBackoffUntilByTeam.set(
+          teamName,
+          Date.now() + MEMBER_SPAWN_STATUSES_IPC_RETRY_BACKOFF_MS
+        );
+      }
       // ignore — spawn statuses are best-effort
     }
   },
@@ -1364,11 +1454,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     });
 
     try {
-      const data = await withTimeout(
-        unwrapIpc('team:getData', () => api.teams.getData(teamName)),
-        TEAM_GET_DATA_TIMEOUT_MS,
-        `team:getData(${teamName})`
-      );
+      const data = await fetchTeamDataDeduped(teamName);
       // Stale check: user may have switched to another team during the async call
       if (get().selectedTeamName !== teamName || get().selectedTeamLoadNonce !== requestNonce) {
         return;
@@ -1502,20 +1588,23 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     }
   },
 
-  refreshTeamData: async (teamName: string) => {
+  refreshTeamData: async (teamName: string, opts?: RefreshTeamDataOptions) => {
     const state = get();
     if (state.selectedTeamName !== teamName) {
       return;
     }
     // Silent refresh — update data without showing loading skeleton.
     // Only selectTeam() sets loading: true (for initial load).
+    const reusedInFlightRequest =
+      opts?.withDedup === true && inFlightTeamDataRequests.has(teamName);
+    if (reusedInFlightRequest) {
+      pendingFreshTeamDataRefreshes.add(teamName);
+    }
     try {
       const previousData = get().selectedTeamData;
-      const data = await withTimeout(
-        unwrapIpc('team:getData', () => api.teams.getData(teamName)),
-        TEAM_GET_DATA_TIMEOUT_MS,
-        `refreshTeamData(${teamName})`
-      );
+      const data = opts?.withDedup
+        ? await fetchTeamDataDeduped(teamName)
+        : await fetchTeamDataFresh(teamName);
       // Re-check after async: the user might have navigated away.
       if (get().selectedTeamName !== teamName) {
         return;
@@ -1576,6 +1665,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         return;
       }
       set({ selectedTeamError: msg });
+    } finally {
+      if (reusedInFlightRequest && pendingFreshTeamDataRefreshes.delete(teamName)) {
+        void get().refreshTeamData(teamName);
+      }
     }
   },
 
@@ -1609,11 +1702,37 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const result = await unwrapIpc('team:sendMessage', () =>
         api.teams.sendMessage(teamName, request)
       );
-      set({
+      const optimisticMessage: InboxMessage = {
+        from: request.from ?? 'user',
+        to: request.to ?? request.member,
+        text: request.text,
+        timestamp: request.timestamp ?? nowIso(),
+        read: true,
+        taskRefs: request.taskRefs?.length ? request.taskRefs : undefined,
+        summary: request.summary,
+        color: request.color,
+        messageId: result.messageId,
+        relayOfMessageId: request.relayOfMessageId,
+        source: request.source ?? 'user_sent',
+        attachments: request.attachments?.length ? request.attachments : undefined,
+        leadSessionId: request.leadSessionId,
+        conversationId: request.conversationId,
+        replyToConversationId: request.replyToConversationId,
+        toolSummary: request.toolSummary,
+        toolCalls: request.toolCalls,
+        messageKind: request.messageKind,
+        slashCommand: request.slashCommand,
+        commandOutput: request.commandOutput,
+      };
+      set((state) => ({
         sendingMessage: false,
         sendMessageError: null,
         lastSendMessageResult: result,
-      });
+        selectedTeamData:
+          state.selectedTeamName === teamName && state.selectedTeamData
+            ? upsertLocalSentMessage(state.selectedTeamData, optimisticMessage)
+            : state.selectedTeamData,
+      }));
       await get().refreshTeamData(teamName);
     } catch (error) {
       set({

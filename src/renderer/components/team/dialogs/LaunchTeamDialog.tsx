@@ -124,6 +124,8 @@ interface LaunchDialogScheduleMode {
 
 export type LaunchTeamDialogProps = LaunchDialogLaunchMode | LaunchDialogScheduleMode;
 
+const APP_TEAM_RUNTIME_DISALLOWED_TOOLS = 'TeamDelete,TodoWrite,TaskCreate,TaskUpdate';
+
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -1004,7 +1006,7 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
     const args: string[] = [];
     args.push('--input-format', 'stream-json', '--output-format', 'stream-json');
     args.push('--verbose', '--setting-sources', 'user,project,local');
-    args.push('--mcp-config', '<auto>', '--disallowedTools', 'TeamDelete,TodoWrite');
+    args.push('--mcp-config', '<auto>', '--disallowedTools', APP_TEAM_RUNTIME_DISALLOWED_TOOLS);
     if (skipPermissions) args.push('--dangerously-skip-permissions');
     const model = computeEffectiveTeamModel(selectedModel, limitContext, selectedProviderId);
     if (model) args.push('--model', model);

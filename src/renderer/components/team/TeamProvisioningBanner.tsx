@@ -126,21 +126,42 @@ export const TeamProvisioningBanner = ({
       const entry = memberSpawnStatuses?.[member.name];
       return entry?.launchState === 'runtime_pending_bootstrap' && entry.runtimeAlive === true;
     }).length;
-  const pendingSpawnCount =
-    snapshotSummary?.pendingCount ??
-    teammates.filter((member) => {
-      const entry = memberSpawnStatuses?.[member.name];
-      return (
-        entry?.launchState === 'starting' ||
-        (entry?.launchState === 'runtime_pending_bootstrap' && entry.runtimeAlive !== true)
-      );
-    }).length;
+  const pendingSpawnCount = snapshotSummary
+    ? Math.max(0, snapshotSummary.pendingCount - snapshotSummary.runtimeAlivePendingCount)
+    : teammates.filter((member) => {
+        const entry = memberSpawnStatuses?.[member.name];
+        return (
+          entry?.launchState === 'starting' ||
+          (entry?.launchState === 'runtime_pending_bootstrap' && entry.runtimeAlive !== true)
+        );
+      }).length;
   const allTeammatesConfirmedAlive =
     fallbackTeammateCount > 0 &&
     failedSpawnCount === 0 &&
     heartbeatConfirmedCount === fallbackTeammateCount;
+  const allPendingRuntimesStarted =
+    fallbackTeammateCount > 0 &&
+    heartbeatConfirmedCount === 0 &&
+    processOnlyAliveCount === fallbackTeammateCount &&
+    pendingSpawnCount === 0;
 
   if (isReady) {
+    const readyDetailMessage =
+      failedSpawnCount > 0
+        ? progress.message
+        : fallbackTeammateCount === 0
+          ? 'Team provisioned — lead online'
+          : allTeammatesConfirmedAlive
+            ? `Team provisioned — all ${fallbackTeammateCount} teammates confirmed alive`
+            : allPendingRuntimesStarted
+              ? 'Team provisioned — teammate runtimes started, waiting for bootstrap confirmation'
+              : processOnlyAliveCount > 0 || pendingSpawnCount > 0
+                ? `Team provisioned — ${heartbeatConfirmedCount}/${fallbackTeammateCount} teammates confirmed alive${processOnlyAliveCount > 0 ? `, ${processOnlyAliveCount} runtime${processOnlyAliveCount === 1 ? '' : 's'} alive but bootstrap still pending` : ''}${pendingSpawnCount > 0 ? `${processOnlyAliveCount > 0 ? ', ' : ', '}${pendingSpawnCount} still starting` : ''}`
+                : 'Team provisioned — teammate liveness is still being confirmed';
+    const readyDetailSeverity =
+      failedSpawnCount > 0 || processOnlyAliveCount > 0 || pendingSpawnCount > 0
+        ? 'warning'
+        : undefined;
     const readyMessage =
       failedSpawnCount > 0
         ? `Launch finished with errors — ${failedSpawnCount}/${Math.max(fallbackTeammateCount, failedSpawnCount)} teammates failed to start`
@@ -148,17 +169,19 @@ export const TeamProvisioningBanner = ({
           ? 'Team launched — lead online'
           : allTeammatesConfirmedAlive
             ? `Team launched — all ${fallbackTeammateCount} teammates confirmed alive`
-            : processOnlyAliveCount > 0 || pendingSpawnCount > 0
-              ? `Team launched — ${heartbeatConfirmedCount}/${fallbackTeammateCount} teammates confirmed alive${processOnlyAliveCount > 0 ? `, ${processOnlyAliveCount} runtime${processOnlyAliveCount === 1 ? '' : 's'} alive but bootstrap still pending` : ''}${pendingSpawnCount > 0 ? `${processOnlyAliveCount > 0 ? ', ' : ', '}${pendingSpawnCount} still starting` : ''}`
-              : 'Team launched — teammate liveness is still being confirmed';
+            : allPendingRuntimesStarted
+              ? 'Team launched — teammate runtimes started, waiting for bootstrap confirmation'
+              : processOnlyAliveCount > 0 || pendingSpawnCount > 0
+                ? `Team launched — ${heartbeatConfirmedCount}/${fallbackTeammateCount} teammates confirmed alive${processOnlyAliveCount > 0 ? `, ${processOnlyAliveCount} runtime${processOnlyAliveCount === 1 ? '' : 's'} alive but bootstrap still pending` : ''}${pendingSpawnCount > 0 ? `${processOnlyAliveCount > 0 ? ', ' : ', '}${pendingSpawnCount} still starting` : ''}`
+                : 'Team launched — teammate liveness is still being confirmed';
 
     return (
       <div className="mb-3">
         <ProvisioningProgressBlock
           key={progress.runId}
           title="Launch details"
-          message={progress.message}
-          messageSeverity={progress.messageSeverity}
+          message={readyDetailMessage}
+          messageSeverity={readyDetailSeverity}
           currentStepIndex={progressStepIndex >= 0 ? progressStepIndex : -1}
           startedAt={progress.startedAt}
           pid={progress.pid}

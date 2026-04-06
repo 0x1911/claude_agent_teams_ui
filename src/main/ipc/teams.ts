@@ -1454,6 +1454,7 @@ function buildMessageDeliveryText(
   opts: {
     actionMode?: AgentActionMode;
     isLeadRecipient: boolean;
+    replyRecipient?: string;
   }
 ): string {
   const hiddenBlocks: string[] = [];
@@ -1462,11 +1463,20 @@ function buildMessageDeliveryText(
     hiddenBlocks.push(actionModeBlock);
   }
   if (!opts.isLeadRecipient) {
+    const replyRecipient =
+      typeof opts.replyRecipient === 'string' && opts.replyRecipient.trim().length > 0
+        ? opts.replyRecipient.trim()
+        : 'user';
+    const senderDescriptor = replyRecipient === 'user' ? 'the human user' : `"${replyRecipient}"`;
     hiddenBlocks.push(
       [
         AGENT_BLOCK_OPEN,
-        'You received a direct message from the human user via the UI.',
-        'Please reply back to recipient "user" with a short, human-readable answer.',
+        `You received a direct message from ${senderDescriptor} via the UI.`,
+        'CRITICAL: Reply using the SendMessage tool, not plain assistant text.',
+        `CRITICAL: The destination must be exactly to="${replyRecipient}".`,
+        'CRITICAL: The SendMessage tool input must use the exact field names `to`, `summary`, and `message`.',
+        'Do NOT answer only with normal assistant text because that will not appear in the UI message thread.',
+        `Please reply back to recipient "${replyRecipient}" with a short, human-readable answer.`,
         'If you cannot respond now, reply with a brief status (e.g. "Busy, will reply later").',
         AGENT_BLOCK_CLOSE,
       ].join('\n')
@@ -1702,6 +1712,7 @@ async function handleSendMessage(
     const memberDeliveryText = buildMessageDeliveryText(baseText, {
       actionMode,
       isLeadRecipient,
+      replyRecipient: typeof payload.from === 'string' ? payload.from : 'user',
     });
     const result = await getTeamDataService().sendMessage(tn, {
       member: memberName,

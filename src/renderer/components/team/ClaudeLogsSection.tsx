@@ -141,8 +141,9 @@ export const ClaudeLogsSection = ({
         ) : (
           <ClaudeLogsPanel
             ctrl={ctrl}
-            viewerClassName="max-h-[213px]"
+            viewerClassName={cn('max-h-[213px]', isSidebar && 'cli-logs-sidebar')}
             viewerMaxHeight={isSidebar ? sidebarViewerMaxHeight : undefined}
+            compactMetaInTooltip={isSidebar}
           />
         )}
       </CollapsibleTeamSection>

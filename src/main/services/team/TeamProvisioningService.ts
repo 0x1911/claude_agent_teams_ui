@@ -162,9 +162,12 @@ const FS_MONITOR_POLL_MS = 2000;
 const TASK_WAIT_FALLBACK_MS = 15_000;
 const STALL_CHECK_INTERVAL_MS = 10_000;
 const STALL_WARNING_THRESHOLD_MS = 20_000;
+const APP_TEAM_RUNTIME_DISALLOWED_TOOLS = 'TeamDelete,TodoWrite,TaskCreate,TaskUpdate';
 const TEAM_JSON_READ_TIMEOUT_MS = 5_000;
 const TEAM_CONFIG_MAX_BYTES = 10 * 1024 * 1024;
 const TEAM_INBOX_MAX_BYTES = 2 * 1024 * 1024;
+const MEMBER_SPAWN_AUDIT_MIN_INTERVAL_MS = 1_500;
+const MEMBER_SPAWN_AUDIT_WARNING_THROTTLE_MS = 10_000;
 const CROSS_TEAM_TOOL_RECIPIENT_NAMES = new Set([
   'cross_team_send',
   'cross_team_list_targets',
@@ -603,6 +606,12 @@ interface ProvisioningRun {
   >;
   /** Agent tool_use_id -> teammate name for persistent teammate spawns. */
   memberSpawnToolUseIds: Map<string, string>;
+  /** Throttles config/inbox audit work triggered by frequent status polling. */
+  lastMemberSpawnAuditAt: number;
+  /** Throttles repeated audit warnings when config.json is temporarily unreadable. */
+  lastMemberSpawnAuditConfigReadWarningAt: number;
+  /** Per-member warning throttle for repeated "missing from config" logs. */
+  lastMemberSpawnAuditMissingWarningAt: Map<string, number>;
 }
 
 type LeadActivityState = 'active' | 'idle' | 'offline';
@@ -1290,7 +1299,7 @@ Constraints:
 - In a non-solo team, your default first move is delegation, NOT personal investigation. Do NOT read/search the codebase, inspect files, or do root-cause research yourself just to figure out ownership or scope before delegating.
 - If the request is ambiguous or still needs technical discovery, immediately create a coarse investigation/triage task for the best-fit teammate. That teammate owns the code inspection, scope refinement, and creation of any follow-up tasks needed for execution.
 - Only do lead-side research first if the human explicitly asked YOU for analysis/planning, or if there is genuinely no appropriate teammate to own the investigation.
-- TaskCreate is optional for private planning only; do NOT use it for team-board tasks.
+- Do NOT use the built-in TaskCreate tool for team-board tasks. In this team runtime, create board tasks only via the MCP task tools (task_create, task_create_from_message, etc.).
 - When messaging "user" (the human): write plain human language. If a task needs a status update, do it yourself via the board MCP tools; never ask the user to run a command.${soloConstraint}
 
 ${teamCtlOps}
@@ -1534,6 +1543,9 @@ ${isSolo ? '3' : '4'}) After all steps, output a short summary.
 CRITICAL: If any Agent teammate spawn returns an error, that teammate is NOT online. Do NOT claim they were spawned successfully. In your final summary, explicitly list which teammate names failed to start.
 CRITICAL: Do NOT call a teammate "online", "ready", "confirmed alive", or "without launch errors" solely because Agent returned "Spawned successfully". Use that wording only after the teammate has actually completed bootstrap or sent a real post-bootstrap confirmation message. If a teammate runtime is alive but bootstrap is still pending, say exactly that.
 CRITICAL: If a teammate reports that member_briefing is unavailable, do NOT tell them to skip bootstrap and do NOT improvise a workaround. Treat that as a real bootstrap error, ask them to send the exact error text, and keep that teammate in bootstrap-pending or failed state until the error is resolved.
+CRITICAL: In the user-facing final summary, do NOT mention internal tool names like "member_briefing" unless that tool actually failed. Describe pending bootstrap in plain language such as "runtime started, waiting for bootstrap confirmation" or "waiting for first heartbeat".
+CRITICAL: If no teammates failed to start, say that plainly. Do NOT write awkward forms like "failed: none", "Не удалось запустить: нет", or similar pseudo-error phrasing.
+CRITICAL: If zero teammates have confirmed bootstrap yet and there are no launch errors, keep the summary brief. Say that runtimes started and initialization is continuing. Do NOT add a second sentence just to restate that no bootstrap confirmations arrived yet.
 `;
 }
 
@@ -1641,6 +1653,9 @@ ${step2And3Block}
 
 5) After all steps, output a short summary of reconnected members and what happens next.
 CRITICAL: If any Agent teammate spawn returns an error, that teammate is NOT online. Do NOT claim they were restored/spawned successfully. In your final summary, explicitly list which teammate names failed to start.
+CRITICAL: In the user-facing final summary, do NOT mention internal tool names like "member_briefing" unless that tool actually failed. Describe pending bootstrap in plain language such as "runtime started, waiting for bootstrap confirmation" or "waiting for first heartbeat".
+CRITICAL: If no teammates failed to start, say that plainly. Do NOT write awkward forms like "failed: none", "Не удалось запустить: нет", or similar pseudo-error phrasing.
+CRITICAL: If zero teammates have confirmed bootstrap yet and there are no launch errors, keep the summary brief. Say that runtimes started and initialization is continuing. Do NOT add a second sentence just to restate that no bootstrap confirmations arrived yet.
 `;
 }
 
@@ -1697,7 +1712,10 @@ ${isSolo ? '3' : '3'}) Do NOT create tasks, do NOT review code, do NOT inspect f
 - "runtime started, bootstrap pending"
 - "bootstrap confirmed"
 - "failed to start"
-Do NOT call a teammate online/ready/confirmed alive unless the teammate has actually completed bootstrap or sent a real post-bootstrap confirmation message.`;
+Do NOT call a teammate online/ready/confirmed alive unless the teammate has actually completed bootstrap or sent a real post-bootstrap confirmation message.
+In the user-facing summary, do NOT mention internal tool names like "member_briefing" unless that tool actually failed.
+If no teammates failed to start, say that plainly. Do NOT write awkward forms like "failed: none" or "Не удалось запустить: нет".
+If zero teammates have confirmed bootstrap yet and there are no launch errors, keep the summary brief. Say that runtimes started and initialization is continuing. Do NOT add a second sentence just to restate that no bootstrap confirmations arrived yet.`;
 }
 
 function buildGeminiLaunchPrompt(
@@ -1753,7 +1771,10 @@ ${spawnBlock}
 - "runtime started, bootstrap pending"
 - "bootstrap confirmed"
 - "failed to start"
-Do NOT call a teammate online/ready/confirmed alive unless the teammate has actually completed bootstrap or sent a real post-bootstrap confirmation message.`;
+Do NOT call a teammate online/ready/confirmed alive unless the teammate has actually completed bootstrap or sent a real post-bootstrap confirmation message.
+In the user-facing summary, do NOT mention internal tool names like "member_briefing" unless that tool actually failed.
+If no teammates failed to start, say that plainly. Do NOT write awkward forms like "failed: none" or "Не удалось запустить: нет".
+If zero teammates have confirmed bootstrap yet and there are no launch errors, keep the summary brief. Say that runtimes started and initialization is continuing. Do NOT add a second sentence just to restate that no bootstrap confirmations arrived yet.`;
 }
 
 function buildGeminiPostLaunchHydrationPrompt(
@@ -3252,7 +3273,7 @@ export class TeamProvisioningService {
     }
 
     await this.refreshMemberSpawnStatusesFromLeadInbox(run);
-    await this.auditMemberSpawnStatuses(run);
+    await this.maybeAuditMemberSpawnStatuses(run);
     await this.persistLaunchStateSnapshot(run, run.provisioningComplete ? 'finished' : 'active');
 
     const persisted = await this.launchStateStore.read(teamName);
@@ -3333,7 +3354,7 @@ export class TeamProvisioningService {
       return;
     }
     await this.refreshMemberSpawnStatusesFromLeadInbox(run);
-    await this.auditMemberSpawnStatuses(run);
+    await this.maybeAuditMemberSpawnStatuses(run, { force: true });
     const refreshed = run.memberSpawnStatuses.get(memberName);
     if (!refreshed) return;
     if (
@@ -3349,6 +3370,35 @@ export class TeamProvisioningService {
       'error',
       'Teammate did not join within the launch grace window.'
     );
+  }
+
+  private shouldSkipMemberSpawnAudit(run: ProvisioningRun): boolean {
+    if (!run.expectedMembers || run.expectedMembers.length === 0) {
+      return true;
+    }
+    return run.expectedMembers.every((memberName) => {
+      const entry = run.memberSpawnStatuses.get(memberName);
+      return entry?.launchState === 'failed_to_start' || entry?.launchState === 'confirmed_alive';
+    });
+  }
+
+  private async maybeAuditMemberSpawnStatuses(
+    run: ProvisioningRun,
+    options?: { force?: boolean }
+  ): Promise<void> {
+    if (this.shouldSkipMemberSpawnAudit(run)) {
+      return;
+    }
+    const now = Date.now();
+    if (
+      !options?.force &&
+      run.lastMemberSpawnAuditAt > 0 &&
+      now - run.lastMemberSpawnAuditAt < MEMBER_SPAWN_AUDIT_MIN_INTERVAL_MS
+    ) {
+      return;
+    }
+    run.lastMemberSpawnAuditAt = now;
+    await this.auditMemberSpawnStatuses(run);
   }
 
   private static readonly CONTEXT_EMIT_THROTTLE_MS = 2000;
@@ -4335,6 +4385,9 @@ export class TeamProvisioningService {
           request.members.map((m) => [m.name, createInitialMemberSpawnStatusEntry()])
         ),
         memberSpawnToolUseIds: new Map(),
+        lastMemberSpawnAuditAt: 0,
+        lastMemberSpawnAuditConfigReadWarningAt: 0,
+        lastMemberSpawnAuditMissingWarningAt: new Map(),
         progress: {
           runId,
           teamName: request.teamName,
@@ -4382,7 +4435,7 @@ export class TeamProvisioningService {
         '--mcp-config',
         mcpConfigPath,
         '--disallowedTools',
-        'TeamDelete,TodoWrite',
+        APP_TEAM_RUNTIME_DISALLOWED_TOOLS,
         // Explicit --permission-mode overrides user's defaultMode in ~/.claude/settings.json
         // (e.g. "acceptEdits") which otherwise takes precedence over CLI flags
         ...(request.skipPermissions !== false
@@ -4821,6 +4874,9 @@ export class TeamProvisioningService {
           expectedMembers.map((name) => [name, createInitialMemberSpawnStatusEntry()])
         ),
         memberSpawnToolUseIds: new Map(),
+        lastMemberSpawnAuditAt: 0,
+        lastMemberSpawnAuditConfigReadWarningAt: 0,
+        lastMemberSpawnAuditMissingWarningAt: new Map(),
         progress: {
           runId,
           teamName: request.teamName,
@@ -4890,7 +4946,7 @@ export class TeamProvisioningService {
         '--mcp-config',
         mcpConfigPath,
         '--disallowedTools',
-        'TeamDelete,TodoWrite',
+        APP_TEAM_RUNTIME_DISALLOWED_TOOLS,
         // Explicit --permission-mode overrides user's defaultMode in ~/.claude/settings.json
         // (e.g. "acceptEdits") which otherwise takes precedence over CLI flags
         ...(request.skipPermissions !== false
@@ -5992,31 +6048,43 @@ export class TeamProvisioningService {
    * was incorrect (e.g., missing team_name/name params) and the agent ran as a
    * one-shot subagent instead of a persistent teammate.
    */
-  private async auditMemberSpawnStatuses(run: ProvisioningRun): Promise<void> {
-    if (!run.expectedMembers || run.expectedMembers.length === 0) return;
-
-    // Read config.json to get the actual registered members
-    const configPath = path.join(getTeamsBasePath(), run.teamName, 'config.json');
-    let registeredNames: Set<string>;
+  private async getRegisteredTeamMemberNames(teamName: string): Promise<Set<string> | null> {
+    const configPath = path.join(getTeamsBasePath(), teamName, 'config.json');
     try {
       const raw = await tryReadRegularFileUtf8(configPath, {
         timeoutMs: TEAM_JSON_READ_TIMEOUT_MS,
         maxBytes: TEAM_CONFIG_MAX_BYTES,
       });
       if (!raw) {
-        logger.warn(`[${run.teamName}] auditMemberSpawnStatuses: config.json not readable`);
-        return;
+        return null;
       }
       const config = JSON.parse(raw) as {
         members?: { name?: string; agentType?: string }[];
       };
-      registeredNames = new Set(
+      return new Set(
         (config.members ?? [])
           .map((m) => (typeof m.name === 'string' ? m.name.trim() : ''))
           .filter(Boolean)
       );
     } catch {
-      logger.warn(`[${run.teamName}] auditMemberSpawnStatuses: failed to parse config.json`);
+      return null;
+    }
+  }
+
+  private async auditMemberSpawnStatuses(run: ProvisioningRun): Promise<void> {
+    if (!run.expectedMembers || run.expectedMembers.length === 0) return;
+
+    // Read config.json to get the actual registered members
+    const registeredNames = await this.getRegisteredTeamMemberNames(run.teamName);
+    if (!registeredNames) {
+      const now = Date.now();
+      if (
+        now - run.lastMemberSpawnAuditConfigReadWarningAt >=
+        MEMBER_SPAWN_AUDIT_WARNING_THROTTLE_MS
+      ) {
+        run.lastMemberSpawnAuditConfigReadWarningAt = now;
+        logger.warn(`[${run.teamName}] auditMemberSpawnStatuses: config.json not readable`);
+      }
       return;
     }
 
@@ -6069,9 +6137,14 @@ export class TeamProvisioningService {
         continue;
       }
 
-      logger.warn(
-        `[${run.teamName}] Member "${expected}" not found in config.json members after provisioning`
-      );
+      const now = Date.now();
+      const lastWarnAt = run.lastMemberSpawnAuditMissingWarningAt.get(expected) ?? 0;
+      if (now - lastWarnAt >= MEMBER_SPAWN_AUDIT_WARNING_THROTTLE_MS) {
+        run.lastMemberSpawnAuditMissingWarningAt.set(expected, now);
+        logger.warn(
+          `[${run.teamName}] Member "${expected}" not found in config.json members after provisioning`
+        );
+      }
       if (graceExpired) {
         this.setMemberSpawnStatus(
           run,
@@ -6080,6 +6153,38 @@ export class TeamProvisioningService {
           'Teammate not registered after provisioning within the launch grace window.'
         );
       }
+    }
+  }
+
+  private async finalizeMissingRegisteredMembersAsFailed(run: ProvisioningRun): Promise<void> {
+    if (!run.expectedMembers || run.expectedMembers.length === 0) return;
+    const registeredNames = await this.getRegisteredTeamMemberNames(run.teamName);
+    if (!registeredNames) {
+      return;
+    }
+
+    for (const expected of run.expectedMembers) {
+      const matchedRuntimeNames = [...registeredNames].filter((name) => {
+        if (name === expected) return true;
+        const parsed = parseNumericSuffixName(name);
+        return parsed !== null && parsed.suffix >= 2 && parsed.base === expected;
+      });
+
+      if (matchedRuntimeNames.length > 0) {
+        continue;
+      }
+
+      const current = run.memberSpawnStatuses.get(expected);
+      if (current?.launchState === 'failed_to_start') {
+        continue;
+      }
+
+      this.setMemberSpawnStatus(
+        run,
+        expected,
+        'error',
+        'Teammate was not registered in config.json during launch. Persistent spawn failed.'
+      );
     }
   }
 
@@ -6160,6 +6265,33 @@ export class TeamProvisioningService {
       }
     }
     return { confirmedCount, pendingCount, failedCount, runtimeAlivePendingCount };
+  }
+
+  private buildPendingBootstrapStatusMessage(
+    prefix: string,
+    run: ProvisioningRun,
+    launchSummary: {
+      confirmedCount: number;
+      pendingCount: number;
+      runtimeAlivePendingCount: number;
+    }
+  ): string {
+    const stillStartingCount = Math.max(
+      0,
+      launchSummary.pendingCount - launchSummary.runtimeAlivePendingCount
+    );
+    if (launchSummary.confirmedCount === 0) {
+      const allRuntimeAlive =
+        launchSummary.runtimeAlivePendingCount > 0 &&
+        launchSummary.runtimeAlivePendingCount === run.expectedMembers.length;
+      return allRuntimeAlive
+        ? `${prefix} — teammate runtimes started, waiting for bootstrap confirmation`
+        : launchSummary.runtimeAlivePendingCount > 0
+          ? `${prefix} — ${launchSummary.runtimeAlivePendingCount}/${run.expectedMembers.length} teammate runtime${launchSummary.runtimeAlivePendingCount === 1 ? '' : 's'} started${stillStartingCount > 0 ? `, ${stillStartingCount} still starting` : ''}, waiting for bootstrap confirmation`
+          : `${prefix} — teammates are still starting, waiting for bootstrap confirmation`;
+    }
+
+    return `${prefix} — ${launchSummary.confirmedCount}/${run.expectedMembers.length} teammates confirmed alive${launchSummary.runtimeAlivePendingCount > 0 ? `, ${launchSummary.runtimeAlivePendingCount} runtime${launchSummary.runtimeAlivePendingCount === 1 ? '' : 's'} waiting for bootstrap confirmation` : ''}${stillStartingCount > 0 ? `${launchSummary.runtimeAlivePendingCount > 0 ? ', ' : ', '}${stillStartingCount} still joining` : ''}`;
   }
 
   private buildRuntimeSpawnStatusRecord(
@@ -8591,7 +8723,8 @@ export class TeamProvisioningService {
 
       // Audit: flag any expected member not registered in config.json after launch.
       await this.refreshMemberSpawnStatusesFromLeadInbox(run);
-      await this.auditMemberSpawnStatuses(run);
+      await this.maybeAuditMemberSpawnStatuses(run, { force: true });
+      await this.finalizeMissingRegisteredMembersAsFailed(run);
       await this.persistLaunchStateSnapshot(run, 'finished');
       const failedSpawnMembers = this.getFailedSpawnMembers(run);
       const launchSummary = this.getMemberLaunchSummary(run);
@@ -8603,7 +8736,7 @@ export class TeamProvisioningService {
             .map((member) => member.name)
             .join(', ')} failed to start`
         : hasPendingBootstrap
-          ? `Launch completed — ${launchSummary.confirmedCount}/${run.expectedMembers.length} teammates confirmed alive, bootstrap still pending`
+          ? this.buildPendingBootstrapStatusMessage('Launch completed', run, launchSummary)
           : 'Team launched — process alive and ready';
       const progress = updateProgress(run, 'ready', readyMessage, {
         cliLogsTail: extractCliLogsFromRun(run),
@@ -8750,7 +8883,8 @@ export class TeamProvisioningService {
 
     // Audit: flag any expected member not registered in config.json after provisioning.
     await this.refreshMemberSpawnStatusesFromLeadInbox(run);
-    await this.auditMemberSpawnStatuses(run);
+    await this.maybeAuditMemberSpawnStatuses(run, { force: true });
+    await this.finalizeMissingRegisteredMembersAsFailed(run);
     await this.persistLaunchStateSnapshot(run, 'finished');
     const failedSpawnMembers = this.getFailedSpawnMembers(run);
     const launchSummary = this.getMemberLaunchSummary(run);
@@ -8765,7 +8899,7 @@ export class TeamProvisioningService {
             .map((member) => member.name)
             .join(', ')} failed to start`
         : hasPendingBootstrap
-          ? `Team provisioned — ${launchSummary.confirmedCount}/${run.expectedMembers.length} teammates confirmed alive, bootstrap still pending`
+          ? this.buildPendingBootstrapStatusMessage('Team provisioned', run, launchSummary)
           : 'Team provisioned — process alive and ready',
       {
         cliLogsTail: extractCliLogsFromRun(run),

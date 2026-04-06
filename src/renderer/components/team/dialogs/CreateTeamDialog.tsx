@@ -68,6 +68,8 @@ const TEAM_COLOR_NAMES = [
   'pink',
 ] as const;
 
+const APP_TEAM_RUNTIME_DISALLOWED_TOOLS = 'TeamDelete,TodoWrite,TaskCreate,TaskUpdate';
+
 import type {
   EffortLevel,
   Project,
@@ -861,7 +863,7 @@ export const CreateTeamDialog = ({
     const args: string[] = [];
     args.push('--input-format', 'stream-json', '--output-format', 'stream-json');
     args.push('--verbose', '--setting-sources', 'user,project,local');
-    args.push('--mcp-config', '<auto>', '--disallowedTools', 'TeamDelete,TodoWrite');
+    args.push('--mcp-config', '<auto>', '--disallowedTools', APP_TEAM_RUNTIME_DISALLOWED_TOOLS);
     if (skipPermissions) args.push('--dangerously-skip-permissions');
     if (effectiveModel) args.push('--model', effectiveModel);
     if (selectedEffort) args.push('--effort', selectedEffort);
