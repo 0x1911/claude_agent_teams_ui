@@ -1294,6 +1294,16 @@ function buildDeterministicCreateBootstrapSpec(
       ...(request.model?.trim() ? { model: request.model.trim() } : {}),
       ...(request.effort ? { effort: request.effort } : {}),
       agentLanguage: getConfiguredAgentLanguageName(),
+      ...(request.skipPermissions === false
+        ? {
+            permissionSeedTools: [
+              ...AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES,
+              'Edit',
+              'Write',
+              'NotebookEdit',
+            ],
+          }
+        : {}),
       ...(request.skipPermissions !== undefined
         ? { skipPermissions: request.skipPermissions }
         : {}),
@@ -1341,6 +1351,16 @@ function buildDeterministicLaunchBootstrapSpec(
       ...(request.model?.trim() ? { model: request.model.trim() } : {}),
       ...(request.effort ? { effort: request.effort } : {}),
       agentLanguage: getConfiguredAgentLanguageName(),
+      ...(request.skipPermissions === false
+        ? {
+            permissionSeedTools: [
+              ...AGENT_TEAMS_NAMESPACED_TEAMMATE_OPERATIONAL_TOOL_NAMES,
+              'Edit',
+              'Write',
+              'NotebookEdit',
+            ],
+          }
+        : {}),
       ...(request.skipPermissions !== undefined
         ? { skipPermissions: request.skipPermissions }
         : {}),
