@@ -309,13 +309,21 @@ describe('TeamBootstrapStateReader', () => {
       }),
     });
     hoisted.files.set('/mock/teams/demo/bootstrap-journal.jsonl', {
-      contents: JSON.stringify({
-        ts: 3,
-        type: 'member',
-        runId: 'run-lock',
-        name: 'alice',
-        action: 'spawn_started',
-      }),
+      contents: [
+        JSON.stringify({
+          ts: 2,
+          type: 'phase',
+          runId: 'run-lock',
+          phase: 'spawning_members',
+        }),
+        JSON.stringify({
+          ts: 3,
+          type: 'member',
+          runId: 'run-lock',
+          name: 'alice',
+          action: 'spawn_started',
+        }),
+      ].join('\n'),
     });
 
     await expect(readBootstrapRuntimeState('demo')).resolves.toMatchObject({
@@ -323,11 +331,14 @@ describe('TeamBootstrapStateReader', () => {
       isAlive: false,
       runId: 'run-lock',
       progress: {
-        state: 'configuring',
-        message:
-          'Deterministic bootstrap recovery is degraded because persisted bootstrap state is unreadable',
+        state: 'assembling',
+        message: 'Spawning teammate runtimes (degraded recovery)',
         messageSeverity: 'warning',
         pid: 4242,
+        warnings: [
+          'Persisted deterministic bootstrap state is unreadable because bootstrap-state.json is invalid, truncated, or inaccessible.',
+          'Recent deterministic bootstrap events: bootstrap phase: spawning_members | alice: spawn_started',
+        ],
       },
     });
 

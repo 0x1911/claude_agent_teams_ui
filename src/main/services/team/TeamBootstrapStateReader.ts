@@ -64,6 +64,7 @@ type BootstrapStateInspection = {
 type BootstrapJournalInspection = {
   warnings?: string[];
   issue?: string;
+  lastPhase?: BootstrapRuntimePhase;
 };
 
 type BootstrapLockMetadata = {
@@ -400,7 +401,7 @@ async function inspectBootstrapJournal(teamName: string): Promise<BootstrapJourn
       .filter((line) => line.length > 0)
       .slice(-3);
 
-    const messages = lines
+    const records = lines
       .map((line) => {
         try {
           return JSON.parse(line) as RawBootstrapJournalRecord;
@@ -408,7 +409,9 @@ async function inspectBootstrapJournal(teamName: string): Promise<BootstrapJourn
           return null;
         }
       })
-      .filter((record): record is RawBootstrapJournalRecord => Boolean(record))
+      .filter((record): record is RawBootstrapJournalRecord => Boolean(record));
+
+    const messages = records
       .map((record) => {
         if (record.type === 'phase' && typeof record.phase === 'string') {
           return `bootstrap phase: ${record.phase}`;
@@ -447,7 +450,17 @@ async function inspectBootstrapJournal(teamName: string): Promise<BootstrapJourn
       };
     }
 
+    const lastPhaseRecord = [...records]
+      .reverse()
+      .find(
+        (record): record is Extract<RawBootstrapJournalRecord, { type?: 'phase' }> =>
+          record.type === 'phase' && typeof record.phase === 'string'
+      );
+
     return {
+      ...(lastPhaseRecord?.phase
+        ? { lastPhase: lastPhaseRecord.phase as BootstrapRuntimePhase }
+        : {}),
       warnings:
         messages.length > 0
           ? [`Recent deterministic bootstrap events: ${messages.join(' | ')}`]
@@ -481,6 +494,24 @@ async function readDegradedBootstrapRuntimeState(
   ].filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
   const ownerAlive = isProcessAlive(lockMetadata.pid);
   const now = new Date().toISOString();
+  const degradedProjection =
+    ownerAlive && journalInspection.lastPhase
+      ? getBootstrapProgressProjection(journalInspection.lastPhase, 0)
+      : null;
+  const projectedState =
+    degradedProjection &&
+    degradedProjection.state !== 'ready' &&
+    degradedProjection.state !== 'failed' &&
+    degradedProjection.state !== 'cancelled'
+      ? degradedProjection.state
+      : 'configuring';
+  const projectedMessage =
+    degradedProjection &&
+    degradedProjection.state !== 'ready' &&
+    degradedProjection.state !== 'failed' &&
+    degradedProjection.state !== 'cancelled'
+      ? `${degradedProjection.message} (degraded recovery)`
+      : 'Deterministic bootstrap recovery is degraded because persisted bootstrap state is unreadable';
 
   return {
     teamName,
@@ -489,9 +520,9 @@ async function readDegradedBootstrapRuntimeState(
     progress: {
       runId: lockMetadata.runId,
       teamName,
-      state: ownerAlive ? 'configuring' : 'failed',
+      state: ownerAlive ? projectedState : 'failed',
       message: ownerAlive
-        ? 'Deterministic bootstrap recovery is degraded because persisted bootstrap state is unreadable'
+        ? projectedMessage
         : 'Deterministic bootstrap recovery failed because persisted bootstrap state is unreadable and the bootstrap owner is gone',
       messageSeverity: 'warning',
       error: ownerAlive
