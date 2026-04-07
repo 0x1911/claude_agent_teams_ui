@@ -5703,7 +5703,8 @@ export class TeamProvisioningService {
           !permanentlyIgnoredIds.has(m.messageId) &&
           !nativeMatchedMessageIds.has(m.messageId) &&
           !deferredIds.has(m.messageId) &&
-          !permissionRequestIds.has(m.messageId)
+          !permissionRequestIds.has(m.messageId) &&
+          !isInboxNoiseMessage(m.text)
       );
 
       // Layer 3: schedule retry timers.
@@ -5730,7 +5731,11 @@ export class TeamProvisioningService {
         `You have new inbox messages addressed to you (team lead "${leadName}").`,
         `Process them in order (oldest first).`,
         `If action is required, delegate via task creation or SendMessage, and keep responses minimal.`,
-        `IMPORTANT: Your text response here is shown to the user. Always include a brief human-readable summary (e.g. "Delegated to carol." or "No action needed."). Do NOT respond with only an agent-only block.`,
+        `IMPORTANT: Your text response here is shown to the user.`,
+        `If you actually take action, include a brief human-readable summary (e.g. "Delegated to carol.").`,
+        `If there is no action to take, produce ZERO text output. Do NOT write "No action needed.", status echoes, or any other no-op summary.`,
+        `For pure system notifications, comment notifications, or routine teammate availability updates that require no reply/comment/action, say nothing.`,
+        `Do NOT respond with only an agent-only block.`,
         AGENT_BLOCK_OPEN,
         `Internal note: for task assignments, prefer task_create and rely on the board/runtime notification path instead of sending a separate SendMessage for the same assignment.`,
         `When creating a task from a user message that has a MessageId field, prefer task_create_from_message with that exact messageId for reliable provenance. Only use task_create_from_message when you have an explicit MessageId — never guess or fabricate one.`,
