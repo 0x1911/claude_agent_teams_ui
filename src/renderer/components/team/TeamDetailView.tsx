@@ -791,6 +791,24 @@ export const TeamDetailView = ({
     return () => window.clearInterval(id);
   }, [isThisTabActive, tabId, projectId, leadSessionId, data?.isAlive, fetchSessionDetail]);
 
+  // Keep team message state fresh while we are explicitly waiting for a reply.
+  // Direct lead replies land in the lead session JSONL first; without a light
+  // refresh loop here, the Messages panel can keep showing stale "awaiting reply"
+  // state even though the lead has already answered.
+  useEffect(() => {
+    if (!isThisTabActive) return;
+    if (!data) return;
+    if (Object.keys(pendingRepliesByMember).length === 0) return;
+
+    void refreshTeamData(teamName);
+
+    const id = window.setInterval(() => {
+      void refreshTeamData(teamName);
+    }, 2_000);
+
+    return () => window.clearInterval(id);
+  }, [isThisTabActive, data, pendingRepliesByMember, refreshTeamData, teamName]);
+
   useEffect(() => {
     if (!projectId) return;
 

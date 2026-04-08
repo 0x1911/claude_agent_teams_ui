@@ -10,7 +10,11 @@
 import { getUnreadCount } from '@renderer/services/commentReadStorage';
 import { agentAvatarUrl } from '@renderer/utils/memberHelpers';
 import { stripCrossTeamPrefix } from '@shared/constants/crossTeam';
-import { getInboxJsonType, isInboxNoiseMessage } from '@shared/utils/inboxNoise';
+import {
+  getIdleGraphLabel,
+  classifyIdleNotificationText,
+} from '@shared/utils/idleNotificationSemantics';
+import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { isLeadMember } from '@shared/utils/leadDetection';
 
 import type {
@@ -565,12 +569,10 @@ export class TeamGraphAdapter {
       // Skip comment notifications — #buildCommentParticles handles them with real text
       if (msg.summary?.startsWith('Comment on ')) continue;
 
-      // Handle noise messages: idle shows as "idle", others (shutdown, terminated) skip entirely
+      // Handle noise messages: idle uses semantic label, others (shutdown, terminated) skip entirely
       const msgText = msg.text ?? '';
-      const noiseType = getInboxJsonType(msgText);
-      if (noiseType === 'idle_notification') {
-        // Show idle as a simple label, don't skip
-      } else if (isInboxNoiseMessage(msgText)) {
+      const idleSemantic = classifyIdleNotificationText(msgText);
+      if (!idleSemantic && isInboxNoiseMessage(msgText)) {
         continue; // skip shutdown_approved, teammate_terminated, shutdown_request
       }
 
@@ -623,11 +625,9 @@ export class TeamGraphAdapter {
       );
       const isFromTeammate = fromId !== leadId;
 
-      // For idle notifications, show a clean "idle" label instead of raw JSON
       const particleLabel =
-        noiseType === 'idle_notification'
-          ? 'idle'
-          : TeamGraphAdapter.#buildParticleLabel(msg.summary ?? msg.text, 'inbox');
+        getIdleGraphLabel(msgText) ??
+        TeamGraphAdapter.#buildParticleLabel(msg.summary ?? msg.text, 'inbox');
 
       particles.push({
         id: `particle:msg:${teamName}:${msgKey}`,

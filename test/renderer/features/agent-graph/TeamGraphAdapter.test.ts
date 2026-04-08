@@ -210,6 +210,36 @@ describe('TeamGraphAdapter particles', () => {
     expect(graph.particles.every((particle) => particle.kind === 'inbox_message')).toBe(true);
   });
 
+  it('uses peer-summary text for idle particles instead of generic idle', () => {
+    const adapter = TeamGraphAdapter.create();
+    adapter.adapt(createBaseTeamData(), 'my-team');
+
+    const next = createBaseTeamData({
+      messages: [
+        {
+          from: 'alice',
+          to: 'team-lead',
+          text: JSON.stringify({
+            type: 'idle_notification',
+            idleReason: 'available',
+            summary: '[to bob] aligned on rollout order',
+          }),
+          timestamp: '2026-04-08T19:00:01.000Z',
+          read: true,
+          messageId: 'idle-summary-1',
+        },
+      ],
+    });
+
+    const graph = adapter.adapt(next, 'my-team');
+
+    expect(graph.particles).toHaveLength(1);
+    expect(graph.particles[0]).toMatchObject({
+      kind: 'inbox_message',
+      label: '[to bob] aligned on rollout order',
+    });
+  });
+
   it('creates particles for each newly appended task comment, not only the latest one', () => {
     const adapter = TeamGraphAdapter.create();
     const baseline = createBaseTeamData({

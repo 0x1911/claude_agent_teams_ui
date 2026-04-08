@@ -2276,6 +2276,75 @@ describe('TeamDataService', () => {
     });
   });
 
+  it('keeps the inbox passive-summary row preferred over a read-state-changed lead_process duplicate', async () => {
+    const service = new TeamDataService(
+      {
+        listTeams: vi.fn(),
+        getConfig: vi.fn(async () => ({
+          name: 'My team',
+          members: [{ name: 'team-lead', role: 'Lead' }],
+          leadSessionId: 'lead-1',
+        })),
+      } as never,
+      {
+        getTasks: vi.fn(async () => []),
+      } as never,
+      {
+        listInboxNames: vi.fn(async () => []),
+        getMessages: vi.fn(async () => [
+          {
+            from: 'alice',
+            text: JSON.stringify({
+              type: 'idle_notification',
+              idleReason: 'available',
+              summary: '[to bob] aligned on rollout order',
+            }),
+            timestamp: '2026-04-08T10:00:00.000Z',
+            read: true,
+            summary: 'Peer summary',
+            messageId: 'passive-idle-dup-1',
+          },
+          {
+            from: 'alice',
+            text: JSON.stringify({
+              type: 'idle_notification',
+              idleReason: 'available',
+              summary: '[to bob] aligned on rollout order',
+            }),
+            timestamp: '2026-04-08T10:00:01.000Z',
+            read: false,
+            source: 'lead_process',
+            relayOfMessageId: 'passive-idle-dup-1',
+            messageId: 'passive-idle-dup-1',
+          },
+        ]),
+      } as never,
+      {} as never,
+      {} as never,
+      {
+        resolveMembers: vi.fn(() => []),
+      } as never,
+      {
+        getState: vi.fn(async () => ({ teamName: 'my-team', reviewers: [], tasks: {} })),
+      } as never,
+      {} as never,
+      {} as never,
+      {
+        readMessages: vi.fn(async () => []),
+      } as never
+    );
+
+    const data = await service.getTeamData('my-team');
+    const result = data.messages.find((message) => message.messageId === 'passive-idle-dup-1');
+
+    expect(result).toBeDefined();
+    expect(result?.source).not.toBe('lead_process');
+    expect(result).toMatchObject({
+      summary: 'Peer summary',
+      read: true,
+    });
+  });
+
   it('caches unchanged lead-session extraction results and returns defensive clones', async () => {
     const service = createLeadSessionCachingService();
     const jsonlPath = await createTempJsonl([

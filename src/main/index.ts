@@ -51,7 +51,8 @@ import {
   getTrafficLightPositionForZoom,
   WINDOW_ZOOM_FACTOR_CHANGED_CHANNEL,
 } from '@shared/constants';
-import { isInboxNoiseMessage, parseInboxJson } from '@shared/utils/inboxNoise';
+import { shouldSuppressDesktopNotificationForInboxText } from '@shared/utils/idleNotificationSemantics';
+import { parseInboxJson } from '@shared/utils/inboxNoise';
 import { createLogger } from '@shared/utils/logger';
 import { app, BrowserWindow } from 'electron';
 import { existsSync } from 'fs';
@@ -274,7 +275,7 @@ async function notifyNewInboxMessages(teamName: string, detail: string): Promise
       // Skip messages sent from our own UI
       if (msg.source && suppressedSources.has(msg.source)) continue;
       // Skip internal coordination noise (idle_notification, shutdown_*, etc.)
-      if (isInboxNoiseMessage(msg.text)) continue;
+      if (shouldSuppressDesktopNotificationForInboxText(msg.text)) continue;
 
       const fromLabel = msg.from || 'Unknown';
       const extracted = extractNotificationContent(msg.text);
@@ -345,7 +346,7 @@ async function notifyNewSentMessages(teamName: string): Promise<void> {
       // Skip messages sent from our own UI
       if (msg.source && suppressedSources.has(msg.source)) continue;
       // Skip internal coordination noise
-      if (isInboxNoiseMessage(msg.text)) continue;
+      if (shouldSuppressDesktopNotificationForInboxText(msg.text)) continue;
 
       const fromLabel = msg.from || 'team-lead';
       const extracted = extractNotificationContent(msg.text);

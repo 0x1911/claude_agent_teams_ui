@@ -2,6 +2,7 @@ import {
   getSanitizedInboxMessageSummary,
   getSanitizedInboxMessageText,
 } from '@renderer/utils/bootstrapPromptSanitizer';
+import { shouldKeepIdleMessageInActivityWhenNoiseHidden } from '@renderer/utils/idleNotificationSemantics';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 
 import type { InboxMessage } from '@shared/types';
@@ -15,12 +16,18 @@ export interface TeamMessagesFilter {
 export function filterTeamMessages(
   messages: InboxMessage[],
   options: {
+    includePassiveIdlePeerSummariesWhenNoiseHidden?: boolean;
     timeWindow?: { start: number; end: number } | null;
     filter: TeamMessagesFilter;
     searchQuery: string;
   }
 ): InboxMessage[] {
-  const { timeWindow, filter, searchQuery } = options;
+  const {
+    includePassiveIdlePeerSummariesWhenNoiseHidden = false,
+    timeWindow,
+    filter,
+    searchQuery,
+  } = options;
 
   let list = messages.filter((m) => m.messageKind !== 'task_comment_notification');
   if (timeWindow) {
@@ -30,7 +37,14 @@ export function filterTeamMessages(
     });
   }
   if (!filter.showNoise) {
-    list = list.filter((m) => !isInboxNoiseMessage(typeof m.text === 'string' ? m.text : ''));
+    list = list.filter((m) => {
+      const text = typeof m.text === 'string' ? m.text : '';
+      if (!isInboxNoiseMessage(text)) return true;
+      return (
+        includePassiveIdlePeerSummariesWhenNoiseHidden &&
+        shouldKeepIdleMessageInActivityWhenNoiseHidden(text)
+      );
+    });
   }
 
   const hasFrom = filter.from.size > 0;

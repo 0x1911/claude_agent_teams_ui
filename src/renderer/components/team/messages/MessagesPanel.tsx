@@ -9,7 +9,7 @@ import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStore } from '@renderer/store';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
-import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
+import { shouldExcludeInboxTextFromReplyCandidates } from '@shared/utils/idleNotificationSemantics';
 import {
   CheckCheck,
   ChevronsDownUp,
@@ -190,12 +190,21 @@ export const MessagesPanel = memo(function MessagesPanel({
     });
   }, [messages, timeWindow, messagesFilter, messagesSearchQuery]);
 
+  const activityTimelineMessages = useMemo(() => {
+    return filterTeamMessages(messages, {
+      includePassiveIdlePeerSummariesWhenNoiseHidden: true,
+      timeWindow,
+      filter: messagesFilter,
+      searchQuery: messagesSearchQuery,
+    });
+  }, [messages, timeWindow, messagesFilter, messagesSearchQuery]);
+
   const replyCandidateMessages = useMemo(
     () =>
       messages.filter(
         (m) =>
           m.messageKind !== 'task_comment_notification' &&
-          !isInboxNoiseMessage(typeof m.text === 'string' ? m.text : '')
+          !shouldExcludeInboxTextFromReplyCandidates(typeof m.text === 'string' ? m.text : '')
       ),
     [messages]
   );
@@ -204,17 +213,17 @@ export const MessagesPanel = memo(function MessagesPanel({
   const expandedItem = useMemo<TimelineItem | null>(() => {
     if (!expandedItemKey) return null;
     if (!expandedItemKey.startsWith('thoughts-')) {
-      const msg = filteredMessages.find((m) => toMessageKey(m) === expandedItemKey);
+      const msg = activityTimelineMessages.find((m) => toMessageKey(m) === expandedItemKey);
       return msg ? { type: 'message', message: msg } : null;
     }
-    const allItems = groupTimelineItems(filteredMessages);
+    const allItems = groupTimelineItems(activityTimelineMessages);
     return (
       allItems.find(
         (item) =>
           item.type === 'lead-thoughts' && getThoughtGroupKey(item.group) === expandedItemKey
       ) ?? null
     );
-  }, [expandedItemKey, filteredMessages]);
+  }, [expandedItemKey, activityTimelineMessages]);
 
   // Auto-clear stale expanded key
   useEffect(() => {
@@ -408,7 +417,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         onTaskClick={onTaskClick}
       />
       <ActivityTimeline
-        messages={filteredMessages}
+        messages={activityTimelineMessages}
         teamName={teamName}
         members={members}
         readState={readState}
@@ -574,7 +583,7 @@ export const MessagesPanel = memo(function MessagesPanel({
             />{' '}
           </div>
           <ActivityTimeline
-            messages={filteredMessages}
+            messages={activityTimelineMessages}
             teamName={teamName}
             members={members}
             readState={readState}

@@ -30,6 +30,10 @@ import {
   getSanitizedInboxMessageText,
 } from '@renderer/utils/bootstrapPromptSanitizer';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
+import {
+  classifyIdleNotification,
+  getIdleNoiseLabel,
+} from '@renderer/utils/idleNotificationSemantics';
 import { linkifyAllMentionsInMarkdown } from '@renderer/utils/mentionLinkify';
 import {
   areInboxMessagesEquivalentForRender,
@@ -223,16 +227,20 @@ function getStringField(obj: StructuredMessage, key: string): string | null {
 
 /** Check if a message renders as a compact noise row (idle, shutdown, etc.). */
 export function isNoiseMessage(text: string): boolean {
-  const parsed = parseStructuredAgentMessage(text);
-  return parsed !== null && getNoiseLabel(parsed) !== null;
+  return (
+    getIdleNoiseLabel(text) !== null ||
+    ((): boolean => {
+      const parsed = parseStructuredAgentMessage(text);
+      return parsed !== null && getNoiseLabel(parsed) !== null;
+    })()
+  );
 }
 
 function getNoiseLabel(parsed: StructuredMessage): string | null {
   const type = getStringField(parsed, 'type');
 
   if (type === 'idle_notification') {
-    const reason = getStringField(parsed, 'idleReason');
-    return reason ? `Idle (${reason})` : 'Idle';
+    return getIdleNoiseLabel(parsed);
   }
 
   if (type === 'shutdown_response') {
@@ -545,6 +553,7 @@ export const ActivityItem = memo(
     const isAuthError = isApiError && AUTH_ERROR_PATTERNS.some((p) => p.test(message.text));
     // Never collapse rate limit messages as noise — they must be visible
     const noiseLabel = structured && !rateLimited ? getNoiseLabel(structured) : null;
+    const idleSemantic = useMemo(() => classifyIdleNotification(message), [message]);
 
     const systemLabel = !structured && !rateLimited ? getSystemMessageLabel(message.text) : null;
     const isManaged = collapseMode === 'managed';
@@ -656,6 +665,9 @@ export const ActivityItem = memo(
     }, [isCrossTeamAny, strippedText]);
 
     const rawSummary = useMemo(() => {
+      if (idleSemantic?.hasPeerSummary && idleSemantic.peerSummary) {
+        return idleSemantic.peerSummary;
+      }
       if (isSlashCommandResult && message.commandOutput) {
         return message.summary || getCommandOutputSummary(message.text);
       }
@@ -683,6 +695,7 @@ export const ActivityItem = memo(
       isSlashCommandResult,
       message.commandOutput,
       message,
+      idleSemantic,
       slashCommandMeta,
       structured,
     ]);

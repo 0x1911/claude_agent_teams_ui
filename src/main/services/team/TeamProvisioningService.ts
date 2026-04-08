@@ -65,6 +65,7 @@ import { buildActionModeProtocol } from './actionModeInstructions';
 import { atomicWriteAsync } from './atomicWrite';
 import { ClaudeBinaryResolver } from './ClaudeBinaryResolver';
 import { withFileLock } from './fileLock';
+import { getEffectiveInboxMessageId } from './inboxMessageIdentity';
 import { withInboxLock } from './inboxLock';
 import { TeamConfigReader } from './TeamConfigReader';
 import { TeamInboxReader } from './TeamInboxReader';
@@ -96,6 +97,10 @@ import {
   resolveGeminiRuntimeAuth,
   type GeminiRuntimeAuthState,
 } from '../runtime/geminiRuntimeAuth';
+import {
+  classifyIdleNotificationForMainProcess,
+  type ClassifiedMainProcessIdle,
+} from './idleNotificationMainProcessSemantics';
 
 /**
  * Kill a team CLI process using SIGKILL (uncatchable).
@@ -110,12 +115,32 @@ function killTeamProcess(child: ChildProcess | null | undefined): void {
   killProcessTree(child, 'SIGKILL');
 }
 
+function buildRelayInboxView(messages: RelayInboxMessage[]): RelayInboxMessageView[] {
+  return messages.map((message) => {
+    const isCrossTeamLike =
+      message.source === CROSS_TEAM_SOURCE || message.source === CROSS_TEAM_SENT_SOURCE;
+    return {
+      message,
+      idle: isCrossTeamLike ? null : classifyIdleNotificationForMainProcess(message.text),
+      isCoarseNoise: isCrossTeamLike ? false : isInboxNoiseMessage(message.text),
+    };
+  });
+}
+
 interface PersistedRuntimeMemberLike {
   name?: string;
   agentId?: string;
   tmuxPaneId?: string;
   backendType?: string;
 }
+
+type RelayInboxMessage = InboxMessage & { messageId: string };
+
+type RelayInboxMessageView = {
+  message: RelayInboxMessage;
+  idle: ClassifiedMainProcessIdle | null;
+  isCoarseNoise: boolean;
+};
 
 import type {
   ActiveToolCall,
@@ -1578,6 +1603,7 @@ Communication protocol (CRITICAL — you are running headless, no one sees your 
 - Example: if you receive <teammate-message teammate_id="alice">...</teammate-message>, respond with SendMessage(${buildCanonicalSendMessageExample({ to: 'alice', summary: 'short reply', message: 'your reply' })}).
 - Example: if alice asks "Сколько времени осталось?" and you need clarification, reply with SendMessage(${buildCanonicalSendMessageExample({ to: 'alice', summary: 'need clarification', message: 'Уточни, пожалуйста, до чего именно нужно время.' })}) instead of asking that question in plain assistant text.
 - Do NOT reply to low-value acknowledgements or presence pings such as "ready", "online", "status accepted", "awaiting task", or "received" unless you need to give the teammate a concrete next action.
+- Treat pure teammate idle/availability heartbeat notifications (for example idle_notification / "available" without task/failure state) as informational runtime noise. Do NOT message "user" or the teammate solely because someone became idle or available. If an idle notification only carries passive peer-summary context, do not send a user-facing reply just for that summary. Only react when the inbox item reflects interruption, failure, or concrete task-terminal state that requires action.
 - Cross-team communication: when work needs expertise, coordination, review, or a decision from ANOTHER team, CALL the MCP tool named "cross_team_send" with teamName: "${teamName}" and a focused actionable message.
 - Before sending cross-team, use MCP tool "cross_team_list_targets" with teamName: "${teamName}" to discover valid target teams.
 - To review messages your team already sent to other teams, use MCP tool "cross_team_get_outbox" with teamName: "${teamName}".
@@ -5382,16 +5408,42 @@ export class TeamProvisioningService {
 
       if (unread.length === 0) return 0;
 
-      const noiseUnread = unread.filter((m) => isInboxNoiseMessage(m.text));
-      if (noiseUnread.length > 0) {
+      const relayView = buildRelayInboxView(unread);
+      const silentNoiseUnread = relayView
+        .filter(({ idle, isCoarseNoise }) => {
+          if (idle) return idle.handling === 'silent_noise';
+          return isCoarseNoise;
+        })
+        .map(({ message }) => message);
+      const passiveIdleUnread = relayView
+        .filter(({ idle }) => idle?.handling === 'passive_activity')
+        .map(({ message }) => message);
+      const actionableUnread = relayView
+        .filter(({ idle, isCoarseNoise }) => {
+          if (idle) return idle.handling === 'visible_actionable';
+          return !isCoarseNoise;
+        })
+        .map(({ message }) => message);
+
+      const readOnlyIgnoredUnread = [...silentNoiseUnread, ...passiveIdleUnread];
+
+      if (readOnlyIgnoredUnread.length > 0) {
         try {
-          await this.markInboxMessagesRead(teamName, memberName, noiseUnread);
-        } catch {
-          // best-effort
+          await this.markInboxMessagesRead(teamName, memberName, readOnlyIgnoredUnread);
+          if (passiveIdleUnread.length > 0) {
+            logger.debug(
+              `[${teamName}] member relay marked ${passiveIdleUnread.length} passive idle message(s) read without relay for ${memberName}`
+            );
+          }
+        } catch (error) {
+          logger.debug(
+            `[${teamName}] member relay failed to mark ${readOnlyIgnoredUnread.length} ignored inbox message(s) read for ${memberName}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
         }
       }
 
-      const actionableUnread = unread.filter((m) => !isInboxNoiseMessage(m.text));
       if (actionableUnread.length === 0) return 0;
 
       const MAX_RELAY = 10;
@@ -5584,6 +5636,23 @@ export class TeamProvisioningService {
 
       if (unread.length === 0) return 0;
 
+      const relayView = buildRelayInboxView(unread);
+      const silentIdleIds = new Set(
+        relayView
+          .filter(({ idle }) => idle?.handling === 'silent_noise')
+          .map(({ message }) => message.messageId)
+      );
+      const passiveIdleIds = new Set(
+        relayView
+          .filter(({ idle }) => idle?.handling === 'passive_activity')
+          .map(({ message }) => message.messageId)
+      );
+      const coarseNonIdleNoiseIds = new Set(
+        relayView
+          .filter(({ idle, isCoarseNoise }) => idle === null && isCoarseNoise)
+          .map(({ message }) => message.messageId)
+      );
+
       const latestOutboundByConversation = new Map<string, number>();
       const latestReadInboundByConversation = new Map<string, number>();
       for (const message of leadInboxMessages) {
@@ -5651,7 +5720,8 @@ export class TeamProvisioningService {
       // Includes noise (idle/shutdown), cross-team sender copies, cross-team reply dedup.
       const permanentlyIgnored = unread.filter(
         (m) =>
-          isInboxNoiseMessage(m.text) ||
+          silentIdleIds.has(m.messageId) ||
+          coarseNonIdleNoiseIds.has(m.messageId) ||
           m.source === CROSS_TEAM_SENT_SOURCE ||
           isCrossTeamReplyToOwnOutbound(m) ||
           wasRecentlyDeliveredCrossTeam(m)
@@ -5670,17 +5740,37 @@ export class TeamProvisioningService {
         }
       }
 
+      const passiveIdleUnread = unread.filter((m) => passiveIdleIds.has(m.messageId));
+      if (passiveIdleUnread.length > 0) {
+        try {
+          await this.markInboxMessagesRead(teamName, leadName, passiveIdleUnread);
+          logger.debug(
+            `[${teamName}] lead relay marked ${passiveIdleUnread.length} passive idle message(s) read without relay`
+          );
+        } catch (error) {
+          logger.debug(
+            `[${teamName}] lead relay failed to mark ${passiveIdleUnread.length} passive idle message(s) read: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+      }
+
+      const readOnlyIgnoredIds = new Set([
+        ...permanentlyIgnored.map((m) => m.messageId),
+        ...passiveIdleUnread.map((m) => m.messageId),
+      ]);
+      const remainingUnread = unread.filter((m) => !readOnlyIgnoredIds.has(m.messageId));
+
       // Category 2: same-team native delivery confirmation (one-to-one pairing).
       const { nativeMatchedMessageIds, persisted: sameTeamPersisted } =
-        await this.confirmSameTeamNativeMatches(teamName, leadName, unread);
+        await this.confirmSameTeamNativeMatches(teamName, leadName, remainingUnread);
 
       // Category 3: deferred by age — source-less messages within grace window of CURRENT run.
       // NOT marked read (crash safety: if native delivery fails, retry will relay).
       const runStartedAtMs = Date.parse(run.startedAt);
-      const permanentlyIgnoredIds = new Set(permanentlyIgnored.map((m) => m.messageId));
-      const deferredByAge = unread.filter(
+      const deferredByAge = remainingUnread.filter(
         (m) =>
-          !permanentlyIgnoredIds.has(m.messageId) &&
           !nativeMatchedMessageIds.has(m.messageId) &&
           this.shouldDeferSameTeamMessage(m, leadName, runStartedAtMs)
       );
@@ -5690,24 +5780,17 @@ export class TeamProvisioningService {
       // NOT relayed to the lead. The actual interception + ToolApprovalRequest emission
       // is handled by the early scan above (which checks processedPermissionRequestIds).
       const permissionRequestIds = new Set(
-        unread
-          .filter(
-            (m) =>
-              !permanentlyIgnoredIds.has(m.messageId) &&
-              !deferredIds.has(m.messageId) &&
-              parsePermissionRequest(m.text) !== null
-          )
+        remainingUnread
+          .filter((m) => !deferredIds.has(m.messageId) && parsePermissionRequest(m.text) !== null)
           .map((m) => m.messageId)
       );
 
       // Actionable: everything not in any category.
-      const actionableUnread = unread.filter(
+      const actionableUnread = remainingUnread.filter(
         (m) =>
-          !permanentlyIgnoredIds.has(m.messageId) &&
           !nativeMatchedMessageIds.has(m.messageId) &&
           !deferredIds.has(m.messageId) &&
-          !permissionRequestIds.has(m.messageId) &&
-          !isInboxNoiseMessage(m.text)
+          !permissionRequestIds.has(m.messageId)
       );
 
       // Layer 3: schedule retry timers.
@@ -6038,7 +6121,7 @@ export class TeamProvisioningService {
         for (const item of parsed) {
           if (!item || typeof item !== 'object') continue;
           const row = item as Record<string, unknown>;
-          const msgId = typeof row.messageId === 'string' ? row.messageId : null;
+          const msgId = getEffectiveInboxMessageId(row);
           if (!msgId || !ids.has(msgId)) continue;
 
           if (row.read !== true) {
