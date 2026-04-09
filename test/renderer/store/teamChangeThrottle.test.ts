@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => ({
   onTeamChangeCb: null as
-    | ((event: unknown, data: { type?: string; teamName: string; detail?: string }) => void)
+    | ((
+        event: unknown,
+        data: { type?: string; teamName: string; detail?: string; runId?: string }
+      ) => void)
     | null,
   onProvisioningProgressCb: null as
     | ((event: unknown, data: { runId: string; teamName: string }) => void)
@@ -35,7 +38,10 @@ vi.mock('@renderer/api', () => ({
       setToolActivityTracking: vi.fn(async () => undefined),
       onTeamChange: vi.fn(
         (
-          cb: (event: unknown, data: { teamName: string; type?: string; detail?: string }) => void
+          cb: (
+            event: unknown,
+            data: { teamName: string; type?: string; detail?: string; runId?: string }
+          ) => void
         ): (() => void) => {
           hoisted.onTeamChangeCb = cb;
           return () => {
@@ -349,6 +355,63 @@ describe('team change throttling', () => {
     await Promise.resolve();
 
     expect(setChangePresenceTrackingSpy).not.toHaveBeenCalled();
+  });
+
+  it('stores rate-limit retry state from team-change event', async () => {
+    const payload = {
+      active: true,
+      status: 'waiting',
+      retryAttempt: 2,
+      nextRetryAt: '2026-04-08T19:30:00.000Z',
+      firstDetectedAt: '2026-04-08T19:00:00.000Z',
+      lastDetectedAt: '2026-04-08T19:02:00.000Z',
+      lastOutputPreview: "You've hit your limit",
+    };
+
+    hoisted.onTeamChangeCb?.({}, {
+      type: 'rate-limit-retry',
+      teamName: 'my-team',
+      runId: 'run-1',
+      detail: JSON.stringify(payload),
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useStore.getState().rateLimitRetryByTeam['my-team']).toEqual(payload);
+  });
+
+  it('clears rate-limit retry state when inactive payload arrives', async () => {
+    useStore.setState({
+      rateLimitRetryByTeam: {
+        'my-team': {
+          active: true,
+          status: 'waiting',
+          retryAttempt: 1,
+          nextRetryAt: '2026-04-08T19:30:00.000Z',
+          firstDetectedAt: '2026-04-08T19:00:00.000Z',
+          lastDetectedAt: '2026-04-08T19:02:00.000Z',
+          lastOutputPreview: 'previous',
+        },
+      },
+    } as never);
+
+    hoisted.onTeamChangeCb?.({}, {
+      type: 'rate-limit-retry',
+      teamName: 'my-team',
+      runId: 'run-1',
+      detail: JSON.stringify({
+        active: false,
+        status: 'idle',
+        retryAttempt: 1,
+        nextRetryAt: null,
+        firstDetectedAt: '2026-04-08T19:00:00.000Z',
+        lastDetectedAt: '2026-04-08T19:03:00.000Z',
+      }),
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(useStore.getState().rateLimitRetryByTeam['my-team']).toBeUndefined();
   });
 
   it('tracks visible team tabs for tool activity and disables tracking when tab disappears', async () => {

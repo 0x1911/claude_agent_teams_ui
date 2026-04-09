@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hoisted = vi.hoisted(() => {
   const files = new Map<string, string>();
@@ -962,5 +962,118 @@ describe('TeamProvisioningService pre-ready live messages', () => {
       'my-team',
       expect.objectContaining({ member: 'ops.bot' })
     );
+  });
+});
+
+describe('TeamProvisioningService rate-limit auto resume', () => {
+  beforeEach(() => {
+    hoisted.files.clear();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 8, 0, 10, 0, 0));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('emits rate-limit retry state when lead output indicates reset time', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const emitter = vi.fn<(event: TeamChangeEvent) => void>();
+    service.setTeamChangeEmitter(emitter);
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+    (run as unknown as { leadActivityState: 'active' | 'idle' | 'offline' }).leadActivityState =
+      'idle';
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: "You've hit your limit · resets 1am (Europe/Berlin)" }],
+    });
+
+    expect(emitter).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'rate-limit-retry', teamName: 'my-team' })
+    );
+  });
+
+  it('sends automatic resume message when retry timer fires', async () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+    (run as unknown as { leadActivityState: 'active' | 'idle' | 'offline' }).leadActivityState =
+      'idle';
+
+    const sendSpy = vi.spyOn(service, 'sendMessageToTeam').mockResolvedValue(undefined);
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: "You've hit your limit · resets 1am (Europe/Berlin)" }],
+    });
+
+    const retryState = (service as unknown as {
+      rateLimitRetryByTeam: Map<string, { nextRetryAt: string | null }>;
+    }).rateLimitRetryByTeam.get('my-team');
+    expect(retryState?.nextRetryAt).toBeTruthy();
+    const delayMs = Date.parse(retryState!.nextRetryAt!) - Date.now();
+    await vi.advanceTimersByTimeAsync(Math.max(1000, delayMs + 1000));
+
+    expect(sendSpy).toHaveBeenCalledWith(
+      'my-team',
+      expect.stringContaining('Automatic retry after Claude rate limit reset.')
+    );
+  });
+
+  it('uses structured rate_limit_event resetsAt for retry scheduling', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+    (run as unknown as { leadActivityState: 'active' | 'idle' | 'offline' }).leadActivityState =
+      'idle';
+
+    const resetsAtSec = Math.floor((Date.now() + 10 * 60 * 1000) / 1000);
+    callHandleStreamJsonMessage(service, run, {
+      type: 'rate_limit_event',
+      rate_limit_info: {
+        status: 'rejected',
+        resetsAt: resetsAtSec,
+        rateLimitType: 'five_hour',
+      },
+    });
+
+    const retryState = (service as unknown as {
+      rateLimitRetryByTeam: Map<string, { nextRetryAt: string | null }>;
+    }).rateLimitRetryByTeam.get('my-team');
+    expect(retryState?.nextRetryAt).toBe(
+      new Date(resetsAtSec * 1000 + 3 * 60 * 1000).toISOString()
+    );
+  });
+
+  it('clears active retry state when structured rate_limit_event becomes allowed', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+    (run as unknown as { leadActivityState: 'active' | 'idle' | 'offline' }).leadActivityState =
+      'idle';
+
+    const resetsAtSec = Math.floor((Date.now() + 10 * 60 * 1000) / 1000);
+    callHandleStreamJsonMessage(service, run, {
+      type: 'rate_limit_event',
+      rate_limit_info: {
+        status: 'rejected',
+        resetsAt: resetsAtSec,
+      },
+    });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'rate_limit_event',
+      rate_limit_info: {
+        status: 'allowed',
+        resetsAt: resetsAtSec,
+      },
+    });
+
+    const retryState = (service as unknown as {
+      rateLimitRetryByTeam: Map<string, { nextRetryAt: string | null }>;
+    }).rateLimitRetryByTeam.get('my-team');
+    expect(retryState).toBeUndefined();
   });
 });

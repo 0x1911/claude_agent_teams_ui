@@ -212,6 +212,12 @@ export interface GeneralConfig {
   customProjectPaths: string[];
   /** Send anonymous crash & performance telemetry (requires SENTRY_DSN at build time) */
   telemetryEnabled: boolean;
+  /** Automatically resume alive team agents after Claude rate-limit expiration. */
+  autoResumeAfterRateLimit: boolean;
+  /** Safety buffer added after parsed reset time before retrying (in minutes). */
+  rateLimitSafetyMinutes: number;
+  /** Maximum exponential fallback backoff when reset time cannot be parsed (in minutes). */
+  rateLimitMaxBackoffMinutes: number;
 }
 
 export interface DisplayConfig {
@@ -296,6 +302,9 @@ const DEFAULT_CONFIG: AppConfig = {
     useNativeTitleBar: false,
     customProjectPaths: [],
     telemetryEnabled: true,
+    autoResumeAfterRateLimit: true,
+    rateLimitSafetyMinutes: 3,
+    rateLimitMaxBackoffMinutes: 30,
   },
   display: {
     showTimestamps: true,
@@ -455,6 +464,14 @@ export class ConfigManager {
       ...(loaded.general ?? {}),
     };
     mergedGeneral.claudeRootPath = normalizeConfiguredClaudeRootPath(mergedGeneral.claudeRootPath);
+    mergedGeneral.rateLimitSafetyMinutes = Number.isFinite(mergedGeneral.rateLimitSafetyMinutes)
+      ? Math.max(0, Math.min(60, Math.trunc(mergedGeneral.rateLimitSafetyMinutes)))
+      : DEFAULT_CONFIG.general.rateLimitSafetyMinutes;
+    mergedGeneral.rateLimitMaxBackoffMinutes = Number.isFinite(
+      mergedGeneral.rateLimitMaxBackoffMinutes
+    )
+      ? Math.max(1, Math.min(240, Math.trunc(mergedGeneral.rateLimitMaxBackoffMinutes)))
+      : DEFAULT_CONFIG.general.rateLimitMaxBackoffMinutes;
 
     // Merge triggers: preserve existing triggers, add missing builtin ones
     const mergedTriggers = TriggerManager.mergeTriggers(loadedTriggers, DEFAULT_TRIGGERS);

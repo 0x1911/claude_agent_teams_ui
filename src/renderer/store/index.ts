@@ -42,6 +42,7 @@ import type {
   ActiveToolCall,
   CliInstallerProgress,
   LeadContextUsage,
+  RateLimitRetryState,
   ScheduleChangeEvent,
   TeamChangeEvent,
   ToolActivityEventPayload,
@@ -750,6 +751,8 @@ export function initializeNotificationListeners(): () => void {
           if (nextActivity === 'offline') {
             nextState.leadContextByTeam = { ...prev.leadContextByTeam };
             delete nextState.leadContextByTeam[event.teamName];
+            nextState.rateLimitRetryByTeam = { ...prev.rateLimitRetryByTeam };
+            delete nextState.rateLimitRetryByTeam[event.teamName];
             Object.assign(nextState, clearRuntimeToolStateForTeam(prev, event.teamName));
             nextState.currentRuntimeRunIdByTeam = { ...prev.currentRuntimeRunIdByTeam };
             delete nextState.currentRuntimeRunIdByTeam[event.teamName];
@@ -921,6 +924,31 @@ export function initializeNotificationListeners(): () => void {
         }
         seedCurrentRunIdIfMissing();
         void useStore.getState().fetchMemberSpawnStatuses(event.teamName);
+        return;
+      }
+
+      if (event.type === 'rate-limit-retry') {
+        if (isStaleRuntimeEvent) {
+          return;
+        }
+        seedCurrentRunIdIfMissing();
+        if (!event.detail) {
+          return;
+        }
+        try {
+          const payload = JSON.parse(event.detail) as RateLimitRetryState;
+          useStore.setState((prev) => {
+            const next = { ...prev.rateLimitRetryByTeam };
+            if (!payload.active || payload.status === 'idle') {
+              delete next[event.teamName];
+            } else {
+              next[event.teamName] = payload;
+            }
+            return { rateLimitRetryByTeam: next };
+          });
+        } catch {
+          /* ignore malformed detail */
+        }
         return;
       }
 

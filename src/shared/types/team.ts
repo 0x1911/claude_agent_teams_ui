@@ -574,6 +574,18 @@ export interface MemberSpawnStatusesSnapshot {
   runId: string | null;
 }
 
+export type RateLimitRetryStatus = 'waiting' | 'retrying' | 'idle';
+
+export interface RateLimitRetryState {
+  active: boolean;
+  status: RateLimitRetryStatus;
+  retryAttempt: number;
+  nextRetryAt: string | null;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  lastOutputPreview?: string;
+}
+
 export interface TeamChangeEvent {
   type:
     | 'config'
@@ -583,6 +595,7 @@ export interface TeamChangeEvent {
     | 'lead-activity'
     | 'lead-context'
     | 'lead-message'
+    | 'rate-limit-retry'
     | 'tool-activity'
     | 'process'
     | 'member-spawn';

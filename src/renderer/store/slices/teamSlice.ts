@@ -140,6 +140,7 @@ import type {
   LeadActivityState,
   LeadContextUsage,
   MemberSpawnStatusEntry,
+  RateLimitRetryState,
   SendMessageRequest,
   SendMessageResult,
   TaskChangePresenceState,
@@ -618,6 +619,7 @@ export interface TeamSlice {
    */
   provisioningStartedAtFloorByTeam: Record<string, string>;
   leadActivityByTeam: Record<string, LeadActivityState>;
+  rateLimitRetryByTeam: Record<string, RateLimitRetryState>;
   leadContextByTeam: Record<string, LeadContextUsage>;
   activeToolsByTeam: Record<string, Record<string, Record<string, ActiveToolCall>>>;
   finishedVisibleByTeam: Record<string, Record<string, Record<string, ActiveToolCall>>>;
@@ -902,6 +904,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   ignoredRuntimeRunIds: {},
   provisioningStartedAtFloorByTeam: {},
   leadActivityByTeam: {},
+  rateLimitRetryByTeam: {},
   leadContextByTeam: {},
   activeToolsByTeam: {},
   finishedVisibleByTeam: {},
@@ -1862,6 +1865,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       delete nextFinishedVisible[request.teamName];
       const nextToolHistory = { ...state.toolHistoryByTeam };
       delete nextToolHistory[request.teamName];
+      const nextRateLimitRetry = { ...state.rateLimitRetryByTeam };
+      delete nextRateLimitRetry[request.teamName];
       const nextRuntimeRunIdByTeam = { ...state.currentRuntimeRunIdByTeam };
       const previousRuntimeRunId = nextRuntimeRunIdByTeam[request.teamName];
       delete nextRuntimeRunIdByTeam[request.teamName];
@@ -1891,6 +1896,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         activeToolsByTeam: nextActiveTools,
         finishedVisibleByTeam: nextFinishedVisible,
         toolHistoryByTeam: nextToolHistory,
+        rateLimitRetryByTeam: nextRateLimitRetry,
         currentRuntimeRunIdByTeam: nextRuntimeRunIdByTeam,
         ignoredProvisioningRunIds: nextIgnoredRunIds,
         ignoredRuntimeRunIds: nextIgnoredRuntimeRunIds,
@@ -2056,6 +2062,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       delete nextFinishedVisible[request.teamName];
       const nextToolHistory = { ...state.toolHistoryByTeam };
       delete nextToolHistory[request.teamName];
+      const nextRateLimitRetry = { ...state.rateLimitRetryByTeam };
+      delete nextRateLimitRetry[request.teamName];
       const nextRuntimeRunIdByTeam = { ...state.currentRuntimeRunIdByTeam };
       const previousRuntimeRunId = nextRuntimeRunIdByTeam[request.teamName];
       delete nextRuntimeRunIdByTeam[request.teamName];
@@ -2085,6 +2093,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         activeToolsByTeam: nextActiveTools,
         finishedVisibleByTeam: nextFinishedVisible,
         toolHistoryByTeam: nextToolHistory,
+        rateLimitRetryByTeam: nextRateLimitRetry,
         currentRuntimeRunIdByTeam: nextRuntimeRunIdByTeam,
         ignoredProvisioningRunIds: nextIgnoredRunIds,
         ignoredRuntimeRunIds: nextIgnoredRuntimeRunIds,

@@ -318,6 +318,12 @@ export interface AppConfig {
     useNativeTitleBar: boolean;
     /** Send anonymous crash & performance telemetry (requires SENTRY_DSN at build time) */
     telemetryEnabled: boolean;
+    /** Automatically resume alive team agents after Claude rate-limit expiration. */
+    autoResumeAfterRateLimit?: boolean;
+    /** Safety buffer added after parsed reset time before retrying (in minutes). */
+    rateLimitSafetyMinutes?: number;
+    /** Maximum exponential fallback backoff when reset time cannot be parsed (in minutes). */
+    rateLimitMaxBackoffMinutes?: number;
   };
   /** Display and UI settings */
   display: {

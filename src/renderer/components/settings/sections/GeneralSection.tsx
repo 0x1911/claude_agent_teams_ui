@@ -21,6 +21,24 @@ import type { ClaudeRootInfo, WslClaudeRootCandidate } from '@shared/types';
 import type { HttpServerStatus } from '@shared/types/api';
 import type { AppConfig } from '@shared/types/notifications';
 
+type BooleanGeneralKey = Extract<
+  {
+    [K in keyof AppConfig['general']]-?: NonNullable<AppConfig['general'][K]> extends boolean
+      ? K
+      : never;
+  }[keyof AppConfig['general']],
+  string
+>;
+
+type NumericGeneralKey = Extract<
+  {
+    [K in keyof AppConfig['general']]-?: NonNullable<AppConfig['general'][K]> extends number
+      ? K
+      : never;
+  }[keyof AppConfig['general']],
+  string
+>;
+
 // Theme options
 const THEME_OPTIONS = [
   { value: 'dark', label: 'Dark' },
@@ -31,7 +49,8 @@ const THEME_OPTIONS = [
 interface GeneralSectionProps {
   readonly safeConfig: SafeConfig;
   readonly saving: boolean;
-  readonly onGeneralToggle: (key: keyof AppConfig['general'], value: boolean) => void;
+  readonly onGeneralToggle: (key: BooleanGeneralKey, value: boolean) => void;
+  readonly onGeneralNumberChange: (key: NumericGeneralKey, value: number) => void;
   readonly onThemeChange: (value: 'dark' | 'light' | 'system') => void;
   readonly onLanguageChange: (value: string) => void;
 }
@@ -40,6 +59,7 @@ export const GeneralSection = ({
   safeConfig,
   saving,
   onGeneralToggle,
+  onGeneralNumberChange,
   onThemeChange,
   onLanguageChange,
 }: GeneralSectionProps): React.JSX.Element => {
@@ -400,6 +420,63 @@ export const GeneralSection = ({
           />
         </SettingRow>
       )}
+
+      <SettingsSectionHeader title="Automation" />
+      <SettingRow
+        label="Auto-resume after rate limit"
+        description="Automatically continue alive team agents when the Claude rate-limit window expires"
+      >
+        <SettingsToggle
+          enabled={safeConfig.general.autoResumeAfterRateLimit ?? true}
+          onChange={(v) => onGeneralToggle('autoResumeAfterRateLimit', v)}
+          disabled={saving}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Rate-limit safety buffer"
+        description="Extra wait after parsed reset time before retry (minutes)"
+      >
+        <input
+          type="number"
+          min={0}
+          max={60}
+          step={1}
+          value={safeConfig.general.rateLimitSafetyMinutes ?? 3}
+          disabled={saving || !(safeConfig.general.autoResumeAfterRateLimit ?? true)}
+          onChange={(event) => {
+            const parsed = Number.parseInt(event.target.value, 10);
+            if (!Number.isFinite(parsed)) {
+              return;
+            }
+            onGeneralNumberChange('rateLimitSafetyMinutes', Math.max(0, Math.min(60, parsed)));
+          }}
+          className="w-20 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-right text-sm text-[var(--color-text)] disabled:opacity-50"
+        />
+      </SettingRow>
+      <SettingRow
+        label="Max fallback backoff"
+        description="Upper cap for exponential retry delay when no reset time is parseable (minutes)"
+      >
+        <input
+          type="number"
+          min={1}
+          max={240}
+          step={1}
+          value={safeConfig.general.rateLimitMaxBackoffMinutes ?? 30}
+          disabled={saving || !(safeConfig.general.autoResumeAfterRateLimit ?? true)}
+          onChange={(event) => {
+            const parsed = Number.parseInt(event.target.value, 10);
+            if (!Number.isFinite(parsed)) {
+              return;
+            }
+            onGeneralNumberChange(
+              'rateLimitMaxBackoffMinutes',
+              Math.max(1, Math.min(240, parsed))
+            );
+          }}
+          className="w-20 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-right text-sm text-[var(--color-text)] disabled:opacity-50"
+        />
+      </SettingRow>
 
       {isElectron && (
         <>

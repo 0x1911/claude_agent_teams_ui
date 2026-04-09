@@ -11,6 +11,24 @@ import { useStore } from '@renderer/store';
 import type { RepositoryDropdownItem } from './useSettingsConfig';
 import type { AppConfig, NotificationTrigger } from '@renderer/types/data';
 
+type BooleanGeneralKey = Extract<
+  {
+    [K in keyof AppConfig['general']]-?: NonNullable<AppConfig['general'][K]> extends boolean
+      ? K
+      : never;
+  }[keyof AppConfig['general']],
+  string
+>;
+
+type NumericGeneralKey = Extract<
+  {
+    [K in keyof AppConfig['general']]-?: NonNullable<AppConfig['general'][K]> extends number
+      ? K
+      : never;
+  }[keyof AppConfig['general']],
+  string
+>;
+
 // Get the setState function from the store to update appConfig globally
 const setStoreState = useStore.setState;
 
@@ -28,7 +46,8 @@ interface UseSettingsHandlersProps {
 
 interface SettingsHandlers {
   // General handlers
-  handleGeneralToggle: (key: keyof AppConfig['general'], value: boolean) => void;
+  handleGeneralToggle: (key: BooleanGeneralKey, value: boolean) => void;
+  handleGeneralNumberChange: (key: NumericGeneralKey, value: number) => void;
   handleThemeChange: (value: 'dark' | 'light' | 'system') => void;
   handleLanguageChange: (value: string) => void;
   handleDefaultTabChange: (value: 'dashboard' | 'last-session') => void;
@@ -70,7 +89,7 @@ export function useSettingsHandlers({
 
   // General handlers
   const handleGeneralToggle = useCallback(
-    (key: keyof AppConfig['general'], value: boolean) => {
+    (key: BooleanGeneralKey, value: boolean) => {
       void updateConfig('general', { [key]: value });
     },
     [updateConfig]
@@ -93,6 +112,13 @@ export function useSettingsHandlers({
   const handleDefaultTabChange = useCallback(
     (value: 'dashboard' | 'last-session') => {
       void updateConfig('general', { defaultTab: value });
+    },
+    [updateConfig]
+  );
+
+  const handleGeneralNumberChange = useCallback(
+    (key: NumericGeneralKey, value: number) => {
+      void updateConfig('general', { [key]: value });
     },
     [updateConfig]
   );
@@ -404,6 +430,7 @@ export function useSettingsHandlers({
 
   return {
     handleGeneralToggle,
+    handleGeneralNumberChange,
     handleThemeChange,
     handleLanguageChange,
     handleDefaultTabChange,

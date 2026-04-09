@@ -291,6 +291,9 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
     'autoExpandAIGroups',
     'useNativeTitleBar',
     'telemetryEnabled',
+    'autoResumeAfterRateLimit',
+    'rateLimitSafetyMinutes',
+    'rateLimitMaxBackoffMinutes',
   ];
 
   const result: Partial<GeneralConfig> = {};
@@ -378,6 +381,30 @@ function validateGeneralSection(data: unknown): ValidationSuccess<'general'> | V
           return { valid: false, error: `general.${key} must be a boolean` };
         }
         result.telemetryEnabled = value;
+        break;
+      case 'autoResumeAfterRateLimit':
+        if (typeof value !== 'boolean') {
+          return { valid: false, error: `general.${key} must be a boolean` };
+        }
+        result.autoResumeAfterRateLimit = value;
+        break;
+      case 'rateLimitSafetyMinutes':
+        if (!isFiniteNumber(value) || !Number.isInteger(value) || value < 0 || value > 60) {
+          return {
+            valid: false,
+            error: 'general.rateLimitSafetyMinutes must be an integer between 0 and 60',
+          };
+        }
+        result.rateLimitSafetyMinutes = value;
+        break;
+      case 'rateLimitMaxBackoffMinutes':
+        if (!isFiniteNumber(value) || !Number.isInteger(value) || value < 1 || value > 240) {
+          return {
+            valid: false,
+            error: 'general.rateLimitMaxBackoffMinutes must be an integer between 1 and 240',
+          };
+        }
+        result.rateLimitMaxBackoffMinutes = value;
         break;
       default:
         return { valid: false, error: `Unsupported general key: ${key}` };

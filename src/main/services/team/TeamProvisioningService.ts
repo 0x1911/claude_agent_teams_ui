@@ -39,6 +39,11 @@ import {
 } from '@shared/utils/inboxNoise';
 import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
+import {
+  computeRateLimitFallbackDelayMs,
+  computeRateLimitRetryAt,
+  isRateLimitMessage,
+} from '@shared/utils/rateLimitDetector';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
 import {
   parseAllTeammateMessages,
@@ -98,6 +103,7 @@ import type {
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
   TeamProvisioningState,
+  RateLimitRetryState,
   TeamRuntimeState,
   TeamTask,
   ToolActivityEventPayload,
@@ -141,6 +147,7 @@ const HANDLED_STREAM_JSON_TYPES = new Set([
   'control_request',
   'result',
   'system',
+  'rate_limit_event',
 ]);
 const PREFLIGHT_PING_PROMPT = 'Output only the single word PONG.';
 const PREFLIGHT_PING_ARGS = [
@@ -1244,6 +1251,18 @@ interface NativeSameTeamFingerprint {
   seenAt: number;
 }
 
+interface RateLimitRetryRuntimeState {
+  teamName: string;
+  runId: string;
+  active: boolean;
+  status: 'waiting' | 'retrying' | 'idle';
+  retryAttempt: number;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  nextRetryAt: string | null;
+  lastOutputPreview?: string;
+}
+
 function normalizeSameTeamText(text: string): string {
   return text.trim().replace(/\r\n/g, '\n');
 }
@@ -1269,6 +1288,7 @@ export class TeamProvisioningService {
   private readonly pendingCrossTeamFirstReplies = new Map<string, Map<string, number>>();
   private readonly recentCrossTeamLeadDeliveryMessageIds = new Map<string, Map<string, number>>();
   private readonly liveLeadProcessMessages = new Map<string, InboxMessage[]>();
+  private readonly rateLimitRetryByTeam = new Map<string, RateLimitRetryRuntimeState>();
   private readonly recentSameTeamNativeFingerprints = new Map<
     string,
     NativeSameTeamFingerprint[]
@@ -2146,6 +2166,222 @@ export class TeamProvisioningService {
       runId: run.runId,
       detail: JSON.stringify(payload),
     });
+  }
+
+  private getRateLimitRetryTimerKey(teamName: string): string {
+    return `rate-limit-retry:${teamName}`;
+  }
+
+  private getRateLimitSettings(): {
+    enabled: boolean;
+    safetyMinutes: number;
+    maxBackoffMinutes: number;
+  } {
+    const config = ConfigManager.getInstance().getConfig();
+    return {
+      enabled: config.general.autoResumeAfterRateLimit ?? true,
+      safetyMinutes: Math.max(0, Math.trunc(config.general.rateLimitSafetyMinutes ?? 3)),
+      maxBackoffMinutes: Math.max(1, Math.trunc(config.general.rateLimitMaxBackoffMinutes ?? 30)),
+    };
+  }
+
+  private emitRateLimitRetryState(state: RateLimitRetryRuntimeState): void {
+    if (this.getTrackedRunId(state.teamName) !== state.runId) {
+      return;
+    }
+
+    const payload: RateLimitRetryState = {
+      active: state.active,
+      status: state.status,
+      retryAttempt: state.retryAttempt,
+      nextRetryAt: state.nextRetryAt,
+      firstDetectedAt: state.firstDetectedAt,
+      lastDetectedAt: state.lastDetectedAt,
+      ...(state.lastOutputPreview ? { lastOutputPreview: state.lastOutputPreview } : {}),
+    };
+
+    this.teamChangeEmitter?.({
+      type: 'rate-limit-retry',
+      teamName: state.teamName,
+      runId: state.runId,
+      detail: JSON.stringify(payload),
+    });
+  }
+
+  private scheduleRateLimitRetryTimer(state: RateLimitRetryRuntimeState, retryAt: Date): void {
+    const key = this.getRateLimitRetryTimerKey(state.teamName);
+    const existing = this.pendingTimeouts.get(key);
+    if (existing) {
+      clearTimeout(existing);
+      this.pendingTimeouts.delete(key);
+    }
+
+    const delayMs = Math.max(1000, retryAt.getTime() - Date.now());
+    state.nextRetryAt = new Date(Date.now() + delayMs).toISOString();
+    state.status = 'waiting';
+
+    const timer = setTimeout(() => {
+      this.pendingTimeouts.delete(key);
+      void this.executeRateLimitResume(state.teamName, state.runId).catch((error: unknown) => {
+        logger.warn(
+          `[${state.teamName}] rate-limit resume timer failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      });
+    }, delayMs);
+
+    this.pendingTimeouts.set(key, timer);
+    this.emitRateLimitRetryState(state);
+  }
+
+  private handleRateLimitMessage(
+    run: ProvisioningRun,
+    text: string,
+    opts?: { forcedRetryAt?: Date }
+  ): void {
+    const settings = this.getRateLimitSettings();
+    if (!settings.enabled) {
+      return;
+    }
+
+    const now = new Date();
+    const existing = this.rateLimitRetryByTeam.get(run.teamName);
+    const retryAttempt = (existing?.retryAttempt ?? 0) + 1;
+    const nextRetryAt =
+      opts?.forcedRetryAt ??
+      computeRateLimitRetryAt(text, now, settings.safetyMinutes) ??
+      new Date(
+        now.getTime() +
+          computeRateLimitFallbackDelayMs(retryAttempt, {
+            maxDelayMs: settings.maxBackoffMinutes * 60 * 1000,
+          })
+      );
+
+    const state: RateLimitRetryRuntimeState = {
+      teamName: run.teamName,
+      runId: run.runId,
+      active: true,
+      status: 'waiting',
+      retryAttempt,
+      firstDetectedAt: existing?.firstDetectedAt ?? now.toISOString(),
+      lastDetectedAt: now.toISOString(),
+      nextRetryAt: nextRetryAt.toISOString(),
+      lastOutputPreview: text.slice(0, 220),
+    };
+
+    this.rateLimitRetryByTeam.set(run.teamName, state);
+    this.scheduleRateLimitRetryTimer(state, nextRetryAt);
+  }
+
+  private handleRateLimitEvent(run: ProvisioningRun, msg: Record<string, unknown>): void {
+    const info = (msg.rate_limit_info ?? msg.rateLimitInfo) as Record<string, unknown> | undefined;
+    if (!info || typeof info !== 'object') {
+      return;
+    }
+
+    const status = typeof info.status === 'string' ? info.status : null;
+    if (status === 'allowed') {
+      this.clearRateLimitRetryState(run.teamName, run.runId);
+      return;
+    }
+
+    if (status !== 'rejected') {
+      return;
+    }
+
+    const settings = this.getRateLimitSettings();
+    const resetsAtRaw = info.resetsAt;
+    const resetsAtSec =
+      typeof resetsAtRaw === 'number' && Number.isFinite(resetsAtRaw) ? Math.trunc(resetsAtRaw) : null;
+    const forcedRetryAt =
+      resetsAtSec && resetsAtSec > 0
+        ? new Date(resetsAtSec * 1000 + settings.safetyMinutes * 60 * 1000)
+        : undefined;
+
+    const overageReason =
+      typeof info.overageDisabledReason === 'string' ? ` (${info.overageDisabledReason})` : '';
+    const text = `Claude rate limit reached${overageReason}`;
+    this.handleRateLimitMessage(run, text, { forcedRetryAt });
+  }
+
+  private clearRateLimitRetryState(teamName: string, runId?: string): void {
+    const existing = this.rateLimitRetryByTeam.get(teamName);
+    if (!existing) {
+      return;
+    }
+    if (runId && existing.runId !== runId) {
+      return;
+    }
+
+    const key = this.getRateLimitRetryTimerKey(teamName);
+    const timer = this.pendingTimeouts.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.pendingTimeouts.delete(key);
+    }
+
+    const inactiveState: RateLimitRetryRuntimeState = {
+      ...existing,
+      active: false,
+      status: 'idle',
+      nextRetryAt: null,
+    };
+    this.emitRateLimitRetryState(inactiveState);
+    this.rateLimitRetryByTeam.delete(teamName);
+  }
+
+  private async executeRateLimitResume(teamName: string, runId: string): Promise<void> {
+    const state = this.rateLimitRetryByTeam.get(teamName);
+    if (!state || state.runId !== runId) {
+      return;
+    }
+
+    const run = this.runs.get(runId);
+    if (
+      !run ||
+      !this.isTeamAlive(teamName) ||
+      !run.child?.stdin?.writable ||
+      run.processKilled ||
+      run.cancelRequested
+    ) {
+      this.clearRateLimitRetryState(teamName, runId);
+      return;
+    }
+
+    if (run.leadActivityState !== 'idle') {
+      this.scheduleRateLimitRetryTimer(state, new Date(Date.now() + 30_000));
+      return;
+    }
+
+    state.status = 'retrying';
+    state.nextRetryAt = null;
+    this.emitRateLimitRetryState(state);
+
+    const retryPrompt = [
+      'Automatic retry after Claude rate limit reset.',
+      'Continue team operations and prioritize in_progress and pending tasks from the board.',
+      'Do not repeat already completed work.',
+    ].join('\n');
+
+    try {
+      await this.sendMessageToTeam(teamName, retryPrompt);
+      this.clearRateLimitRetryState(teamName, runId);
+    } catch (error) {
+      const settings = this.getRateLimitSettings();
+      state.retryAttempt += 1;
+      state.lastDetectedAt = nowIso();
+      state.status = 'waiting';
+      const delayMs = computeRateLimitFallbackDelayMs(state.retryAttempt, {
+        maxDelayMs: settings.maxBackoffMinutes * 60 * 1000,
+      });
+      this.scheduleRateLimitRetryTimer(state, new Date(Date.now() + delayMs));
+      logger.warn(
+        `[${teamName}] rate-limit automatic resume failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
   }
 
   private startRuntimeToolActivity(
@@ -5083,6 +5319,10 @@ export class TeamProvisioningService {
     };
     this.pushLiveLeadProcessMessage(run.teamName, leadMsg);
 
+    if (isRateLimitMessage(cleanText)) {
+      this.handleRateLimitMessage(run, cleanText);
+    }
+
     // Coalesced refresh: at most one event per LEAD_TEXT_EMIT_THROTTLE_MS per team.
     const now = Date.now();
     if (now - run.lastLeadTextEmitMs >= TeamProvisioningService.LEAD_TEXT_EMIT_THROTTLE_MS) {
@@ -5337,6 +5577,11 @@ export class TeamProvisioningService {
     }
 
     // Handle control_request — tool approval protocol (only when --dangerously-skip-permissions is NOT set)
+    if (msg.type === 'rate_limit_event') {
+      this.handleRateLimitEvent(run, msg);
+      return;
+    }
+
     if (msg.type === 'control_request') {
       this.handleControlRequest(run, msg);
       return;
@@ -7108,6 +7353,7 @@ export class TeamProvisioningService {
     if (this.aliveRunByTeam.get(run.teamName) === run.runId) {
       this.aliveRunByTeam.delete(run.teamName);
     }
+    this.clearRateLimitRetryState(run.teamName, run.runId);
     this.leadInboxRelayInFlight.delete(run.teamName);
     this.relayedLeadInboxMessageIds.delete(run.teamName);
     this.pendingCrossTeamFirstReplies.delete(run.teamName);

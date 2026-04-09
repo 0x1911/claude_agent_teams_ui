@@ -34,6 +34,9 @@ export interface SafeConfig {
     autoExpandAIGroups: boolean;
     useNativeTitleBar: boolean;
     telemetryEnabled: boolean;
+    autoResumeAfterRateLimit: boolean;
+    rateLimitSafetyMinutes: number;
+    rateLimitMaxBackoffMinutes: number;
   };
   notifications: {
     enabled: boolean;
@@ -174,6 +177,9 @@ export function useSettingsConfig(): UseSettingsConfigReturn {
         autoExpandAIGroups: displayConfig?.general?.autoExpandAIGroups ?? false,
         useNativeTitleBar: displayConfig?.general?.useNativeTitleBar ?? false,
         telemetryEnabled: displayConfig?.general?.telemetryEnabled ?? true,
+        autoResumeAfterRateLimit: displayConfig?.general?.autoResumeAfterRateLimit ?? true,
+        rateLimitSafetyMinutes: displayConfig?.general?.rateLimitSafetyMinutes ?? 3,
+        rateLimitMaxBackoffMinutes: displayConfig?.general?.rateLimitMaxBackoffMinutes ?? 30,
       },
       notifications: {
         enabled: displayConfig?.notifications?.enabled ?? true,

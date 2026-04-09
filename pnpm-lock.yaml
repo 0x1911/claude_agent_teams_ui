@@ -523,6 +523,9 @@ importers:
       d3-force:
         specifier: ^3.0.0
         version: 3.0.0
+      lucide-react:
+        specifier: '>=0.300.0'
+        version: 0.577.0(react@18.3.1)
       react:
         specifier: ^18.0.0
         version: 18.3.1
@@ -19286,6 +19289,10 @@ snapshots:
   lru-cache@6.0.0:
     dependencies:
       yallist: 4.0.0
+
+  lucide-react@0.577.0(react@18.3.1):
+    dependencies:
+      react: 18.3.1
 
   lucide-react@0.577.0(react@19.2.4):
     dependencies:

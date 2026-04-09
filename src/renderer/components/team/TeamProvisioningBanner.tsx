@@ -16,11 +16,12 @@ interface TeamProvisioningBannerProps {
 export const TeamProvisioningBanner = ({
   teamName,
 }: TeamProvisioningBannerProps): React.JSX.Element | null => {
-  const { progress, cancelProvisioning, teamMembers } = useStore(
+  const { progress, cancelProvisioning, teamMembers, rateLimitRetry } = useStore(
     useShallow((s) => ({
       progress: getCurrentProvisioningProgressForTeam(s, teamName),
       cancelProvisioning: s.cancelProvisioning,
       teamMembers: s.selectedTeamData?.members,
+      rateLimitRetry: s.rateLimitRetryByTeam[teamName],
     }))
   );
   const [dismissed, setDismissed] = useState(false);
@@ -39,11 +40,61 @@ export const TeamProvisioningBanner = ({
   // and auto-dismiss can make it look like no progress/logs were produced.
 
   if (!progress || dismissed) {
-    return null;
+    if (!rateLimitRetry || !rateLimitRetry.active) {
+      return null;
+    }
+  }
+
+  const retryInfo = rateLimitRetry?.active
+    ? {
+        retryAttempt: rateLimitRetry.retryAttempt,
+        statusLabel:
+          rateLimitRetry.status === 'retrying'
+            ? 'retry in progress'
+            : rateLimitRetry.status === 'waiting'
+              ? 'waiting for retry window'
+              : 'idle',
+        nextRetryLabel: (() => {
+          if (!rateLimitRetry.nextRetryAt) return 'soon';
+          const diffMs = Date.parse(rateLimitRetry.nextRetryAt) - Date.now();
+          if (!Number.isFinite(diffMs) || diffMs <= 0) return 'soon';
+          const totalSec = Math.ceil(diffMs / 1000);
+          const mins = Math.floor(totalSec / 60);
+          const secs = totalSec % 60;
+          return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        })(),
+        unavailableSinceLabel: (() => {
+          const sinceMs = Date.now() - Date.parse(rateLimitRetry.firstDetectedAt);
+          if (!Number.isFinite(sinceMs) || sinceMs < 0) return 'just now';
+          const mins = Math.floor(sinceMs / 60000);
+          if (mins <= 0) return 'just now';
+          if (mins < 60) return `${mins}m`;
+          const hours = Math.floor(mins / 60);
+          return `${hours}h ${mins % 60}m`;
+        })(),
+        lastOutputPreview: rateLimitRetry.lastOutputPreview,
+      }
+    : null;
+
+  const rateLimitStatusBlock = retryInfo ? (
+    <div className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+      <p>
+        Claude rate limit reached - retry #{retryInfo.retryAttempt}
+      </p>
+      <p>
+        {retryInfo.statusLabel} · next retry in {retryInfo.nextRetryLabel} · unavailable for{' '}
+        {retryInfo.unavailableSinceLabel}
+      </p>
+      {retryInfo.lastOutputPreview ? <p>Last output: {retryInfo.lastOutputPreview}</p> : null}
+    </div>
+  ) : null;
+
+  if (!progress || dismissed) {
+    return rateLimitStatusBlock;
   }
 
   if (progress.state === 'cancelled' || progress.state === 'disconnected') {
-    return null;
+    return rateLimitStatusBlock;
   }
 
   const isReady = progress.state === 'ready';
@@ -73,6 +124,7 @@ export const TeamProvisioningBanner = ({
   if (isFailed) {
     return (
       <div className="mb-3">
+        {rateLimitStatusBlock}
         <div className="mb-2 flex items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2">
           <p className="flex-1 text-xs text-[var(--step-error-text)]">{progress.message}</p>
           <Button
@@ -114,6 +166,7 @@ export const TeamProvisioningBanner = ({
 
     return (
       <div className="mb-3">
+        {rateLimitStatusBlock}
         <ProvisioningProgressBlock
           key={progress.runId}
           title="Launch details"
@@ -136,6 +189,7 @@ export const TeamProvisioningBanner = ({
   if (isActive) {
     return (
       <div className="mb-3">
+        {rateLimitStatusBlock}
         <ProvisioningProgressBlock
           key={progress.runId}
           title="Launching team"
@@ -160,5 +214,5 @@ export const TeamProvisioningBanner = ({
     );
   }
 
-  return null;
+  return rateLimitStatusBlock;
 };
