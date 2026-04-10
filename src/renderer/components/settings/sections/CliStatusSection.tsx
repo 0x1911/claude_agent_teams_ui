@@ -9,14 +9,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { isElectronMode } from '@renderer/api';
 import { confirm } from '@renderer/components/common/ConfirmDialog';
-import { ProviderRuntimeSettingsDialog } from '@renderer/components/runtime/ProviderRuntimeSettingsDialog';
+import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
 import { getProviderRuntimeBackendSummary } from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
+import { ProviderRuntimeSettingsDialog } from '@renderer/components/runtime/ProviderRuntimeSettingsDialog';
 import { SettingsToggle } from '@renderer/components/settings/components';
 import { TerminalModal } from '@renderer/components/terminal/TerminalModal';
 import { useCliInstaller } from '@renderer/hooks/useCliInstaller';
 import { useStore } from '@renderer/store';
 import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import { formatBytes } from '@renderer/utils/formatters';
+import {
+  getTeamModelBadgeLabel,
+  getVisibleTeamProviderModels,
+} from '@renderer/utils/teamModelCatalog';
 import {
   AlertTriangle,
   CheckCircle,
@@ -35,28 +40,20 @@ import { SettingsSectionHeader } from '../components';
 import type { CliProviderId, CliProviderStatus } from '@shared/types';
 
 function formatModelBadgeLabel(providerId: CliProviderId, model: string): string {
-  if (providerId === 'anthropic') {
-    return model.replace(/^claude-/, '');
-  }
-  if (providerId === 'codex') {
-    return model.replace(/^gpt-/, '');
-  }
-  if (providerId === 'gemini') {
-    return model.replace(/^gemini-/, '');
-  }
-  return model;
+  return getTeamModelBadgeLabel(providerId, model) ?? model;
 }
 
-function ModelBadges({
+const ModelBadges = ({
   providerId,
   models,
 }: {
-  providerId: CliProviderId;
-  models: string[];
-}): React.JSX.Element {
+  readonly providerId: CliProviderId;
+  readonly models: string[];
+}): React.JSX.Element => {
+  const visibleModels = getVisibleTeamProviderModels(providerId, models);
   return (
     <div className="flex flex-wrap gap-1.5">
-      {models.map((model) => (
+      {visibleModels.map((model) => (
         <span
           key={model}
           className="rounded-md border px-1.5 py-px font-mono text-[10px] leading-4"
@@ -71,9 +68,9 @@ function ModelBadges({
       ))}
     </div>
   );
-}
+};
 
-function ProviderDetailSkeleton(): React.JSX.Element {
+const ProviderDetailSkeleton = (): React.JSX.Element => {
   return (
     <div className="mt-1 space-y-2">
       <div
@@ -95,7 +92,7 @@ function ProviderDetailSkeleton(): React.JSX.Element {
       </div>
     </div>
   );
-}
+};
 
 function isProviderCardLoading(provider: CliProviderStatus, providerLoading: boolean): boolean {
   return (
@@ -458,11 +455,17 @@ export const CliStatusSection = (): React.JSX.Element | null => {
                               <div className="col-span-2 flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 text-xs">
-                                    <span
-                                      className="font-medium"
-                                      style={{ color: 'var(--color-text-secondary)' }}
-                                    >
-                                      {provider.displayName}
+                                    <span className="flex items-center gap-2">
+                                      <ProviderBrandLogo
+                                        providerId={provider.providerId}
+                                        className="size-4 shrink-0"
+                                      />
+                                      <span
+                                        className="font-medium"
+                                        style={{ color: 'var(--color-text-secondary)' }}
+                                      >
+                                        {provider.displayName}
+                                      </span>
                                     </span>
                                     <span
                                       style={{
@@ -482,7 +485,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
                                     <ProviderDetailSkeleton />
                                   ) : (
                                     <div
-                                      className="mt-1 flex min-h-[2.75rem] flex-wrap gap-x-3 gap-y-1 text-[11px]"
+                                      className="mt-1 flex min-h-11 flex-wrap gap-x-3 gap-y-1 text-[11px]"
                                       style={{ color: 'var(--color-text-muted)' }}
                                     >
                                       {provider.backend?.label && (

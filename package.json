@@ -55,7 +55,7 @@
     "standalone:build": "electron-vite build && vite build --config docker/vite.standalone.config.ts",
     "standalone:start": "node dist-standalone/index.cjs",
     "prepare": "husky",
-    "postinstall": "electron-rebuild -f -o node-pty || echo 'node-pty rebuild failed (terminal will be disabled)'"
+    "postinstall": "electron-rebuild -f -o node-pty,ssh2,cpu-features || echo 'native Electron rebuild failed (terminal/ssh features may be degraded)'"
   },
   "lint-staged": {
     "src/**/*.{ts,tsx,js,jsx}": [
@@ -331,5 +331,11 @@
     "ignoreBinaries": [
       "pkg"
     ]
-  }
+  },
+  "workspaces": [
+    "agent-teams-controller",
+    "mcp-server",
+    "landing",
+    "packages/agent-graph"
+  ]
 }

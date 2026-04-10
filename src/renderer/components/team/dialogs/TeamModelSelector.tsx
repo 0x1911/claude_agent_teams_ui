@@ -15,10 +15,14 @@ import {
   isGeminiUiFrozen,
 } from '@renderer/utils/geminiUiFreeze';
 import {
+  doesTeamModelCarryProviderBrand,
+  getTeamModelLabel as getCatalogTeamModelLabel,
+  getTeamProviderLabel as getCatalogTeamProviderLabel,
+  getTeamProviderModelOptions,
   getTeamModelUiDisabledReason,
   normalizeTeamModelForUi,
   TEAM_MODEL_UI_DISABLED_BADGE_LABEL,
-} from '@renderer/utils/teamModelAvailability';
+} from '@renderer/utils/teamModelCatalog';
 import { Check, ChevronDown, Info } from 'lucide-react';
 
 // --- Provider SVG Icons (real brand logos from Simple Icons, monochrome currentColor) ---
@@ -145,65 +149,12 @@ const PROVIDERS: ProviderDef[] = [
 
 const OPENCODE_UI_DISABLED_REASON = 'OpenCode in development';
 
-const ANTHROPIC_MODEL_OPTIONS = [
-  { value: '', label: 'Default' },
-  { value: 'opus', label: 'Opus 4.6' },
-  { value: 'sonnet', label: 'Sonnet 4.6' },
-  { value: 'haiku', label: 'Haiku 4.5' },
-] as const;
-
-const CODEX_MODEL_OPTIONS = [
-  { value: '', label: 'Default' },
-  { value: 'gpt-5.4', label: 'GPT-5.4' },
-  { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
-  { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
-  { value: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark' },
-  { value: 'gpt-5.2', label: 'GPT-5.2' },
-  { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' },
-  { value: 'gpt-5.1-codex-mini', label: 'GPT-5.1 Codex Mini' },
-  { value: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max' },
-] as const;
-
-const GEMINI_MODEL_OPTIONS = [
-  { value: '', label: 'Default' },
-  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
-] as const;
-
-const MODEL_LABEL_OVERRIDES: Record<string, string> = {
-  'claude-sonnet-4-6': 'Sonnet 4.6',
-  'claude-sonnet-4-6[1m]': 'Sonnet 4.6 (1M)',
-  'claude-opus-4-6': 'Opus 4.6',
-  'claude-opus-4-6[1m]': 'Opus 4.6 (1M)',
-  'claude-haiku-4-5-20251001': 'Haiku 4.5',
-  'gpt-5.4': 'GPT-5.4',
-  'gpt-5.4-mini': 'GPT-5.4 Mini',
-  'gpt-5.3-codex': 'GPT-5.3 Codex',
-  'gpt-5.3-codex-spark': 'GPT-5.3 Spark',
-  'gpt-5.2-codex': 'GPT-5.2 Codex',
-  'gpt-5.2': 'GPT-5.2',
-  'gpt-5.1-codex-mini': 'GPT-5.1 Mini',
-  'gpt-5.1-codex-max': 'GPT-5.1 Max',
-  'gemini-2.5-pro': 'Gemini 2.5 Pro',
-  'gemini-2.5-flash': 'Gemini 2.5 Flash',
-  'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
-};
-
 export function getTeamModelLabel(model: string): string {
-  return MODEL_LABEL_OVERRIDES[model] ?? model;
+  return getCatalogTeamModelLabel(model) ?? model;
 }
 
 export function getTeamProviderLabel(providerId: 'anthropic' | 'codex' | 'gemini'): string {
-  switch (providerId) {
-    case 'codex':
-      return 'Codex';
-    case 'gemini':
-      return 'Gemini';
-    case 'anthropic':
-    default:
-      return 'Anthropic';
-  }
+  return getCatalogTeamProviderLabel(providerId) ?? 'Anthropic';
 }
 
 export function getTeamEffortLabel(effort: string): string {
@@ -221,16 +172,7 @@ export function formatTeamModelSummary(
   const modelLabel = model.trim() ? getTeamModelLabel(model.trim()) : 'Default';
   const effortLabel = effort?.trim() ? getTeamEffortLabel(effort) : '';
 
-  const normalizedProvider = providerLabel.trim().toLowerCase();
-  const normalizedModel = modelLabel.trim().toLowerCase();
-  const modelAlreadyCarriesProviderBrand =
-    modelLabel !== 'Default' &&
-    (normalizedModel.startsWith(normalizedProvider) ||
-      (providerId === 'anthropic' && normalizedModel.startsWith('claude')) ||
-      (providerId === 'codex' && normalizedModel.startsWith('codex')) ||
-      (providerId === 'codex' && normalizedModel.startsWith('gpt')) ||
-      (providerId === 'gemini' && normalizedModel.startsWith('gemini')));
-
+  const modelAlreadyCarriesProviderBrand = doesTeamModelCarryProviderBrand(providerId, modelLabel);
   const providerActsAsBackendOnly =
     providerId !== 'anthropic' && modelLabel !== 'Default' && !modelAlreadyCarriesProviderBrand;
 
@@ -336,12 +278,7 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
   }, [normalizedValue, onValueChange, value]);
 
   const modelOptions = useMemo(() => {
-    const fallback =
-      effectiveProviderId === 'codex'
-        ? CODEX_MODEL_OPTIONS
-        : effectiveProviderId === 'gemini'
-          ? GEMINI_MODEL_OPTIONS
-          : ANTHROPIC_MODEL_OPTIONS;
+    const fallback = getTeamProviderModelOptions(effectiveProviderId);
     if (effectiveProviderId === 'anthropic' || runtimeModels.length === 0) {
       return [...fallback];
     }
@@ -469,10 +406,6 @@ export const TeamModelSelector: React.FC<TeamModelSelectorProps> = ({
             Codex and Gemini require Multimodel mode.
           </p>
         )}
-        {disableGeminiOption && isGeminiUiFrozen() && (
-          <p className="text-[11px] text-[var(--color-text-muted)]">{GEMINI_UI_DISABLED_REASON}.</p>
-        )}
-
         <div
           className="grid gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5"
           style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}

@@ -1,4 +1,9 @@
 import { displayMemberName } from '@renderer/utils/memberHelpers';
+import {
+  doesTeamModelCarryProviderBrand,
+  getTeamModelLabel,
+  getTeamProviderLabel,
+} from '@renderer/utils/teamModelCatalog';
 
 import type { InboxMessage } from '@shared/types';
 
@@ -36,58 +41,6 @@ function parseProviderId(value: string | undefined): TeamProviderId | null {
   return null;
 }
 
-function getTeamModelLabel(model: string): string {
-  const trimmed = model.trim();
-  switch (trimmed) {
-    case 'gemini-2.5-pro':
-      return 'Gemini 2.5 Pro';
-    case 'gemini-2.5-flash':
-      return 'Gemini 2.5 Flash';
-    case 'gemini-2.5-flash-lite':
-      return 'Gemini 2.5 Flash Lite';
-    case 'gpt-5.4':
-      return 'GPT-5.4';
-    case 'gpt-5.4-mini':
-      return 'GPT-5.4 Mini';
-    case 'gpt-5.3-codex':
-      return 'GPT-5.3 Codex';
-    case 'gpt-5.3-codex-spark':
-      return 'GPT-5.3 Codex Spark';
-    case 'gpt-5.2':
-      return 'GPT-5.2';
-    case 'gpt-5.2-codex':
-      return 'GPT-5.2 Codex';
-    case 'gpt-5.1-codex-mini':
-      return 'GPT-5.1 Codex Mini';
-    case 'gpt-5.1-codex-max':
-      return 'GPT-5.1 Codex Max';
-    case 'claude-sonnet-4-6':
-      return 'Sonnet 4.6';
-    case 'claude-sonnet-4-6[1m]':
-      return 'Sonnet 4.6 (1M)';
-    case 'claude-opus-4-6':
-      return 'Opus 4.6';
-    case 'claude-opus-4-6[1m]':
-      return 'Opus 4.6 (1M)';
-    case 'claude-haiku-4-5-20251001':
-      return 'Haiku 4.5';
-    default:
-      return trimmed || 'Default';
-  }
-}
-
-function getTeamProviderLabel(providerId: TeamProviderId): string {
-  switch (providerId) {
-    case 'codex':
-      return 'Codex';
-    case 'gemini':
-      return 'Gemini';
-    case 'anthropic':
-    default:
-      return 'Anthropic';
-  }
-}
-
 function getTeamEffortLabel(effort: string | undefined): string {
   const trimmed = effort?.trim() ?? '';
   return trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : 'Default';
@@ -105,18 +58,13 @@ function buildRuntimeSummary(
   effort: string | undefined
 ): string | undefined {
   if (providerId) {
-    const providerLabel = getTeamProviderLabel(providerId);
-    const modelLabel = model ? getTeamModelLabel(model) : 'Default';
+    const providerLabel = getTeamProviderLabel(providerId) ?? 'Anthropic';
+    const modelLabel = model ? (getTeamModelLabel(model) ?? model) : 'Default';
     const effortLabel = getTeamEffortLabel(effort);
-    const normalizedProvider = providerLabel.trim().toLowerCase();
-    const normalizedModel = modelLabel.trim().toLowerCase();
-    const modelAlreadyCarriesProviderBrand =
-      modelLabel !== 'Default' &&
-      (normalizedModel.startsWith(normalizedProvider) ||
-        (providerId === 'anthropic' && normalizedModel.startsWith('claude')) ||
-        (providerId === 'codex' &&
-          (normalizedModel.startsWith('codex') || normalizedModel.startsWith('gpt'))) ||
-        (providerId === 'gemini' && normalizedModel.startsWith('gemini')));
+    const modelAlreadyCarriesProviderBrand = doesTeamModelCarryProviderBrand(
+      providerId,
+      modelLabel
+    );
 
     const providerActsAsBackendOnly =
       providerId !== 'anthropic' && modelLabel !== 'Default' && !modelAlreadyCarriesProviderBrand;
@@ -129,9 +77,9 @@ function buildRuntimeSummary(
     return parts.filter(Boolean).join(' · ');
   }
 
-  const modelLabel = model ? getTeamModelLabel(model) : '';
+  const modelLabel = model ? (getTeamModelLabel(model) ?? model) : '';
   const effortLabel = effort ? getTeamEffortLabel(effort) : '';
-  const providerLabel = providerId ? getTeamProviderLabel(providerId) : '';
+  const providerLabel = providerId ? (getTeamProviderLabel(providerId) ?? '') : '';
   return [providerLabel, modelLabel, effortLabel].filter(Boolean).join(' · ') || undefined;
 }
 

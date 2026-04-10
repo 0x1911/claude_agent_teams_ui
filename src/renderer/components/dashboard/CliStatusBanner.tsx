@@ -11,16 +11,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { api, isElectronMode } from '@renderer/api';
 import { confirm } from '@renderer/components/common/ConfirmDialog';
-import { ProviderRuntimeSettingsDialog } from '@renderer/components/runtime/ProviderRuntimeSettingsDialog';
+import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
 import { getProviderRuntimeBackendSummary } from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
+import { ProviderRuntimeSettingsDialog } from '@renderer/components/runtime/ProviderRuntimeSettingsDialog';
 import { SettingsToggle } from '@renderer/components/settings/components';
-import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import { TerminalLogPanel } from '@renderer/components/terminal/TerminalLogPanel';
 import { TerminalModal } from '@renderer/components/terminal/TerminalModal';
 import { useCliInstaller } from '@renderer/hooks/useCliInstaller';
 import { useStore } from '@renderer/store';
+import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import { formatBytes } from '@renderer/utils/formatters';
 import { filterMainScreenCliProviders } from '@renderer/utils/geminiUiFreeze';
+import {
+  getTeamModelBadgeLabel,
+  getVisibleTeamProviderModels,
+} from '@renderer/utils/teamModelCatalog';
 import {
   AlertTriangle,
   CheckCircle,
@@ -265,32 +270,25 @@ function formatProviderStatus(provider: CliProviderStatus): string {
 }
 
 function formatProviderModels(provider: CliProviderStatus): string | null {
-  return provider.models.length > 0 ? provider.models.join(', ') : null;
+  const visibleModels = getVisibleTeamProviderModels(provider.providerId, provider.models);
+  return visibleModels.length > 0 ? visibleModels.join(', ') : null;
 }
 
 function formatModelBadgeLabel(providerId: CliProviderId, model: string): string {
-  if (providerId === 'anthropic') {
-    return model.replace(/^claude-/, '');
-  }
-  if (providerId === 'codex') {
-    return model.replace(/^gpt-/, '');
-  }
-  if (providerId === 'gemini') {
-    return model.replace(/^gemini-/, '');
-  }
-  return model;
+  return getTeamModelBadgeLabel(providerId, model) ?? model;
 }
 
-function ModelBadges({
+const ModelBadges = ({
   providerId,
   models,
 }: {
-  providerId: CliProviderId;
-  models: string[];
-}): React.JSX.Element {
+  readonly providerId: CliProviderId;
+  readonly models: string[];
+}): React.JSX.Element => {
+  const visibleModels = getVisibleTeamProviderModels(providerId, models);
   return (
     <div className="flex flex-wrap gap-1.5">
-      {models.map((model) => (
+      {visibleModels.map((model) => (
         <span
           key={model}
           className="rounded-md border px-1.5 py-px font-mono text-[10px] leading-4"
@@ -305,9 +303,9 @@ function ModelBadges({
       ))}
     </div>
   );
-}
+};
 
-function ProviderDetailSkeleton(): React.JSX.Element {
+const ProviderDetailSkeleton = (): React.JSX.Element => {
   return (
     <div className="mt-1 space-y-2">
       <div
@@ -329,7 +327,7 @@ function ProviderDetailSkeleton(): React.JSX.Element {
       </div>
     </div>
   );
-}
+};
 
 function isProviderCardLoading(provider: CliProviderStatus, providerLoading: boolean): boolean {
   return (
@@ -535,14 +533,23 @@ const InstalledBanner = ({
             return (
               <div
                 key={provider.providerId}
-                className="grid min-h-[132px] grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 rounded-md px-2 py-2"
+                className="grid min-h-[132px] grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 rounded-md p-2"
                 style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)' }}
               >
                 <div className="col-span-2 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
-                        {provider.displayName}
+                      <span className="flex items-center gap-2">
+                        <ProviderBrandLogo
+                          providerId={provider.providerId}
+                          className="size-4 shrink-0"
+                        />
+                        <span
+                          className="text-xs font-medium"
+                          style={{ color: 'var(--color-text)' }}
+                        >
+                          {provider.displayName}
+                        </span>
                       </span>
                       <span
                         className="text-xs"
@@ -557,7 +564,7 @@ const InstalledBanner = ({
                       <ProviderDetailSkeleton />
                     ) : (
                       <div
-                        className="mt-1 flex min-h-[2.75rem] flex-wrap items-center gap-x-3 gap-y-1 text-[11px]"
+                        className="mt-1 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 text-[11px]"
                         style={{ color: 'var(--color-text-muted)' }}
                       >
                         {provider.backend?.label && (
@@ -1058,7 +1065,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   }
 
   // ── Completed ──────────────────────────────────────────────────────────
-  if (installerState === 'completed' && (!cliStatus || !cliStatus.installed)) {
+  if (installerState === 'completed' && !cliStatus?.installed) {
     return <InstallCompletedNotice version={completedVersion} />;
   }
 

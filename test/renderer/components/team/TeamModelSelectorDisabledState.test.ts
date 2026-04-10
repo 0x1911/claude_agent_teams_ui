@@ -171,7 +171,8 @@ describe('TeamModelSelector disabled Codex models', () => {
     });
 
     expect(host.textContent).toContain('OpenCode');
-    expect(host.textContent?.match(/In development/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(host.textContent).not.toContain('Gemini in development');
+    expect(host.textContent?.match(/In development/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
 
     const buttons = Array.from(host.querySelectorAll('button'));
     const openCodeButton = buttons.find((button) => button.textContent?.includes('OpenCode'));
