@@ -232,6 +232,10 @@
         "to": "pricing.json"
       },
       {
+        "from": "resources/runtime",
+        "to": "runtime"
+      },
+      {
         "from": "mcp-server/dist/index.js",
         "to": "mcp-server/index.js"
       },
@@ -241,6 +245,7 @@
       }
     ],
     "npmRebuild": false,
+    "afterPack": "scripts/electron-builder/afterPack.cjs",
     "extraMetadata": {
       "main": "dist-electron/main/index.cjs"
     },

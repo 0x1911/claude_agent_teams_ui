@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 
-import { Checkbox } from '@renderer/components/ui/checkbox';
-import { Label } from '@renderer/components/ui/label';
 import { EffortLevelSelector } from '@renderer/components/team/dialogs/EffortLevelSelector';
 import { LimitContextCheckbox } from '@renderer/components/team/dialogs/LimitContextCheckbox';
 import {
-  getTeamModelLabel,
+  getProviderScopedTeamModelLabel,
   TeamModelSelector,
 } from '@renderer/components/team/dialogs/TeamModelSelector';
+import { Checkbox } from '@renderer/components/ui/checkbox';
+import { Label } from '@renderer/components/ui/label';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
 import { getMemberColorByName } from '@shared/constants/memberColors';
@@ -49,7 +49,9 @@ export const LeadModelRow = ({
   const { isLight } = useTheme();
   const [modelExpanded, setModelExpanded] = useState(false);
   const leadColorSet = getTeamColorSet(getMemberColorByName('lead'));
-  const modelButtonLabel = model.trim() ? getTeamModelLabel(model.trim()) : 'Default';
+  const modelButtonLabel = model.trim()
+    ? getProviderScopedTeamModelLabel(providerId, model.trim())
+    : 'Default';
 
   return (
     <div
@@ -90,11 +92,11 @@ export const LeadModelRow = ({
         </div>
       </div>
       <div className="space-y-1">
-        <div className="min-w-0 space-y-1">
+        <div className="w-full min-w-0 space-y-1 sm:w-[150px] sm:min-w-[150px]">
           <Button
             variant="outline"
             size="sm"
-            className="h-8 max-w-[220px] shrink-0 justify-start gap-1 overflow-hidden text-left"
+            className="h-8 w-full justify-start gap-1 overflow-hidden text-left"
             onClick={() => setModelExpanded((prev) => !prev)}
           >
             {modelExpanded ? (

@@ -321,7 +321,17 @@ export interface AppConfig {
     /** Send anonymous crash & performance telemetry (requires SENTRY_DSN at build time) */
     telemetryEnabled: boolean;
   };
-  /** Runtime backend preferences for app-launched free-code sessions */
+  /** Provider connection preferences for app-launched multimodel sessions */
+  providerConnections: {
+    anthropic: {
+      authMode: 'auto' | 'oauth' | 'api_key';
+    };
+    codex: {
+      apiKeyBetaEnabled: boolean;
+      authMode: 'oauth' | 'api_key';
+    };
+  };
+  /** Runtime backend preferences for app-launched agent_teams_orchestrator sessions */
   runtime: {
     providerBackends: {
       gemini: 'auto' | 'api' | 'cli-sdk';

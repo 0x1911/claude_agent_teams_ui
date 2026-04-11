@@ -233,7 +233,7 @@ export interface TeamTask {
   blockedBy?: string[];
   /**
    * Explicit task links (non-blocking). Used for navigation between related tasks,
-   * e.g. "review task" ↔ "work task".
+   * e.g. "frontend task" ↔ "backend task" or a rare meta reminder ↔ the main work task.
    */
   related?: string[];
   createdAt?: string;

@@ -13,6 +13,7 @@ import { buildEnrichedEnv } from '@main/utils/cliEnv';
 import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
 import { createLogger } from '@shared/utils/logger';
 
+import { providerConnectionService } from '../runtime/ProviderConnectionService';
 import {
   applyConfiguredRuntimeBackendsEnv,
   applyProviderRuntimeEnv,
@@ -105,13 +106,18 @@ export class ScheduledTaskExecutor {
 
     logger.info(`[${request.runId}] Spawning: ${binaryPath} ${args.join(' ')}`);
 
-    const env = applyProviderRuntimeEnv(
-      applyConfiguredRuntimeBackendsEnv({
-        ...buildEnrichedEnv(binaryPath),
-        ...shellEnv,
-        CLAUDECODE: undefined,
-      }),
-      request.config.providerId
+    const env = await providerConnectionService.applyConfiguredConnectionEnv(
+      applyProviderRuntimeEnv(
+        applyConfiguredRuntimeBackendsEnv({
+          ...buildEnrichedEnv(binaryPath),
+          ...shellEnv,
+          CLAUDECODE: undefined,
+        }),
+        request.config.providerId
+      ),
+      request.config.providerId === 'codex' || request.config.providerId === 'gemini'
+        ? request.config.providerId
+        : 'anthropic'
     );
 
     const child = spawnCli(binaryPath, args, {

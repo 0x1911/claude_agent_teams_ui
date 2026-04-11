@@ -21,9 +21,22 @@ export type CliPlatform =
   | 'win32-x64'
   | 'win32-arm64';
 
-export type CliFlavor = 'claude' | 'free-code';
+export type CliFlavor = 'claude' | 'agent_teams_orchestrator';
 
 export type CliProviderId = 'anthropic' | 'codex' | 'gemini';
+export type CliProviderAuthMode = 'auto' | 'oauth' | 'api_key';
+
+export interface CliProviderConnectionInfo {
+  supportsOAuth: boolean;
+  supportsApiKey: boolean;
+  configurableAuthModes: CliProviderAuthMode[];
+  configuredAuthMode: CliProviderAuthMode | null;
+  apiKeyBetaAvailable?: boolean;
+  apiKeyBetaEnabled?: boolean;
+  apiKeyConfigured: boolean;
+  apiKeySource: 'stored' | 'environment' | null;
+  apiKeySourceLabel?: string | null;
+}
 
 export interface CliProviderBackendOption {
   id: string;
@@ -69,6 +82,7 @@ export interface CliProviderStatus {
     projectId?: string | null;
     authMethodDetail?: string | null;
   } | null;
+  connection?: CliProviderConnectionInfo | null;
 }
 
 export interface CliFlavorUiOptions {
@@ -96,12 +110,14 @@ export interface CliInstallationStatus {
   showVersionDetails: boolean;
   /** Whether binary path should be shown in the UI */
   showBinaryPath: boolean;
-  /** Whether CLI binary is found on the system */
+  /** Whether the CLI was found and passed the startup health check (`--version`) */
   installed: boolean;
   /** Installed version string (e.g. "2.1.59"), null if not installed */
   installedVersion: string | null;
-  /** Absolute path to the resolved binary, null if not found */
+  /** Absolute path to the resolved binary candidate, null if not found */
   binaryPath: string | null;
+  /** Probe failure when a binary was found but could not be started */
+  launchError?: string | null;
   /** Latest available version from GCS, null if check failed */
   latestVersion: string | null;
   /** True when installed version < latest version */

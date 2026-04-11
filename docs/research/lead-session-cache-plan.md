@@ -31,11 +31,11 @@ Today, `getTeamData()` repeatedly pays for lead-session history assembly:
 
 Relevant code:
 
-- [src/main/services/team/TeamDataService.ts#L494](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamDataService.ts#L494)
-- [src/main/services/team/TeamDataService.ts#L2150](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamDataService.ts#L2150)
-- [src/main/services/team/TeamDataService.ts#L2324](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamDataService.ts#L2324)
-- [src/main/services/team/leadSessionMessageExtractor.ts#L96](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/leadSessionMessageExtractor.ts#L96)
-- [src/main/utils/pathDecoder.ts#L5](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/utils/pathDecoder.ts#L5)
+- [src/main/services/team/TeamDataService.ts#L494](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamDataService.ts#L494)
+- [src/main/services/team/TeamDataService.ts#L2150](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamDataService.ts#L2150)
+- [src/main/services/team/TeamDataService.ts#L2324](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamDataService.ts#L2324)
+- [src/main/services/team/leadSessionMessageExtractor.ts#L96](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/leadSessionMessageExtractor.ts#L96)
+- [src/main/utils/pathDecoder.ts#L5](/Users/belief/dev/projects/claude/claude_team/src/main/utils/pathDecoder.ts#L5)
 
 This is safer than introducing a new lightweight IPC path because it does not change:
 
@@ -94,8 +94,8 @@ Why:
 
 Relevant code:
 
-- [src/main/services/team/TeamDataService.ts#L2135](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamDataService.ts#L2135)
-- [src/main/utils/pathDecoder.ts#L27](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/utils/pathDecoder.ts#L27)
+- [src/main/services/team/TeamDataService.ts#L2135](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamDataService.ts#L2135)
+- [src/main/utils/pathDecoder.ts#L27](/Users/belief/dev/projects/claude/claude_team/src/main/utils/pathDecoder.ts#L27)
 
 Rule:
 
@@ -107,7 +107,7 @@ This cache must not use time-based correctness semantics.
 
 There is a TTL-based advisory cache elsewhere:
 
-- [src/main/services/team/TeamMemberRuntimeAdvisoryService.ts](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamMemberRuntimeAdvisoryService.ts)
+- [src/main/services/team/TeamMemberRuntimeAdvisoryService.ts](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamMemberRuntimeAdvisoryService.ts)
 
 That pattern is not appropriate here because lead-session rows are part of user-visible truth.
 
@@ -274,7 +274,7 @@ Do not:
 
 Relevant renderer equality code:
 
-- [src/renderer/utils/messageRenderEquality.ts](/Users/belief/dev/projects/claude/claude_team_freecode/src/renderer/utils/messageRenderEquality.ts)
+- [src/renderer/utils/messageRenderEquality.ts](/Users/belief/dev/projects/claude/claude_team/src/renderer/utils/messageRenderEquality.ts)
 
 ### 7. Bounded storage
 
@@ -504,7 +504,7 @@ Decision:
 
 ## Testing Plan
 
-In [test/main/services/team/TeamDataService.test.ts](/Users/belief/dev/projects/claude/claude_team_freecode/test/main/services/team/TeamDataService.test.ts) or a dedicated cache test:
+In [test/main/services/team/TeamDataService.test.ts](/Users/belief/dev/projects/claude/claude_team/test/main/services/team/TeamDataService.test.ts) or a dedicated cache test:
 
 1. repeated extraction of the same unchanged JSONL uses cached results
 2. append invalidates cache and returns fresh results
@@ -519,7 +519,7 @@ In [test/main/services/team/TeamDataService.test.ts](/Users/belief/dev/projects/
 11. if the file changes during parse, result is returned but not stored in fulfilled cache
 12. fresh `TeamDataService` instances do not share hidden cache state
 
-In [test/main/services/team/leadSessionMessageExtractor.test.ts](/Users/belief/dev/projects/claude/claude_team_freecode/test/main/services/team/leadSessionMessageExtractor.test.ts):
+In [test/main/services/team/leadSessionMessageExtractor.test.ts](/Users/belief/dev/projects/claude/claude_team/test/main/services/team/leadSessionMessageExtractor.test.ts):
 
 13. existing extraction semantics remain unchanged
 

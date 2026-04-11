@@ -147,6 +147,24 @@ export class ApiKeyService {
       }));
   }
 
+  async lookupPreferred(envVarName: string): Promise<ApiKeyLookupResult | null> {
+    const keys = await this.readStore();
+    const matching = keys.filter((key) => key.envVarName === envVarName);
+    const preferred =
+      matching.find((key) => key.scope === 'user') ??
+      matching.find((key) => key.scope === 'project') ??
+      null;
+
+    if (!preferred) {
+      return null;
+    }
+
+    return {
+      envVarName: preferred.envVarName,
+      value: this.decrypt(preferred),
+    };
+  }
+
   async getStorageStatus(): Promise<ApiKeyStorageStatus> {
     const secure = this.isSecureBackend();
     const backend = this.getBackendName();
@@ -171,15 +189,12 @@ export class ApiKeyService {
       return;
     }
 
-    const lookups = await this.lookup([...envVarNames]);
-    const valueByEnv = new Map(lookups.map((entry) => [entry.envVarName, entry.value]));
-
     for (const envVarName of envVarNames) {
       if (!this.originalProcessEnv.has(envVarName)) {
         this.originalProcessEnv.set(envVarName, process.env[envVarName]);
       }
 
-      const nextValue = valueByEnv.get(envVarName);
+      const nextValue = (await this.lookupPreferred(envVarName))?.value;
       if (nextValue && nextValue.trim().length > 0) {
         process.env[envVarName] = nextValue;
         continue;

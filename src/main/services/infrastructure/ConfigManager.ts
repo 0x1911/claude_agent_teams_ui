@@ -224,6 +224,19 @@ export interface RuntimeConfig {
   };
 }
 
+export type ProviderConnectionAuthMode = 'auto' | 'oauth' | 'api_key';
+export type CodexProviderConnectionAuthMode = Exclude<ProviderConnectionAuthMode, 'auto'>;
+
+export interface ProviderConnectionsConfig {
+  anthropic: {
+    authMode: ProviderConnectionAuthMode;
+  };
+  codex: {
+    apiKeyBetaEnabled: boolean;
+    authMode: CodexProviderConnectionAuthMode;
+  };
+}
+
 export interface DisplayConfig {
   showTimestamps: boolean;
   compactMode: boolean;
@@ -256,6 +269,7 @@ export interface HttpServerConfig {
 export interface AppConfig {
   notifications: NotificationConfig;
   general: GeneralConfig;
+  providerConnections: ProviderConnectionsConfig;
   runtime: RuntimeConfig;
   display: DisplayConfig;
   sessions: SessionsConfig;
@@ -308,6 +322,15 @@ const DEFAULT_CONFIG: AppConfig = {
     useNativeTitleBar: false,
     customProjectPaths: [],
     telemetryEnabled: true,
+  },
+  providerConnections: {
+    anthropic: {
+      authMode: 'auto',
+    },
+    codex: {
+      apiKeyBetaEnabled: false,
+      authMode: 'oauth',
+    },
   },
   runtime: {
     providerBackends: {
@@ -484,6 +507,16 @@ export class ConfigManager {
         triggers: mergedTriggers,
       },
       general: mergedGeneral,
+      providerConnections: {
+        anthropic: {
+          ...DEFAULT_CONFIG.providerConnections.anthropic,
+          ...(loaded.providerConnections?.anthropic ?? {}),
+        },
+        codex: {
+          ...DEFAULT_CONFIG.providerConnections.codex,
+          ...(loaded.providerConnections?.codex ?? {}),
+        },
+      },
       runtime: {
         providerBackends: {
           ...DEFAULT_CONFIG.runtime.providerBackends,
@@ -562,7 +595,7 @@ export class ConfigManager {
     section: K,
     data: Partial<AppConfig[K]>
   ): Partial<AppConfig[K]> {
-    if (section !== 'general' && section !== 'runtime') {
+    if (section !== 'general' && section !== 'runtime' && section !== 'providerConnections') {
       return data;
     }
 
@@ -573,6 +606,21 @@ export class ConfigManager {
         providerBackends: {
           ...this.config.runtime.providerBackends,
           ...runtimeUpdate.providerBackends,
+        },
+      } as unknown as Partial<AppConfig[K]>;
+    }
+
+    if (section === 'providerConnections') {
+      const connectionUpdate = data as Partial<ProviderConnectionsConfig>;
+      return {
+        ...connectionUpdate,
+        anthropic: {
+          ...this.config.providerConnections.anthropic,
+          ...(connectionUpdate.anthropic ?? {}),
+        },
+        codex: {
+          ...this.config.providerConnections.codex,
+          ...(connectionUpdate.codex ?? {}),
         },
       } as unknown as Partial<AppConfig[K]>;
     }

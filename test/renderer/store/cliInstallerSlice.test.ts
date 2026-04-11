@@ -167,6 +167,48 @@ describe('cliInstallerSlice', () => {
       expect(useStore.getState().cliStatusLoading).toBe(false);
       expect(api.cliInstaller.getProviderStatus).not.toHaveBeenCalled();
     });
+
+    it('does not fetch provider status when the multimodel runtime fails its health check', async () => {
+      const mockStatus: CliInstallationStatus = {
+        flavor: 'agent_teams_orchestrator',
+        displayName: 'agent_teams_orchestrator',
+        supportsSelfUpdate: false,
+        showVersionDetails: false,
+        showBinaryPath: true,
+        installed: false,
+        installedVersion: null,
+        binaryPath: '/Users/tester/.claude/local/node_modules/.bin/claude',
+        launchError: 'spawn EACCES',
+        latestVersion: null,
+        updateAvailable: false,
+        authLoggedIn: false,
+        authStatusChecking: false,
+        authMethod: null,
+        providers: [
+          {
+            providerId: 'anthropic',
+            displayName: 'Anthropic',
+            supported: false,
+            authenticated: false,
+            authMethod: null,
+            verificationState: 'error',
+            statusMessage: 'Runtime found, but startup health check failed.',
+            models: [],
+            canLoginFromUi: false,
+            capabilities: { teamLaunch: false, oneShot: false },
+            backend: null,
+          },
+        ],
+      };
+      vi.mocked(api.cliInstaller.getStatus).mockResolvedValue(mockStatus);
+
+      await useStore.getState().bootstrapCliStatus({ multimodelEnabled: true });
+
+      expect(useStore.getState().cliStatus).toEqual(mockStatus);
+      expect(useStore.getState().cliStatusLoading).toBe(false);
+      expect(useStore.getState().cliProviderStatusLoading).toEqual({});
+      expect(api.cliInstaller.getProviderStatus).not.toHaveBeenCalled();
+    });
   });
 
   describe('installCli', () => {

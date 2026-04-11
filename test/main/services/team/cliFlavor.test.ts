@@ -25,7 +25,7 @@ describe('cliFlavor', () => {
 
     const { getConfiguredCliFlavor } = await import('@main/services/team/cliFlavor');
 
-    expect(getConfiguredCliFlavor()).toBe('free-code');
+    expect(getConfiguredCliFlavor()).toBe('agent_teams_orchestrator');
   });
 
   it('uses claude runtime when multimodel is disabled in config', async () => {

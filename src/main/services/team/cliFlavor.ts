@@ -1,12 +1,12 @@
-import type { CliFlavor, CliFlavorUiOptions } from '@shared/types';
-
 import { configManager } from '../infrastructure/ConfigManager';
 
-export const DEFAULT_CLI_FLAVOR: CliFlavor = 'free-code';
+import type { CliFlavor, CliFlavorUiOptions } from '@shared/types';
+
+export const DEFAULT_CLI_FLAVOR: CliFlavor = 'agent_teams_orchestrator';
 
 function parseFlavorOverride(raw: string | undefined): CliFlavor | null {
   const trimmed = raw?.trim();
-  if (trimmed === 'claude' || trimmed === 'free-code') {
+  if (trimmed === 'claude' || trimmed === 'agent_teams_orchestrator') {
     return trimmed;
   }
   return null;
@@ -19,14 +19,14 @@ export function getConfiguredCliFlavor(): CliFlavor {
   }
 
   const multimodelEnabled = configManager.getConfig().general.multimodelEnabled;
-  return multimodelEnabled ? 'free-code' : 'claude';
+  return multimodelEnabled ? 'agent_teams_orchestrator' : 'claude';
 }
 
 export function getCliFlavorUiOptions(flavor: CliFlavor): CliFlavorUiOptions {
   switch (flavor) {
-    case 'free-code':
+    case 'agent_teams_orchestrator':
       return {
-        displayName: 'free-code-gemini-research',
+        displayName: 'agent_teams_orchestrator',
         supportsSelfUpdate: false,
         showVersionDetails: false,
         showBinaryPath: false,

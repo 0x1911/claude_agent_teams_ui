@@ -57,11 +57,11 @@ Main failure modes to avoid:
 
 Relevant code:
 
-- [src/main/services/team/TeamDataService.ts#L501](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamDataService.ts#L501)
-- [src/main/ipc/teams.ts#L540](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/ipc/teams.ts#L540)
-- [src/renderer/store/index.ts#L938](/Users/belief/dev/projects/claude/claude_team_freecode/src/renderer/store/index.ts#L938)
-- [src/main/services/team/TeamInboxReader.ts#L182](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamInboxReader.ts#L182)
-- [agent-teams-controller/src/internal/processStore.js#L29](/Users/belief/dev/projects/claude/claude_team_freecode/agent-teams-controller/src/internal/processStore.js#L29)
+- [src/main/services/team/TeamDataService.ts#L501](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamDataService.ts#L501)
+- [src/main/ipc/teams.ts#L540](/Users/belief/dev/projects/claude/claude_team/src/main/ipc/teams.ts#L540)
+- [src/renderer/store/index.ts#L938](/Users/belief/dev/projects/claude/claude_team/src/renderer/store/index.ts#L938)
+- [src/main/services/team/TeamInboxReader.ts#L182](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamInboxReader.ts#L182)
+- [agent-teams-controller/src/internal/processStore.js#L29](/Users/belief/dev/projects/claude/claude_team/agent-teams-controller/src/internal/processStore.js#L29)
 
 ## Hard Non-Goals
 
@@ -174,8 +174,8 @@ Why this section exists:
 
 Relevant code:
 
-- [src/main/services/team/TeamDataService.ts#L874](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamDataService.ts#L874)
-- [agent-teams-controller/src/internal/processStore.js#L29](/Users/belief/dev/projects/claude/claude_team_freecode/agent-teams-controller/src/internal/processStore.js#L29)
+- [src/main/services/team/TeamDataService.ts#L874](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamDataService.ts#L874)
+- [agent-teams-controller/src/internal/processStore.js#L29](/Users/belief/dev/projects/claude/claude_team/agent-teams-controller/src/internal/processStore.js#L29)
 
 Rule:
 
@@ -187,8 +187,8 @@ Rule:
 
 Relevant code:
 
-- [src/main/services/team/TeamInboxReader.ts#L14](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamInboxReader.ts#L14)
-- [src/main/services/team/TeamInboxReader.ts#L182](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamInboxReader.ts#L182)
+- [src/main/services/team/TeamInboxReader.ts#L14](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamInboxReader.ts#L14)
+- [src/main/services/team/TeamInboxReader.ts#L182](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamInboxReader.ts#L182)
 
 Implication:
 
@@ -201,8 +201,8 @@ Implication:
 
 Relevant code:
 
-- [src/main/services/team/TeamDataService.ts#L549](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamDataService.ts#L549)
-- [src/main/services/team/TeamInboxReader.ts#L182](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamInboxReader.ts#L182)
+- [src/main/services/team/TeamDataService.ts#L549](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamDataService.ts#L549)
+- [src/main/services/team/TeamInboxReader.ts#L182](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamInboxReader.ts#L182)
 
 Implication:
 
@@ -259,7 +259,7 @@ Rule:
 
 Relevant code:
 
-- [src/main/services/team/TeamDataService.ts#L740](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamDataService.ts#L740)
+- [src/main/services/team/TeamDataService.ts#L740](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamDataService.ts#L740)
 
 Rule:
 
@@ -501,7 +501,7 @@ Why:
 
 ## Diagnostics And Marks
 
-Current `mark(...)` timestamps feed the slow log in [TeamDataService.ts#L804](/Users/belief/dev/projects/claude/claude_team_freecode/src/main/services/team/TeamDataService.ts#L804).
+Current `mark(...)` timestamps feed the slow log in [TeamDataService.ts#L804](/Users/belief/dev/projects/claude/claude_team/src/main/services/team/TeamDataService.ts#L804).
 
 Do not lose that.
 
@@ -956,7 +956,7 @@ Why this matters:
 
 ## Testing Plan
 
-Add focused tests in [TeamDataService.test.ts](/Users/belief/dev/projects/claude/claude_team_freecode/test/main/services/team/TeamDataService.test.ts).
+Add focused tests in [TeamDataService.test.ts](/Users/belief/dev/projects/claude/claude_team/test/main/services/team/TeamDataService.test.ts).
 
 ### Preferred test technique
 

@@ -39,14 +39,15 @@ export function createLoadingMultimodelCliStatus(): CliInstallationStatus {
   }));
 
   return {
-    flavor: 'free-code',
-    displayName: 'free-code-gemini-research',
+    flavor: 'agent_teams_orchestrator',
+    displayName: 'agent_teams_orchestrator',
     supportsSelfUpdate: false,
     showVersionDetails: false,
     showBinaryPath: false,
     installed: true,
     installedVersion: null,
     binaryPath: null,
+    launchError: null,
     latestVersion: null,
     updateAvailable: false,
     authLoggedIn: false,
@@ -143,7 +144,7 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
 
     try {
       const metadata = await api.cliInstaller.getStatus();
-      if (metadata.flavor !== 'free-code') {
+      if (metadata.flavor !== 'agent_teams_orchestrator') {
         set((state) => {
           if (epoch !== cliStatusEpoch) {
             return {};
@@ -175,14 +176,28 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
             installed: metadata.installed,
             installedVersion: metadata.installedVersion,
             binaryPath: metadata.binaryPath,
+            launchError: metadata.launchError ?? null,
             latestVersion: metadata.latestVersion,
             updateAvailable: metadata.updateAvailable,
-            authStatusChecking: state.cliStatus.providers.some(
-              (provider) => provider.statusMessage === 'Checking...'
-            ),
+            authStatusChecking:
+              metadata.installed &&
+              state.cliStatus.providers.some(
+                (provider) => provider.statusMessage === 'Checking...'
+              ),
+            providers: metadata.installed ? state.cliStatus.providers : metadata.providers,
           },
         };
       });
+
+      if (!metadata.installed) {
+        if (epoch === cliStatusEpoch) {
+          set({
+            cliStatusLoading: false,
+            cliProviderStatusLoading: {},
+          });
+        }
+        return;
+      }
     } catch (error) {
       logger.warn('Failed to hydrate CLI metadata during provider-first bootstrap:', error);
     }
@@ -216,11 +231,13 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
           return;
         }
         set({ cliStatus: status, cliProviderStatusLoading: {} });
-        for (const provider of status.providers) {
-          void get().fetchCliProviderStatus(provider.providerId, {
-            silent: true,
-            epoch,
-          });
+        if (status.installed) {
+          for (const provider of status.providers) {
+            void get().fetchCliProviderStatus(provider.providerId, {
+              silent: true,
+              epoch,
+            });
+          }
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to check CLI status';
@@ -237,6 +254,9 @@ export const createCliInstallerSlice: StateCreator<AppState, [], [], CliInstalle
 
   fetchCliProviderStatus: async (providerId, options) => {
     if (!api.cliInstaller) return;
+    if (get().cliStatus && !get().cliStatus?.installed) {
+      return;
+    }
     const inFlight = cliProviderStatusInFlight.get(providerId);
     if (inFlight) return inFlight;
 

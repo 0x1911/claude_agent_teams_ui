@@ -7,6 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AGENT_BLOCK_CLOSE, AGENT_BLOCK_OPEN } from '@shared/constants/agentBlocks';
 
+const hoisted = vi.hoisted(() => ({
+  paths: {
+    claudeRoot: '',
+    teamsBase: '',
+    tasksBase: '',
+  },
+}));
+
 let tempClaudeRoot = '';
 let tempTeamsBase = '';
 let tempTasksBase = '';
@@ -24,14 +32,15 @@ vi.mock('@main/utils/pathDecoder', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@main/utils/pathDecoder')>();
   return {
     ...actual,
-    getAutoDetectedClaudeBasePath: () => tempClaudeRoot,
-    getClaudeBasePath: () => tempClaudeRoot,
-    getTeamsBasePath: () => tempTeamsBase,
-    getTasksBasePath: () => tempTasksBase,
+    getAutoDetectedClaudeBasePath: () => hoisted.paths.claudeRoot,
+    getClaudeBasePath: () => hoisted.paths.claudeRoot,
+    getTeamsBasePath: () => hoisted.paths.teamsBase,
+    getTasksBasePath: () => hoisted.paths.tasksBase,
   };
 });
 
 import {
+  buildAddMemberSpawnMessage,
   TeamProvisioningService,
 } from '@main/services/team/TeamProvisioningService';
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
@@ -90,6 +99,9 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     tempClaudeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-team-prompts-'));
     tempTeamsBase = path.join(tempClaudeRoot, 'teams');
     tempTasksBase = path.join(tempClaudeRoot, 'tasks');
+    hoisted.paths.claudeRoot = tempClaudeRoot;
+    hoisted.paths.teamsBase = tempTeamsBase;
+    hoisted.paths.tasksBase = tempTasksBase;
     setAppDataBasePath(tempClaudeRoot);
     fs.mkdirSync(tempTeamsBase, { recursive: true });
     fs.mkdirSync(tempTasksBase, { recursive: true });
@@ -206,6 +218,12 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(prompt).toContain(
       'review_request already notifies the reviewer, so do NOT send a second manual SendMessage for the same review request'
     );
+    expect(prompt).toContain(
+      'Review is a state transition on the EXISTING work task.'
+    );
+    expect(prompt).toContain(
+      'The REVIEW column is for the same task #X moving through review. It is NOT a signal to create another task for review.'
+    );
     expect(prompt).toContain('task_create_from_message');
     expect(prompt).toContain(`AGENT_BLOCK_OPEN is exactly: ${AGENT_BLOCK_OPEN}`);
     expect(prompt).toContain(`AGENT_BLOCK_CLOSE is exactly: ${AGENT_BLOCK_CLOSE}`);
@@ -256,6 +274,22 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     ]);
 
     await svc.cancelProvisioning(runId);
+  });
+
+  it('add-member spawn prompt tells teammates to keep review on the same task', () => {
+    const prompt = buildAddMemberSpawnMessage('my-team', 'My Team', 'team-lead', {
+      name: 'alice',
+      role: 'developer',
+    });
+
+    expect(prompt).toContain('Review flow rule: review is a state transition on the SAME work task');
+    expect(prompt).toContain('Do NOT create a separate "review task"');
+    expect(prompt).toContain(
+      'If no reviewer exists, leave #X completed.'
+    );
+    expect(prompt).toContain(
+      'If you are the reviewer for task #X, call review_start on #X first, then review_approve or review_request_changes on #X itself.'
+    );
   });
 
   it('launchTeam hydration prompt includes task-comment handling guidance by default', async () => {
@@ -379,6 +413,18 @@ describe('TeamProvisioningService prompt content (solo mode discipline)', () => 
     expect(prompt).toContain('cross_team_send');
     expect(prompt).toContain(
       'review_request already notifies the reviewer'
+    );
+    expect(prompt).toContain(
+      'By default, NEVER create a separate "review task".'
+    );
+    expect(prompt).toContain(
+      'Only move #X into REVIEW when a real reviewer exists for #X.'
+    );
+    expect(prompt).not.toContain(
+      'Only create a separate review reminder/assignment task'
+    );
+    expect(prompt).toContain(
+      'Correct flow: finish implementation on #X -> task_complete #X -> review_request #X -> reviewer runs review_start #X -> reviewer runs review_approve or review_request_changes on #X.'
     );
 
     await svc.cancelProvisioning(runId);

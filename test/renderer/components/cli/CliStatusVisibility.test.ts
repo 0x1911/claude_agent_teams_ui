@@ -2,7 +2,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-type StoreState = {
+interface StoreState {
   cliStatus: Record<string, unknown> | null;
   cliStatusLoading: boolean;
   cliProviderStatusLoading: Record<string, boolean>;
@@ -37,9 +37,12 @@ type StoreState = {
   };
   updateConfig: ReturnType<typeof vi.fn>;
   openExtensionsTab: ReturnType<typeof vi.fn>;
-};
+}
 
 const storeState = {} as StoreState;
+let providerRuntimeSettingsDialogProps: {
+  onSelectBackend?: (providerId: string, backendId: string) => Promise<void> | void;
+} | null = null;
 
 vi.mock('@renderer/api', () => ({
   api: {
@@ -49,11 +52,16 @@ vi.mock('@renderer/api', () => ({
 }));
 
 vi.mock('@renderer/components/common/ConfirmDialog', () => ({
-  confirm: vi.fn(async () => true),
+  confirm: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock('@renderer/components/runtime/ProviderRuntimeSettingsDialog', () => ({
-  ProviderRuntimeSettingsDialog: () => null,
+  ProviderRuntimeSettingsDialog: (props: {
+    onSelectBackend?: (providerId: string, backendId: string) => Promise<void> | void;
+  }) => {
+    providerRuntimeSettingsDialogProps = props;
+    return null;
+  },
 }));
 
 vi.mock('@renderer/components/runtime/ProviderRuntimeBackendSelector', () => ({
@@ -133,6 +141,7 @@ describe('CLI status visibility during completed install state', () => {
   });
 
   beforeEach(() => {
+    providerRuntimeSettingsDialogProps = null;
     storeState.cliStatus = createInstalledCliStatus();
     storeState.cliStatusLoading = false;
     storeState.cliProviderStatusLoading = {};
@@ -145,10 +154,10 @@ describe('CLI status visibility during completed install state', () => {
     storeState.cliInstallerDetail = null;
     storeState.cliInstallerRawChunks = [];
     storeState.cliCompletedVersion = '2.1.100';
-    storeState.bootstrapCliStatus = vi.fn(async () => undefined);
-    storeState.fetchCliStatus = vi.fn(async () => undefined);
-    storeState.fetchCliProviderStatus = vi.fn(async () => undefined);
-    storeState.invalidateCliStatus = vi.fn(async () => undefined);
+    storeState.bootstrapCliStatus = vi.fn().mockResolvedValue(undefined);
+    storeState.fetchCliStatus = vi.fn().mockResolvedValue(undefined);
+    storeState.fetchCliProviderStatus = vi.fn().mockResolvedValue(undefined);
+    storeState.invalidateCliStatus = vi.fn().mockResolvedValue(undefined);
     storeState.installCli = vi.fn();
     storeState.appConfig = {
       general: {
@@ -158,7 +167,7 @@ describe('CLI status visibility during completed install state', () => {
         providerBackends: {},
       },
     };
-    storeState.updateConfig = vi.fn(async () => undefined);
+    storeState.updateConfig = vi.fn().mockResolvedValue(undefined);
     storeState.openExtensionsTab = vi.fn();
   });
 
@@ -209,6 +218,41 @@ describe('CLI status visibility during completed install state', () => {
     });
   });
 
+  it('preserves dashboard runtime backend refresh errors for the manage dialog', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.fetchCliProviderStatus = vi.fn(() =>
+      Promise.reject(new Error('refresh failed'))
+    );
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    const onSelectBackend = providerRuntimeSettingsDialogProps?.onSelectBackend;
+    expect(onSelectBackend).toBeTypeOf('function');
+
+    await expect(onSelectBackend?.('codex', 'api')).rejects.toThrow(
+      'Runtime updated, but failed to refresh provider status.'
+    );
+    expect(storeState.updateConfig).toHaveBeenCalledWith('runtime', {
+      providerBackends: {
+        codex: 'api',
+      },
+    });
+    expect(storeState.fetchCliProviderStatus).toHaveBeenCalledWith('codex');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
   it('keeps auth verification inside the main installed banner instead of rendering a second banner', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.cliInstallerState = 'idle';
@@ -228,6 +272,34 @@ describe('CLI status visibility during completed install state', () => {
 
     expect(host.textContent).toContain('Checking authentication...');
     expect(host.textContent).not.toContain('Verifying authentication...');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('shows a degraded runtime warning when a binary is found but the health check fails', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.cliStatus = createInstalledCliStatus({
+      installed: false,
+      installedVersion: null,
+      binaryPath: '/Users/tester/.claude/local/node_modules/.bin/claude',
+      launchError: 'spawn EACCES',
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('failed to start');
+    expect(host.textContent).toContain('Reinstall Claude CLI');
 
     await act(async () => {
       root.unmount();
@@ -265,6 +337,41 @@ describe('CLI status visibility during completed install state', () => {
     });
 
     expect(storeState.openExtensionsTab).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('preserves settings runtime backend refresh errors for the manage dialog', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.fetchCliProviderStatus = vi.fn(() =>
+      Promise.reject(new Error('refresh failed'))
+    );
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusSection));
+      await Promise.resolve();
+    });
+
+    const onSelectBackend = providerRuntimeSettingsDialogProps?.onSelectBackend;
+    expect(onSelectBackend).toBeTypeOf('function');
+
+    await expect(onSelectBackend?.('codex', 'api')).rejects.toThrow(
+      'Runtime updated, but failed to refresh provider status.'
+    );
+    expect(storeState.updateConfig).toHaveBeenCalledWith('runtime', {
+      providerBackends: {
+        codex: 'api',
+      },
+    });
+    expect(storeState.fetchCliProviderStatus).toHaveBeenCalledWith('codex');
 
     await act(async () => {
       root.unmount();

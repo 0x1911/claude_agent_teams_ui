@@ -8,6 +8,8 @@ const getCachedShellEnvMock = vi.fn<() => NodeJS.ProcessEnv | null>();
 const getShellPreferredHomeMock = vi.fn<() => string>();
 const resolveInteractiveShellEnvMock = vi.fn<() => Promise<NodeJS.ProcessEnv>>();
 const readFileMock = vi.fn<(path: PathLike, encoding: BufferEncoding) => Promise<string>>();
+const enrichProviderStatusMock = vi.fn((provider) => Promise.resolve(provider));
+const enrichProviderStatusesMock = vi.fn((providers) => Promise.resolve(providers));
 
 vi.mock('@main/utils/childProcess', () => ({
   execCli: (...args: Parameters<typeof execCliMock>) => execCliMock(...args),
@@ -25,12 +27,28 @@ vi.mock('@main/utils/shellEnv', () => ({
 
 vi.mock('fs', () => ({
   default: {
+    readFileSync: () => {
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    },
     promises: {
       readFile: (filePath: PathLike, encoding: BufferEncoding) => readFileMock(filePath, encoding),
     },
   },
+  readFileSync: () => {
+    throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+  },
   promises: {
     readFile: (filePath: PathLike, encoding: BufferEncoding) => readFileMock(filePath, encoding),
+  },
+}));
+
+vi.mock('@main/services/runtime/ProviderConnectionService', () => ({
+  providerConnectionService: {
+    enrichProviderStatus: (...args: Parameters<typeof enrichProviderStatusMock>) =>
+      enrichProviderStatusMock(...args),
+    enrichProviderStatuses: (...args: Parameters<typeof enrichProviderStatusesMock>) =>
+      enrichProviderStatusesMock(...args),
+    applyAllConfiguredConnectionEnv: vi.fn((env: NodeJS.ProcessEnv) => Promise.resolve(env)),
   },
 }));
 
@@ -42,25 +60,27 @@ describe('ClaudeMultimodelBridgeService', () => {
     getCachedShellEnvMock.mockReturnValue({});
     getShellPreferredHomeMock.mockReturnValue('/Users/tester');
     resolveInteractiveShellEnvMock.mockResolvedValue({});
-    readFileMock.mockImplementation(async (filePath) => {
+    readFileMock.mockImplementation((filePath) => {
       if (String(filePath) === '/Users/tester/.claude.json') {
-        return JSON.stringify({
-          geminiResolvedBackend: 'cli',
-          geminiLastAuthMethod: 'cli_oauth_personal',
-          geminiProjectId: 'demo-project',
-        });
+        return Promise.resolve(
+          JSON.stringify({
+            geminiResolvedBackend: 'cli',
+            geminiLastAuthMethod: 'cli_oauth_personal',
+            geminiProjectId: 'demo-project',
+          })
+        );
       }
-      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+      return Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
     });
   });
 
   it('parses object-based model lists and exposes Gemini runtime status', async () => {
-    execCliMock.mockImplementation(async (_binaryPath, args, options) => {
+    execCliMock.mockImplementation((_binaryPath, args, options) => {
       const normalizedArgs = Array.isArray(args) ? args.join(' ') : '';
       const env = options?.env ?? {};
 
       if (normalizedArgs === 'auth status --json --provider all') {
-        return {
+        return Promise.resolve({
           stdout: JSON.stringify({
             providers: {
               anthropic: {
@@ -85,11 +105,14 @@ describe('ClaudeMultimodelBridgeService', () => {
           }),
           stderr: '',
           exitCode: 0,
-        };
+        });
       }
 
-      if (normalizedArgs === 'model list --json --provider all' && env.CLAUDE_CODE_USE_GEMINI === '1') {
-        return {
+      if (
+        normalizedArgs === 'model list --json --provider all' &&
+        env.CLAUDE_CODE_ENTRY_PROVIDER === 'gemini'
+      ) {
+        return Promise.resolve({
           stdout: JSON.stringify({
             providers: {
               gemini: {
@@ -99,11 +122,11 @@ describe('ClaudeMultimodelBridgeService', () => {
           }),
           stderr: '',
           exitCode: 0,
-        };
+        });
       }
 
       if (normalizedArgs === 'model list --json --provider all') {
-        return {
+        return Promise.resolve({
           stdout: JSON.stringify({
             providers: {
               anthropic: {
@@ -116,18 +139,17 @@ describe('ClaudeMultimodelBridgeService', () => {
           }),
           stderr: '',
           exitCode: 0,
-        };
+        });
       }
 
-      throw new Error(`Unexpected execCli call: ${normalizedArgs}`);
+      return Promise.reject(new Error(`Unexpected execCli call: ${normalizedArgs}`));
     });
 
-    const { ClaudeMultimodelBridgeService } = await import(
-      '@main/services/runtime/ClaudeMultimodelBridgeService'
-    );
+    const { ClaudeMultimodelBridgeService } =
+      await import('@main/services/runtime/ClaudeMultimodelBridgeService');
     const service = new ClaudeMultimodelBridgeService();
 
-    const providers = await service.getProviderStatuses('/mock/free-code');
+    const providers = await service.getProviderStatuses('/mock/agent_teams_orchestrator');
 
     expect(providers).toHaveLength(3);
     expect(providers[0]).toMatchObject({

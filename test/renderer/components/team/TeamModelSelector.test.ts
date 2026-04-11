@@ -16,10 +16,10 @@ describe('formatTeamModelSummary', () => {
   });
 
   it('keeps native Codex-family models branded normally', () => {
-    expect(formatTeamModelSummary('codex', 'gpt-5.4', 'medium')).toBe('GPT-5.4 · Medium');
+    expect(formatTeamModelSummary('codex', 'gpt-5.4', 'medium')).toBe('5.4 · Medium');
   });
 
-  it('marks GPT-5.1 Codex Mini as disabled only for Codex team selection', () => {
+  it('marks 5.1 Codex Mini as disabled only for Codex team selection', () => {
     expect(getTeamModelUiDisabledReason('codex', 'gpt-5.1-codex-mini')).toBe(
       GPT_5_1_CODEX_MINI_UI_DISABLED_REASON
     );

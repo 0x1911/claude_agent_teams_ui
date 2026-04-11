@@ -75,10 +75,11 @@ runOrExit(runtimePackageManager, ['run', 'build:dev'], { cwd: runtimeRepoRoot })
 const runtimeCliPath = path.join(runtimeRepoRoot, 'cli-dev');
 const uiEnv = {
   ...process.env,
-  // Dev-only free-code runtime override. Keep it separate from the generic
-  // CLAUDE_CLI_PATH override so switching the app into Claude CLI mode still
-  // resolves the real official binary instead of this local cli-dev shim.
-  CLAUDE_FREE_CODE_CLI_PATH: runtimeCliPath,
+  // Dev-only agent_teams_orchestrator runtime override. Keep it separate from
+  // the generic CLAUDE_CLI_PATH override so switching the app into Claude CLI
+  // mode still resolves the real official binary instead of this local
+  // cli-dev shim.
+  CLAUDE_AGENT_TEAMS_ORCHESTRATOR_CLI_PATH: runtimeCliPath,
 };
 // If the parent shell exported a stale generic override, do not let it leak
 // into the Electron main process. Claude mode must resolve the real binary.

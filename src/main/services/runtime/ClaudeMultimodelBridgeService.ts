@@ -7,10 +7,13 @@ import {
 } from '@main/utils/shellEnv';
 import { createLogger } from '@shared/utils/logger';
 
-import type { CliProviderId, CliProviderStatus } from '@shared/types';
 import { configManager } from '../infrastructure/ConfigManager';
+
 import { resolveGeminiRuntimeAuth } from './geminiRuntimeAuth';
+import { providerConnectionService } from './ProviderConnectionService';
 import { applyConfiguredRuntimeBackendsEnv, applyProviderRuntimeEnv } from './providerRuntimeEnv';
+
+import type { CliProviderId, CliProviderStatus } from '@shared/types';
 
 const logger = createLogger('ClaudeMultimodelBridgeService');
 
@@ -48,7 +51,7 @@ interface ProviderModelsCommandResponse {
   providers?: Record<
     string,
     {
-      models?: Array<string | { id?: string; label?: string; description?: string }>;
+      models?: (string | { id?: string; label?: string; description?: string })[];
     }
   >;
 }
@@ -67,7 +70,7 @@ interface UnifiedRuntimeStatusResponse {
       detailMessage?: string | null;
       selectedBackendId?: string | null;
       resolvedBackendId?: string | null;
-      availableBackends?: Array<{
+      availableBackends?: {
         id?: string;
         label?: string;
         description?: string;
@@ -76,15 +79,15 @@ interface UnifiedRuntimeStatusResponse {
         available?: boolean;
         statusMessage?: string | null;
         detailMessage?: string | null;
-      }>;
-      externalRuntimeDiagnostics?: Array<{
+      }[];
+      externalRuntimeDiagnostics?: {
         id?: string;
         label?: string;
         detected?: boolean;
         statusMessage?: string | null;
         detailMessage?: string | null;
-      }>;
-      models?: Array<string | { id?: string; label?: string; description?: string }>;
+      }[];
+      models?: (string | { id?: string; label?: string; description?: string })[];
       capabilities?: {
         teamLaunch?: boolean;
         oneShot?: boolean;
@@ -137,11 +140,12 @@ function createDefaultProviderStatus(providerId: CliProviderId): CliProviderStat
     availableBackends: [],
     externalRuntimeDiagnostics: [],
     backend: null,
+    connection: null,
   };
 }
 
 function extractModelIds(
-  models: Array<string | { id?: string; label?: string; description?: string }> | undefined
+  models: (string | { id?: string; label?: string; description?: string })[] | undefined
 ): string[] {
   if (!models) {
     return [];
@@ -159,7 +163,7 @@ function extractModelIds(
 }
 
 export class ClaudeMultimodelBridgeService {
-  private buildCliEnv(binaryPath: string): NodeJS.ProcessEnv {
+  private async buildCliEnv(binaryPath: string): Promise<NodeJS.ProcessEnv> {
     const shellEnv = getCachedShellEnv() ?? {};
     const home =
       getShellPreferredHome() || shellEnv.HOME || process.env.HOME || process.env.USERPROFILE;
@@ -170,11 +174,15 @@ export class ClaudeMultimodelBridgeService {
     if (home) {
       env.HOME = home;
     }
-    return applyConfiguredRuntimeBackendsEnv(env, configManager.getConfig().runtime);
+    applyConfiguredRuntimeBackendsEnv(env, configManager.getConfig().runtime);
+    return providerConnectionService.applyAllConfiguredConnectionEnv(env);
   }
 
-  private buildProviderCliEnv(binaryPath: string, providerId: CliProviderId): NodeJS.ProcessEnv {
-    return applyProviderRuntimeEnv({ ...this.buildCliEnv(binaryPath) }, providerId);
+  private async buildProviderCliEnv(
+    binaryPath: string,
+    providerId: CliProviderId
+  ): Promise<NodeJS.ProcessEnv> {
+    return applyProviderRuntimeEnv({ ...(await this.buildCliEnv(binaryPath)) }, providerId);
   }
 
   private isUnifiedRuntimeUnsupported(error: unknown): boolean {
@@ -249,7 +257,7 @@ export class ClaudeMultimodelBridgeService {
     providerId: CliProviderId
   ): Promise<CliProviderStatus> {
     await resolveInteractiveShellEnv();
-    const env = this.buildCliEnv(binaryPath);
+    const env = await this.buildCliEnv(binaryPath);
 
     try {
       const { stdout } = await execCli(
@@ -261,7 +269,9 @@ export class ClaudeMultimodelBridgeService {
         }
       );
       const parsed = extractJsonObject<UnifiedRuntimeStatusResponse>(stdout);
-      return this.mapRuntimeProviderStatus(providerId, parsed.providers?.[providerId]);
+      return providerConnectionService.enrichProviderStatus(
+        this.mapRuntimeProviderStatus(providerId, parsed.providers?.[providerId])
+      );
     } catch (error) {
       if (!this.isUnifiedRuntimeUnsupported(error)) {
         logger.warn(
@@ -281,7 +291,7 @@ export class ClaudeMultimodelBridgeService {
 
   private async buildGeminiStatus(binaryPath: string): Promise<CliProviderStatus> {
     const provider = createDefaultProviderStatus('gemini');
-    const env = this.buildProviderCliEnv(binaryPath, 'gemini');
+    const env = await this.buildProviderCliEnv(binaryPath, 'gemini');
 
     try {
       const { stdout } = await execCli(
@@ -340,7 +350,7 @@ export class ClaudeMultimodelBridgeService {
     onUpdate?: (providers: CliProviderStatus[]) => void
   ): Promise<CliProviderStatus[]> {
     await resolveInteractiveShellEnv();
-    const env = this.buildCliEnv(binaryPath);
+    const env = await this.buildCliEnv(binaryPath);
 
     try {
       const { stdout } = await execCli(binaryPath, ['runtime', 'status', '--json'], {
@@ -348,8 +358,10 @@ export class ClaudeMultimodelBridgeService {
         env,
       });
       const parsed = extractJsonObject<UnifiedRuntimeStatusResponse>(stdout);
-      const providers = ORDERED_PROVIDER_IDS.map((providerId) =>
-        this.mapRuntimeProviderStatus(providerId, parsed.providers?.[providerId])
+      const providers = await providerConnectionService.enrichProviderStatuses(
+        ORDERED_PROVIDER_IDS.map((providerId) =>
+          this.mapRuntimeProviderStatus(providerId, parsed.providers?.[providerId])
+        )
       );
       onUpdate?.(providers);
       return providers;
@@ -457,6 +469,11 @@ export class ClaudeMultimodelBridgeService {
     providers.set('gemini', await this.buildGeminiStatus(binaryPath));
     onUpdate?.(ORDERED_PROVIDER_IDS.map((id) => providers.get(id)!));
 
-    return ORDERED_PROVIDER_IDS.map((providerId) => providers.get(providerId)!);
+    const enrichedProviders = await providerConnectionService.enrichProviderStatuses(
+      ORDERED_PROVIDER_IDS.map((providerId) => providers.get(providerId)!)
+    );
+    onUpdate?.(enrichedProviders);
+
+    return enrichedProviders;
   }
 }

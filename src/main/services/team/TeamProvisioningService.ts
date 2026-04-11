@@ -3,7 +3,6 @@ import { NotificationManager } from '@main/services/infrastructure/NotificationM
 import { getAppIconPath } from '@main/utils/appIcon';
 import { killProcessTree, spawnCli } from '@main/utils/childProcess';
 import { FileReadTimeoutError, readFileUtf8WithTimeout } from '@main/utils/fsRead';
-import { killProcessByPid } from '@main/utils/processKill';
 import {
   encodePath,
   extractBaseDir,
@@ -14,6 +13,7 @@ import {
   getTasksBasePath,
   getTeamsBasePath,
 } from '@main/utils/pathDecoder';
+import { killProcessByPid } from '@main/utils/processKill';
 import { resolveInteractiveShellEnv } from '@main/utils/shellEnv';
 import { shouldAutoAllow } from '@main/utils/toolApprovalRules';
 import {
@@ -50,31 +50,39 @@ import { createCliAutoSuffixNameGuard, parseNumericSuffixName } from '@shared/ut
 import { normalizeOptionalTeamProviderId } from '@shared/utils/teamProvider';
 import {
   extractToolPreview,
-  parseAgentToolResultStatus,
   extractToolResultPreview,
   formatToolSummaryFromCalls,
+  parseAgentToolResultStatus,
 } from '@shared/utils/toolSummary';
 import * as agentTeamsControllerModule from 'agent-teams-controller';
-import { execFileSync, type ChildProcess, type spawn } from 'child_process';
+import { type ChildProcess, execFileSync, type spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import {
+  type GeminiRuntimeAuthState,
+  resolveGeminiRuntimeAuth,
+} from '../runtime/geminiRuntimeAuth';
+import { providerConnectionService } from '../runtime/ProviderConnectionService';
+import {
+  applyConfiguredRuntimeBackendsEnv,
+  applyProviderRuntimeEnv,
+  resolveTeamProviderId,
+} from '../runtime/providerRuntimeEnv';
+
 import { buildActionModeProtocol } from './actionModeInstructions';
 import { atomicWriteAsync } from './atomicWrite';
 import { ClaudeBinaryResolver } from './ClaudeBinaryResolver';
 import { withFileLock } from './fileLock';
-import { getEffectiveInboxMessageId } from './inboxMessageIdentity';
+import {
+  type ClassifiedMainProcessIdle,
+  classifyIdleNotificationForMainProcess,
+} from './idleNotificationMainProcessSemantics';
 import { withInboxLock } from './inboxLock';
-import { TeamConfigReader } from './TeamConfigReader';
-import { TeamInboxReader } from './TeamInboxReader';
-import { TeamMcpConfigBuilder } from './TeamMcpConfigBuilder';
-import { TeamMembersMetaStore } from './TeamMembersMetaStore';
-import { TeamMetaStore } from './TeamMetaStore';
-import { TeamSentMessagesStore } from './TeamSentMessagesStore';
-import { TeamTaskReader } from './TeamTaskReader';
-import { TeamLaunchStateStore } from './TeamLaunchStateStore';
+import { getEffectiveInboxMessageId } from './inboxMessageIdentity';
+import { resolveDesktopTeammateModeDecision } from './runtimeTeammateMode';
 import {
   choosePreferredLaunchSnapshot,
   clearBootstrapState,
@@ -82,25 +90,19 @@ import {
   readBootstrapRealTaskSubmissionState,
   readBootstrapRuntimeState,
 } from './TeamBootstrapStateReader';
-import { resolveDesktopTeammateModeDecision } from './runtimeTeammateMode';
+import { TeamConfigReader } from './TeamConfigReader';
+import { TeamInboxReader } from './TeamInboxReader';
 import {
   createPersistedLaunchSnapshot,
   snapshotFromRuntimeMemberStatuses,
   snapshotToMemberSpawnStatuses,
 } from './TeamLaunchStateEvaluator';
-import {
-  applyConfiguredRuntimeBackendsEnv,
-  applyProviderRuntimeEnv,
-  resolveTeamProviderId,
-} from '../runtime/providerRuntimeEnv';
-import {
-  resolveGeminiRuntimeAuth,
-  type GeminiRuntimeAuthState,
-} from '../runtime/geminiRuntimeAuth';
-import {
-  classifyIdleNotificationForMainProcess,
-  type ClassifiedMainProcessIdle,
-} from './idleNotificationMainProcessSemantics';
+import { TeamLaunchStateStore } from './TeamLaunchStateStore';
+import { TeamMcpConfigBuilder } from './TeamMcpConfigBuilder';
+import { TeamMembersMetaStore } from './TeamMembersMetaStore';
+import { TeamMetaStore } from './TeamMetaStore';
+import { TeamSentMessagesStore } from './TeamSentMessagesStore';
+import { TeamTaskReader } from './TeamTaskReader';
 
 /**
  * Kill a team CLI process using SIGKILL (uncatchable).
@@ -136,20 +138,21 @@ interface PersistedRuntimeMemberLike {
 
 type RelayInboxMessage = InboxMessage & { messageId: string };
 
-type RelayInboxMessageView = {
+interface RelayInboxMessageView {
   message: RelayInboxMessage;
   idle: ClassifiedMainProcessIdle | null;
   isCoarseNoise: boolean;
-};
+}
 
 import type {
   ActiveToolCall,
   CrossTeamSendResult,
+  EffortLevel,
   InboxMessage,
   LeadContextUsage,
   MemberLaunchState,
-  MemberSpawnStatus,
   MemberSpawnLivenessSource,
+  MemberSpawnStatus,
   MemberSpawnStatusEntry,
   PersistedTeamLaunchPhase,
   PersistedTeamLaunchSummary,
@@ -159,19 +162,18 @@ import type {
   TeamLaunchAggregateState,
   TeamLaunchRequest,
   TeamLaunchResponse,
+  TeamProviderId,
   TeamProvisioningPrepareResult,
   TeamProvisioningProgress,
   TeamProvisioningState,
   TeamRuntimeState,
   TeamTask,
-  EffortLevel,
   ToolActivityEventPayload,
   ToolApprovalAutoResolved,
   ToolApprovalEvent,
   ToolApprovalRequest,
   ToolApprovalSettings,
   ToolCallMeta,
-  TeamProviderId,
 } from '@shared/types';
 
 const logger = createLogger('Service:TeamProvisioning');
@@ -321,11 +323,11 @@ function getTeamProviderLabel(providerId: TeamProviderId): string {
   }
 }
 
-type CanonicalSendMessageExample = {
+interface CanonicalSendMessageExample {
   to: string;
   summary: string;
   message: string;
-};
+}
 
 // TODO(refactor): If more prompt-bound tool contracts appear here, move these
 // canonical examples/rules into a small dedicated module (for example
@@ -1082,7 +1084,8 @@ If member_briefing fails, SendMessage "${leadName}" one short natural-language s
 ${getCanonicalSendMessageFieldRule()}
 Correct example:
 ${buildCanonicalSendMessageExample({ to: leadName, summary: 'bootstrap error', message: 'exact error text' })}
-After member_briefing succeeds, stay silent until you have a real blocker, question, or task result. Do NOT send raw tool output, JSON, dict/object dumps, or internal state payloads.`;
+After member_briefing succeeds, stay silent until you have a real blocker, question, or task result. Do NOT send raw tool output, JSON, dict/object dumps, or internal state payloads.
+- Review flow rule: review happens on the SAME work task. If task #X needs review and a reviewer exists or has been named, the owner completes #X and sends #X through review_request, and the reviewer handles review_start then review_approve/review_request_changes on #X. If no reviewer exists, leave #X completed. Do NOT create a separate "review task".`;
 }
 
 function buildGeminiReconnectMemberSpawnPrompt(
@@ -1110,7 +1113,17 @@ If member_briefing fails, SendMessage "${leadName}" one short natural-language s
 ${getCanonicalSendMessageFieldRule()}
 Correct example:
 ${buildCanonicalSendMessageExample({ to: leadName, summary: 'bootstrap error', message: 'exact error text' })}
-After member_briefing succeeds, stay silent unless you have a real blocker, question, or task result. Do NOT send raw tool output, JSON, dict/object dumps, or internal state payloads.`;
+After member_briefing succeeds, stay silent unless you have a real blocker, question, or task result. Do NOT send raw tool output, JSON, dict/object dumps, or internal state payloads.
+- Review flow rule: review happens on the SAME work task. If task #X needs review and a reviewer exists or has been named, the owner completes #X and sends #X through review_request, and the reviewer handles review_start then review_approve/review_request_changes on #X. If no reviewer exists, leave #X completed. Do NOT create a separate "review task".`;
+}
+
+function buildMemberReviewFlowReminder(): string {
+  return [
+    '- Review flow rule: review is a state transition on the SAME work task, not a separate task.',
+    '- If your task #X needs review and a reviewer exists or has been named, finish the work on #X, call task_complete on #X, then use review_request on #X for that reviewer. If no reviewer exists, leave #X completed. Do NOT create a separate "review task".',
+    '- If you are the reviewer for task #X, call review_start on #X first, then review_approve or review_request_changes on #X itself.',
+    '- If review requests changes, resume/fix the SAME task #X, then task_complete #X and send #X back through review_request when ready.',
+  ].join('\n');
 }
 
 function buildMemberSpawnPrompt(
@@ -1158,6 +1171,8 @@ After member_briefing succeeds:
 - CRITICAL: If a task gets a new comment and you are going to do additional implementation/fix/follow-up work on that same task, FIRST leave a short task comment saying what you are about to do, THEN move it to in_progress with task_start, THEN do the work, and when finished leave a short result comment and move it to done with task_complete. Never skip this comment -> reopen -> work -> comment -> done cycle.
 - CRITICAL: When you finish a task, your results (findings, research report, analysis, code changes summary, or any deliverable) MUST be posted as a task comment via task_add_comment BEFORE calling task_complete. Save the comment.id from the response — you will need it in the next step. The task comment is the primary delivery channel — the user reads results on the task board. A SendMessage to the lead is NOT a substitute: direct messages are ephemeral and not visible on the board. If you only SendMessage without a task comment, the user will never see your work.
 - After task_complete, notify your team lead via SendMessage. Use the comment.id you saved (first 8 characters). Include: task ref, brief summary (2-4 sentences), pointer to full comment, and next step. Example: "#abcd1234 done. Found 3 competitors, two lack kanban. For full details: task_get_comment { taskId: "abcd1234", commentId: "e5f6a7b8" }. Moving to #efgh5678."
+- Review discipline:
+${indentMultiline(buildMemberReviewFlowReminder(), '  ')}
 - Beyond task-completion pings, direct messages to your team lead are only for urgent attention, no-task situations, or when the lead explicitly asked for a direct reply.
 - If a task-scoped update is already recorded in a task comment, do NOT send a duplicate SendMessage to the lead with the same content unless you need urgent non-task attention. When skipping a message, stay silent — never output meta-commentary about skipped or already-delivered messages.
 ${buildTeammateAgentBlockReminder()}
@@ -1230,6 +1245,8 @@ ${actionModeProtocol}
      - If a task gets a new comment and you are going to do additional implementation/fix/follow-up work on it, FIRST leave a short task comment saying what you are about to do, THEN run task_start, then do the work, and when finished leave a short result comment and run task_complete again. Never skip this comment -> reopen -> work -> comment -> done cycle.
      - CRITICAL: When you finish a task, your results (findings, research report, analysis, code changes summary, or any deliverable) MUST be posted as a task comment BEFORE calling task_complete. The task comment is the primary delivery channel — the user reads results on the task board. A SendMessage to the lead is NOT a substitute: direct messages are ephemeral and not visible on the board. If you only SendMessage without a task comment, the user will never see your work.
      - After task_complete, notify your team lead via SendMessage. The task_add_comment response contains comment.id (UUID) — take its first 8 characters as the short commentId. Include: task ref, brief summary (2-4 sentences), pointer to full comment, and next step. Example: "#abcd1234 done. Found 3 competitors, two lack kanban. For full details: task_get_comment { taskId: "abcd1234", commentId: "e5f6a7b8" }. Moving to #efgh5678."
+     - Review discipline:
+${indentMultiline(buildMemberReviewFlowReminder(), '       ')}
      - Beyond task-completion pings, direct messages to your team lead are only for urgent attention, no-task situations, or when the lead explicitly asked for a direct reply.
      - If a task-scoped update is already recorded in a task comment, do NOT send a duplicate SendMessage to the lead with the same content unless you need urgent non-task attention. When skipping a message, stay silent — never output meta-commentary about skipped or already-delivered messages.
      - If you have no tasks, wait for new assignments.`;
@@ -1280,7 +1297,7 @@ export function buildAddMemberSpawnMessage(
   );
 }
 
-type RuntimeBootstrapMemberSpec = {
+interface RuntimeBootstrapMemberSpec {
   name: string;
   prompt?: string;
   cwd?: string;
@@ -1291,15 +1308,15 @@ type RuntimeBootstrapMemberSpec = {
   description?: string;
   useSplitPane?: boolean;
   planModeRequired?: boolean;
-};
+}
 
-type RuntimeBootstrapSpec = {
+interface RuntimeBootstrapSpec {
   version: 1;
   runId: string;
   mode: 'create' | 'launch';
   initiator: {
     kind: 'app';
-    source: 'claude_team_freecode';
+    source: 'claude_team_agent_teams_orchestrator';
   };
   team: {
     name: string;
@@ -1320,7 +1337,7 @@ type RuntimeBootstrapSpec = {
   ui?: {
     emitStructuredEvents?: boolean;
   };
-};
+}
 
 function buildDeterministicCreateBootstrapSpec(
   runId: string,
@@ -1333,7 +1350,7 @@ function buildDeterministicCreateBootstrapSpec(
     mode: 'create',
     initiator: {
       kind: 'app',
-      source: 'claude_team_freecode',
+      source: 'claude_team_agent_teams_orchestrator',
     },
     team: {
       name: request.teamName,
@@ -1385,7 +1402,7 @@ function buildDeterministicLaunchBootstrapSpec(
     mode: 'launch',
     initiator: {
       kind: 'app',
-      source: 'claude_team_freecode',
+      source: 'claude_team_agent_teams_orchestrator',
     },
     team: {
       name: request.teamName,
@@ -1509,6 +1526,8 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `- Approve review: review_approve { teamName: "${teamName}", taskId: "<id>", note?: "<note>", notifyOwner: true }`,
       `  Call review_approve EXACTLY ONCE per review. Include your review feedback in the "note" field of that single call. Do NOT call it twice (once to approve, once with a note). The tool auto-creates a comment from the note.`,
       `- Request changes: review_request_changes { teamName: "${teamName}", taskId: "<id>", comment: "<what to fix>" }`,
+      `CRITICAL: Review is a state transition on the EXISTING work task. When implementation for task #X needs review, move #X through the review flow with review_request/review_start/review_approve/review_request_changes. Do NOT create a new separate task just to represent that review.`,
+      `CRITICAL: Only send task #X into review when a concrete reviewer exists for #X. If no reviewer exists yet, keep #X completed until you assign/decide the reviewer. Do NOT use review_request just to park the task in REVIEW without an actual reviewer.`,
       `CRITICAL: Writing "approved" or "LGTM" as a task comment does NOT move the task on the kanban board. You MUST call the review_approve MCP tool. Without the tool call the task stays stuck in the REVIEW column.`,
       ``,
       `Background service operations — use MCP tools directly (dev servers, watchers, databases, etc.; NOT teammate-agent liveness):`,
@@ -1522,8 +1541,10 @@ function buildTeamCtlOpsInstructions(teamName: string, leadName: string): string
       `- Use blockedBy when a task cannot start until another is done.`,
       `- If you set blockedBy, create the task in pending (for example with startImmediately: false). Do NOT put blocked tasks into in_progress.`,
       `- Use related to link related work (e.g. frontend + backend) without blocking.`,
-      `- Review tasks: Prefer NOT creating a separate "review task". Reviews apply to the work task (#X) via review_start/review_approve/review_request_changes on #X.`,
-      `  - If you must create a separate review reminder/assignment task, keep it pending and link it to #X with related (and optionally blockedBy #X if it truly cannot start yet).`,
+      `- Review tasks: By default, NEVER create a separate "review task". Reviews belong to the existing work task (#X) and must use the dedicated review flow on #X.`,
+      `  - Correct flow: finish implementation on #X -> task_complete #X -> review_request #X -> reviewer runs review_start #X -> reviewer runs review_approve or review_request_changes on #X.`,
+      `  - Only move #X into REVIEW when a real reviewer exists for #X. If nobody is reviewing it yet, keep #X completed until the reviewer is decided.`,
+      `  - The REVIEW column is for the same task #X moving through review. It is NOT a signal to create another task for review.`,
       `  - Dependencies do not auto-start tasks; the owner must explicitly start it when ready.`,
       `- Avoid over-specifying. Only add dependencies when execution order matters.`,
       ``,
@@ -3538,7 +3559,7 @@ export class TeamProvisioningService {
         ready: false,
         message:
           blockingMessages.length === 1
-            ? blockingMessages[0]!
+            ? blockingMessages[0]
             : 'Some provider runtimes are not ready',
         warnings: blockingMessages.length > 1 ? blockingMessages : undefined,
       };
@@ -3708,7 +3729,7 @@ export class TeamProvisioningService {
       return sanitized;
     }
 
-    const jsonMatch = sanitized.match(/^\d{3}\s+(\{[\s\S]*\})$/);
+    const jsonMatch = /^\d{3}\s+(\{[\s\S]*\})$/.exec(sanitized);
     const jsonCandidate = jsonMatch?.[1] ?? (sanitized.startsWith('{') ? sanitized : null);
     if (jsonCandidate) {
       try {
@@ -4150,7 +4171,7 @@ export class TeamProvisioningService {
           ctx.claudePath,
           ctx.cwd,
           ctx.env,
-          ctx.args[mcpFlagIdx + 1]!
+          ctx.args[mcpFlagIdx + 1]
         );
       }
       child = spawnCli(ctx.claudePath, ctx.args, {
@@ -6439,7 +6460,7 @@ export class TeamProvisioningService {
     for (const line of output.split('\n')) {
       const trimmed = line.trim();
       if (!trimmed.includes(teamMarker)) continue;
-      const match = trimmed.match(/--agent-id\s+([^\s@]+)@/);
+      const match = /--agent-id\s+([^\s@]+)@/.exec(trimmed);
       if (!match) continue;
       const agentName = match[1]?.trim();
       if (agentName) {
@@ -7192,7 +7213,7 @@ export class TeamProvisioningService {
       if (!trimmed || !trimmed.includes(marker) || !trimmed.includes('--agent-id')) {
         continue;
       }
-      const match = trimmed.match(/^(\d+)\s+(.*)$/);
+      const match = /^(\d+)\s+(.*)$/.exec(trimmed);
       if (!match) continue;
       const pid = Number.parseInt(match[1], 10);
       if (!Number.isFinite(pid) || pid <= 0) continue;
@@ -8496,7 +8517,7 @@ export class TeamProvisioningService {
       return 'Question: User input is required';
     }
 
-    const firstQuestion = questions[0]!;
+    const firstQuestion = questions[0];
     const truncatedQuestion =
       firstQuestion.length > 140 ? `${firstQuestion.slice(0, 137)}...` : firstQuestion;
 
@@ -10247,6 +10268,10 @@ export class TeamProvisioningService {
     };
     applyConfiguredRuntimeBackendsEnv(env);
     applyProviderRuntimeEnv(env, providerId);
+    await providerConnectionService.applyConfiguredConnectionEnv(
+      env,
+      resolveTeamProviderId(providerId)
+    );
 
     const controlApiBaseUrl = await this.resolveControlApiBaseUrl();
     if (controlApiBaseUrl) {

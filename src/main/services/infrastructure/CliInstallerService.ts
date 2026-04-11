@@ -39,7 +39,7 @@ import { join, posix as pathPosix, win32 as pathWin32 } from 'path';
 
 import { ClaudeMultimodelBridgeService } from '../runtime/ClaudeMultimodelBridgeService';
 import { ClaudeBinaryResolver } from '../team/ClaudeBinaryResolver';
-import { getConfiguredCliFlavor, getCliFlavorUiOptions } from '../team/cliFlavor';
+import { getCliFlavorUiOptions, getConfiguredCliFlavor } from '../team/cliFlavor';
 
 import type {
   CliInstallationStatus,
@@ -134,6 +134,7 @@ const DIAG_AUTH_STDOUT_TAIL = 160;
 function cloneCliInstallationStatus(status: CliInstallationStatus): CliInstallationStatus {
   return {
     ...status,
+    launchError: status.launchError ?? null,
     providers: status.providers.map((provider) => ({
       ...provider,
       capabilities: { ...provider.capabilities },
@@ -371,6 +372,7 @@ export class CliInstallerService {
       installed: r.installed,
       binaryPath: r.binaryPath ? clipHeadForDiag(r.binaryPath, DIAG_PATH_HEAD) : null,
       installedVersion: r.installedVersion,
+      launchError: r.launchError ?? null,
       authLoggedIn: r.authLoggedIn,
       authMethod: r.authMethod,
       latestVersion: r.latestVersion,
@@ -400,7 +402,7 @@ export class CliInstallerService {
     const flavor = getConfiguredCliFlavor();
     const ui = getCliFlavorUiOptions(flavor);
     const providers =
-      flavor === 'free-code'
+      flavor === 'agent_teams_orchestrator'
         ? (
             [
               {
@@ -441,6 +443,7 @@ export class CliInstallerService {
       installed: false,
       installedVersion: null,
       binaryPath: null,
+      launchError: null,
       latestVersion: null,
       updateAvailable: false,
       authLoggedIn: false,
@@ -499,9 +502,14 @@ export class CliInstallerService {
     }
 
     const flavor = getConfiguredCliFlavor();
-    if (flavor !== 'free-code') {
+    if (flavor !== 'agent_teams_orchestrator') {
       const fullStatus = await this.getStatus();
       return fullStatus.providers.find((provider) => provider.providerId === providerId) ?? null;
+    }
+
+    const versionProbe = await this.probeCliVersion(binaryPath);
+    if (!versionProbe.ok) {
+      return null;
     }
 
     return this.multimodelBridgeService.getProviderStatus(binaryPath, providerId);
@@ -524,40 +532,87 @@ export class CliInstallerService {
     const r = ref.current;
     const binaryPath = await ClaudeBinaryResolver.resolve();
     if (binaryPath) {
-      r.installed = true;
       r.binaryPath = binaryPath;
-      r.authStatusChecking = true;
-      this.sendProgress({ type: 'status', status: cloneCliInstallationStatus(r) });
+      const versionProbe = await this.probeCliVersion(binaryPath);
+      if (versionProbe.ok) {
+        r.installed = true;
+        r.installedVersion = versionProbe.version;
+        r.launchError = null;
+        r.authStatusChecking = true;
+        this.sendProgress({ type: 'status', status: cloneCliInstallationStatus(r) });
 
-      try {
-        const { stdout } = await execCli(binaryPath, ['--version'], {
-          timeout: VERSION_TIMEOUT_MS,
-          env: this.envForCli(binaryPath),
-        });
-        r.installedVersion = normalizeVersion(stdout);
-        logger.info(
-          `Installed CLI version: "${stdout.trim()}" → normalized: "${r.installedVersion}"`
+        // Auth and GCS version check are independent — run in parallel.
+        // Both mutate `r` directly so partial results survive the outer timeout.
+        await Promise.all([
+          this.checkAuthStatus(binaryPath, r, diag),
+          r.supportsSelfUpdate ? this.fetchLatestVersion(r) : Promise.resolve(),
+        ]);
+      } else {
+        diag.versionError = versionProbe.error;
+        r.installed = false;
+        r.installedVersion = null;
+        r.launchError = versionProbe.error;
+        r.authStatusChecking = false;
+        this.markProvidersUnavailable(
+          r,
+          r.binaryPath ? 'Runtime found, but startup health check failed.' : 'Runtime unavailable.'
         );
-      } catch (err) {
-        diag.versionError = getErrorMessage(err);
-        logger.warn('Failed to get CLI version:', diag.versionError);
+        if (diag.versionError) {
+          logger.warn('Failed to get CLI version:', diag.versionError);
+        }
+        if (r.supportsSelfUpdate) {
+          await this.fetchLatestVersion(r);
+        }
+        this.sendProgress({ type: 'status', status: cloneCliInstallationStatus(r) });
       }
-      this.sendProgress({ type: 'status', status: cloneCliInstallationStatus(r) });
-
-      // Auth and GCS version check are independent — run in parallel.
-      // Both mutate `r` directly so partial results survive the outer timeout.
-      await Promise.all([
-        this.checkAuthStatus(binaryPath, r, diag),
-        r.supportsSelfUpdate ? this.fetchLatestVersion(r) : Promise.resolve(),
-      ]);
     } else {
       // No binary — still check latest version for "install" prompt
       r.authStatusChecking = false;
+      r.launchError = null;
+      this.markProvidersUnavailable(r, 'Runtime not found.');
       if (r.supportsSelfUpdate) {
         await this.fetchLatestVersion(r);
       }
       this.sendProgress({ type: 'status', status: cloneCliInstallationStatus(r) });
     }
+  }
+
+  private async probeCliVersion(
+    binaryPath: string
+  ): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
+    try {
+      const { stdout } = await execCli(binaryPath, ['--version'], {
+        timeout: VERSION_TIMEOUT_MS,
+        env: this.envForCli(binaryPath),
+      });
+      const version = normalizeVersion(stdout);
+      if (!version) {
+        return { ok: false, error: 'CLI returned an empty version string.' };
+      }
+      logger.info(`Installed CLI version: "${stdout.trim()}" → normalized: "${version}"`);
+      return { ok: true, version };
+    } catch (err) {
+      return { ok: false, error: getErrorMessage(err) };
+    }
+  }
+
+  private markProvidersUnavailable(result: CliInstallationStatus, message: string): void {
+    if (result.flavor !== 'agent_teams_orchestrator') {
+      return;
+    }
+
+    result.providers = result.providers.map((provider) => ({
+      ...provider,
+      authenticated: false,
+      authMethod: null,
+      verificationState: 'error',
+      statusMessage: message,
+      models: [],
+      canLoginFromUi: false,
+      backend: null,
+    }));
+    result.authLoggedIn = false;
+    result.authMethod = null;
   }
 
   /**
@@ -571,7 +626,7 @@ export class CliInstallerService {
     result: CliInstallationStatus,
     diag: CliInstallerStatusRunDiag
   ): Promise<void> {
-    if (result.flavor === 'free-code') {
+    if (result.flavor === 'agent_teams_orchestrator') {
       result.authStatusChecking = true;
       try {
         const providers = await this.multimodelBridgeService.getProviderStatuses(
@@ -690,7 +745,7 @@ export class CliInstallerService {
 
   async install(): Promise<void> {
     if (!getCliFlavorUiOptions(getConfiguredCliFlavor()).supportsSelfUpdate) {
-      const error = 'Updates are disabled for the configured free-code runtime.';
+      const error = 'Updates are disabled for the configured agent_teams_orchestrator runtime.';
       logger.warn(error);
       this.sendProgress({ type: 'error', error });
       return;

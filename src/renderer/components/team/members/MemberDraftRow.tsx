@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { EffortLevelSelector } from '@renderer/components/team/dialogs/EffortLevelSelector';
 import {
-  getTeamModelLabel,
+  getProviderScopedTeamModelLabel,
   TeamModelSelector,
 } from '@renderer/components/team/dialogs/TeamModelSelector';
 import { RoleSelect } from '@renderer/components/team/RoleSelect';
@@ -164,7 +164,7 @@ export const MemberDraftRow = ({
     ? inheritedEffort
     : (member.effort ?? inheritedEffort);
   const modelButtonLabelBase = effectiveModel?.trim()
-    ? getTeamModelLabel(effectiveModel.trim())
+    ? getProviderScopedTeamModelLabel(effectiveProviderId, effectiveModel.trim())
     : 'Default';
   const modelButtonLabel = forceInheritedModelSettings
     ? `${modelButtonLabelBase} (lead)`
@@ -175,7 +175,7 @@ export const MemberDraftRow = ({
 
   return (
     <div
-      className={`relative grid grid-cols-1 gap-2 rounded-md p-2 shadow-sm md:grid-cols-[1fr_180px_auto] ${isRemoved ? 'opacity-55' : ''}`}
+      className={`relative grid grid-cols-1 gap-2 rounded-md p-2 shadow-sm md:grid-cols-[minmax(0,1fr)_156px_auto] ${isRemoved ? 'opacity-55' : ''}`}
       style={{
         backgroundColor: isLight
           ? 'color-mix(in srgb, var(--color-surface-raised) 22%, white 78%)'
@@ -238,14 +238,14 @@ export const MemberDraftRow = ({
               ) : null}
             </Button>
           ) : null}
-          <div className="min-w-0 space-y-1">
+          <div className="w-full min-w-0 space-y-1 sm:w-[150px] sm:min-w-[150px]">
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="inline-flex max-w-[190px]">
+                <span className="inline-flex w-full">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-8 max-w-[190px] shrink-0 justify-start gap-1 overflow-hidden text-left"
+                    className="h-8 w-full justify-start gap-1 overflow-hidden text-left"
                     disabled={lockProviderModel || isRemoved}
                     onClick={() => setModelExpanded((prev) => !prev)}
                   >

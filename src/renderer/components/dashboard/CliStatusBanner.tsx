@@ -12,6 +12,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, isElectronMode } from '@renderer/api';
 import { confirm } from '@renderer/components/common/ConfirmDialog';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import {
+  formatProviderStatusText,
+  getProviderConnectionModeSummary,
+  getProviderConnectLabel,
+  getProviderCredentialSummary,
+  getProviderCurrentRuntimeSummary,
+  getProviderDisconnectAction,
+  isConnectionManagedRuntimeProvider,
+  shouldShowProviderConnectAction,
+} from '@renderer/components/runtime/providerConnectionUi';
 import { getProviderRuntimeBackendSummary } from '@renderer/components/runtime/ProviderRuntimeBackendSelector';
 import { ProviderRuntimeSettingsDialog } from '@renderer/components/runtime/ProviderRuntimeSettingsDialog';
 import { SettingsToggle } from '@renderer/components/settings/components';
@@ -42,7 +52,7 @@ import {
   Terminal,
 } from 'lucide-react';
 
-import type { CliInstallationStatus, CliProviderId, CliProviderStatus } from '@shared/types';
+import type { CliProviderId, CliProviderStatus } from '@shared/types';
 
 // =============================================================================
 // Border color by state
@@ -256,24 +266,6 @@ function getProviderTerminalLogoutCommand(provider: CliProviderStatus): {
   };
 }
 
-function formatProviderStatus(provider: CliProviderStatus): string {
-  if (!provider.supported) {
-    return provider.statusMessage ?? 'Unavailable in current runtime';
-  }
-  if (provider.authenticated) {
-    return provider.authMethod ? `Authenticated via ${provider.authMethod}` : 'Authenticated';
-  }
-  if (provider.verificationState === 'offline') {
-    return provider.statusMessage ?? 'Unable to verify';
-  }
-  return provider.statusMessage ?? 'Not connected';
-}
-
-function formatProviderModels(provider: CliProviderStatus): string | null {
-  const visibleModels = getVisibleTeamProviderModels(provider.providerId, provider.models);
-  return visibleModels.length > 0 ? visibleModels.join(', ') : null;
-}
-
 function formatModelBadgeLabel(providerId: CliProviderId, model: string): string {
   return getTeamModelBadgeLabel(providerId, model) ?? model;
 }
@@ -342,7 +334,7 @@ function isProviderCardLoading(provider: CliProviderStatus, providerLoading: boo
 function formatRuntimeLabel(
   cliStatus: NonNullable<ReturnType<typeof useCliInstaller>['cliStatus']>
 ): string | null {
-  if (cliStatus.flavor === 'free-code') {
+  if (cliStatus.flavor === 'agent_teams_orchestrator') {
     return null;
   }
 
@@ -355,7 +347,7 @@ function formatRuntimeAuthSummary(
   cliStatus: NonNullable<ReturnType<typeof useCliInstaller>['cliStatus']>,
   visibleProviders: readonly CliProviderStatus[]
 ): string | null {
-  if (cliStatus.flavor === 'free-code' && visibleProviders.length > 0) {
+  if (cliStatus.flavor === 'agent_teams_orchestrator' && visibleProviders.length > 0) {
     if (
       visibleProviders.every(
         (provider) => provider.statusMessage === 'Checking...' && !provider.authenticated
@@ -385,7 +377,7 @@ function isCheckingMultimodelStatus(
   visibleProviders: readonly CliProviderStatus[]
 ): boolean {
   return (
-    cliStatus.flavor === 'free-code' &&
+    cliStatus.flavor === 'agent_teams_orchestrator' &&
     visibleProviders.length > 0 &&
     visibleProviders.every(
       (provider) => provider.statusMessage === 'Checking...' && !provider.authenticated
@@ -524,16 +516,28 @@ const InstalledBanner = ({
           style={{ borderColor: 'var(--color-border-subtle)' }}
         >
           {visibleProviders.map((provider) => {
-            const statusText = formatProviderStatus(provider);
+            const statusText = formatProviderStatusText(provider);
             const actionDisabled = isBusy || !cliStatus.binaryPath;
-            const runtimeSummary = getProviderRuntimeBackendSummary(provider);
+            const runtimeSummary = isConnectionManagedRuntimeProvider(provider)
+              ? getProviderCurrentRuntimeSummary(provider)
+              : getProviderRuntimeBackendSummary(provider);
+            const connectionModeSummary = getProviderConnectionModeSummary(provider);
+            const credentialSummary = getProviderCredentialSummary(provider);
+            const disconnectAction = getProviderDisconnectAction(provider);
             const providerLoading = cliProviderStatusLoading[provider.providerId] === true;
             const showSkeleton = isProviderCardLoading(provider, providerLoading);
+            const hasDetailContent = Boolean(
+              (provider.backend?.label && !runtimeSummary) ||
+              runtimeSummary ||
+              connectionModeSummary ||
+              credentialSummary ||
+              provider.models.length === 0
+            );
 
             return (
               <div
                 key={provider.providerId}
-                className="grid min-h-[132px] grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 rounded-md p-2"
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 rounded-md p-2"
                 style={{ backgroundColor: 'rgba(255, 255, 255, 0.02)' }}
               >
                 <div className="col-span-2 flex items-start justify-between gap-3">
@@ -562,25 +566,28 @@ const InstalledBanner = ({
                     </div>
                     {showSkeleton ? (
                       <ProviderDetailSkeleton />
-                    ) : (
+                    ) : hasDetailContent ? (
                       <div
-                        className="mt-1 flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 text-[11px]"
+                        className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]"
                         style={{ color: 'var(--color-text-muted)' }}
                       >
-                        {provider.backend?.label && (
-                          <span>
-                            Backend: {provider.backend.label}
-                            {provider.backend.endpointLabel
-                              ? ` (${provider.backend.endpointLabel})`
-                              : ''}
-                          </span>
+                        {provider.backend?.label && !runtimeSummary && (
+                          <span>Backend: {provider.backend.label}</span>
                         )}
-                        {runtimeSummary ? <span>Runtime: {runtimeSummary}</span> : null}
+                        {runtimeSummary ? (
+                          <span>
+                            {isConnectionManagedRuntimeProvider(provider)
+                              ? runtimeSummary
+                              : `Runtime: ${runtimeSummary}`}
+                          </span>
+                        ) : null}
+                        {connectionModeSummary ? <span>{connectionModeSummary}</span> : null}
+                        {credentialSummary ? <span>{credentialSummary}</span> : null}
                         {provider.models.length === 0 && (
                           <span>Models unavailable for this runtime build</span>
                         )}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                   <div className="flex shrink-0 items-start gap-2">
                     <button
@@ -595,7 +602,7 @@ const InstalledBanner = ({
                       <SlidersHorizontal className="size-3" />
                       Manage
                     </button>
-                    {provider.authenticated && provider.canLoginFromUi ? (
+                    {disconnectAction ? (
                       <button
                         onClick={() => onProviderLogout(provider.providerId)}
                         disabled={actionDisabled}
@@ -606,9 +613,9 @@ const InstalledBanner = ({
                         }}
                       >
                         <LogOut className="size-3" />
-                        Logout
+                        {disconnectAction.label}
                       </button>
-                    ) : provider.canLoginFromUi ? (
+                    ) : shouldShowProviderConnectAction(provider) ? (
                       <button
                         onClick={() => onProviderLogin(provider.providerId)}
                         disabled={actionDisabled}
@@ -619,7 +626,7 @@ const InstalledBanner = ({
                         }}
                       >
                         <LogIn className="size-3" />
-                        Login
+                        {getProviderConnectLabel(provider)}
                       </button>
                     ) : null}
                     <button
@@ -736,6 +743,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   const handleMultimodelToggle = useCallback(
     async (enabled: boolean) => {
       setIsSwitchingFlavor(true);
+      let nextMultimodelEnabled = multimodelEnabled;
       try {
         useStore.setState({
           cliStatus: enabled ? createLoadingMultimodelCliStatus() : null,
@@ -743,8 +751,15 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           cliStatusError: null,
         });
         await updateConfig('general', { multimodelEnabled: enabled });
+        nextMultimodelEnabled = enabled;
         await invalidateCliStatus();
         if (enabled) {
+          await bootstrapCliStatus({ multimodelEnabled: true });
+        } else {
+          await fetchCliStatus();
+        }
+      } catch {
+        if (nextMultimodelEnabled) {
           await bootstrapCliStatus({ multimodelEnabled: true });
         } else {
           await fetchCliStatus();
@@ -753,7 +768,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
         setIsSwitchingFlavor(false);
       }
     },
-    [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus, updateConfig]
+    [bootstrapCliStatus, fetchCliStatus, invalidateCliStatus, multimodelEnabled, updateConfig]
   );
 
   const recheckAuthState = useCallback(() => {
@@ -772,23 +787,33 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     setProviderTerminal({ providerId, action: 'login' });
   }, []);
 
-  const handleProviderLogout = useCallback((providerId: CliProviderId) => {
-    void (async () => {
-      const confirmed = await confirm({
-        title: `Logout from ${getProviderLabel(providerId)}?`,
-        message: 'This will remove the current provider session from the local Claude CLI runtime.',
-        confirmLabel: 'Logout',
-        cancelLabel: 'Cancel',
-        variant: 'danger',
-      });
+  const handleProviderLogout = useCallback(
+    (providerId: CliProviderId) => {
+      void (async () => {
+        const provider =
+          cliStatus?.providers.find((entry) => entry.providerId === providerId) ?? null;
+        const disconnectAction = provider ? getProviderDisconnectAction(provider) : null;
+        if (!disconnectAction) {
+          return;
+        }
 
-      if (!confirmed) {
-        return;
-      }
+        const confirmed = await confirm({
+          title: disconnectAction.title,
+          message: disconnectAction.message,
+          confirmLabel: disconnectAction.confirmLabel,
+          cancelLabel: 'Cancel',
+          variant: 'danger',
+        });
 
-      setProviderTerminal({ providerId, action: 'logout' });
-    })();
-  }, []);
+        if (!confirmed) {
+          return;
+        }
+
+        setProviderTerminal({ providerId, action: 'logout' });
+      })();
+    },
+    [cliStatus?.providers]
+  );
 
   const handleProviderManage = useCallback((providerId: CliProviderId) => {
     setManageProviderId(providerId);
@@ -819,7 +844,12 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           [providerId]: backendId,
         },
       });
-      await fetchCliProviderStatus(providerId);
+
+      try {
+        await fetchCliProviderStatus(providerId);
+      } catch {
+        throw new Error('Runtime updated, but failed to refresh provider status.');
+      }
     },
     [appConfig?.runtime?.providerBackends, fetchCliProviderStatus, updateConfig]
   );
@@ -867,10 +897,9 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
           }
           providerStatusLoading={cliProviderStatusLoading}
           disabled={isBusy || cliStatusLoading || !cliStatus.binaryPath}
-          onSelectBackend={(providerId, backendId) => {
-            void handleProviderBackendChange(providerId, backendId);
-          }}
+          onSelectBackend={handleProviderBackendChange}
           onRefreshProvider={(providerId) => fetchCliProviderStatus(providerId)}
+          onRequestLogin={(providerId) => setProviderTerminal({ providerId, action: 'login' })}
         />
         {providerTerminal && cliStatus.binaryPath && (
           <TerminalModal
@@ -1065,7 +1094,11 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   }
 
   // ── Completed ──────────────────────────────────────────────────────────
-  if (installerState === 'completed' && !cliStatus?.installed) {
+  if (
+    installerState === 'completed' &&
+    !cliStatus?.installed &&
+    !(cliStatus?.binaryPath && cliStatus?.launchError)
+  ) {
     return <InstallCompletedNotice version={completedVersion} />;
   }
 
@@ -1083,6 +1116,8 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
 
   // ── Idle state with status ─────────────────────────────────────────────
   if (!cliStatus) return null;
+  const cliLaunchIssue =
+    !cliStatus.installed && Boolean(cliStatus.binaryPath && cliStatus.launchError);
 
   // Not installed — red error banner
   if (!cliStatus.installed) {
@@ -1096,29 +1131,64 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
             <AlertTriangle className="mt-0.5 size-5 shrink-0" style={{ color: '#ef4444' }} />
             <div>
               <p className="text-sm font-medium" style={{ color: '#f87171' }}>
-                Claude CLI is required
+                {cliLaunchIssue
+                  ? 'Claude CLI was found but failed to start'
+                  : 'Claude CLI is required'}
               </p>
               <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                Claude CLI is required for team provisioning and session management. Install it to
-                get started.
+                {cliLaunchIssue
+                  ? 'The app found a Claude CLI binary, but its startup health check failed. Repair or reinstall it, then retry.'
+                  : 'Claude CLI is required for team provisioning and session management. Install it to get started.'}
               </p>
+              {cliStatus.showBinaryPath && cliStatus.binaryPath && (
+                <p
+                  className="mt-2 break-all font-mono text-[11px]"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {cliStatus.binaryPath}
+                </p>
+              )}
+              {cliLaunchIssue && cliStatus.launchError && (
+                <div
+                  className="mt-2 rounded border px-2 py-1.5 font-mono text-[11px]"
+                  style={{
+                    borderColor: 'rgba(239, 68, 68, 0.2)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.04)',
+                    color: 'var(--color-text-muted)',
+                  }}
+                >
+                  {cliStatus.launchError}
+                </div>
+              )}
             </div>
           </div>
-          {cliStatus.supportsSelfUpdate ? (
+          <div className="flex shrink-0 flex-col gap-2">
             <button
-              onClick={handleInstall}
-              disabled={isBusy}
-              className="flex shrink-0 items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50"
-              style={{ backgroundColor: '#3b82f6' }}
+              onClick={handleRefresh}
+              className="flex items-center justify-center gap-1.5 rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-white/5"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}
             >
-              <Download className="size-4" />
-              Install Claude CLI
+              <RefreshCw className="size-4" />
+              Re-check
             </button>
-          ) : (
-            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              The configured free-code runtime was not found.
-            </p>
-          )}
+            {cliStatus.supportsSelfUpdate ? (
+              <button
+                onClick={handleInstall}
+                disabled={isBusy}
+                className="flex items-center justify-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50"
+                style={{ backgroundColor: '#3b82f6' }}
+              >
+                <Download className="size-4" />
+                {cliLaunchIssue ? 'Reinstall Claude CLI' : 'Install Claude CLI'}
+              </button>
+            ) : (
+              <p className="max-w-40 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                {cliLaunchIssue
+                  ? `The configured ${cliStatus.displayName} runtime failed its startup health check.`
+                  : `The configured ${cliStatus.displayName} runtime was not found.`}
+              </p>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -1127,7 +1197,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
   // Installed but not logged in — yellow warning banner
   if (
     cliStatus.installed &&
-    cliStatus.flavor !== 'free-code' &&
+    cliStatus.flavor !== 'agent_teams_orchestrator' &&
     (cliStatus.authStatusChecking || isVerifyingAuth)
   ) {
     if (cliStatus.authStatusChecking || isVerifyingAuth) {
@@ -1158,7 +1228,7 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
 
   if (
     cliStatus.installed &&
-    cliStatus.flavor !== 'free-code' &&
+    cliStatus.flavor !== 'agent_teams_orchestrator' &&
     !cliStatus.authStatusChecking &&
     !cliStatus.authLoggedIn
   ) {
