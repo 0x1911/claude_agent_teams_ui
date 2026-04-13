@@ -8,19 +8,19 @@ import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 import { GraphView } from '@claude-teams/agent-graph';
 import { TeamSidebarHost } from '@renderer/components/team/sidebar/TeamSidebarHost';
 import { useStore } from '@renderer/store';
-import type {
-  MemberActivityFilter,
-  MemberDetailTab,
-} from '@renderer/components/team/members/memberDetailTypes';
 
 import { useTeamGraphAdapter } from '../adapters/useTeamGraphAdapter';
 
-import { GraphBlockingEdgePopover } from './GraphBlockingEdgePopover';
 import { GraphActivityHud } from './GraphActivityHud';
+import { GraphBlockingEdgePopover } from './GraphBlockingEdgePopover';
 import { GraphNodePopover } from './GraphNodePopover';
 import { GraphProvisioningHud } from './GraphProvisioningHud';
 
 import type { GraphDomainRef, GraphEventPort, GraphNode } from '@claude-teams/agent-graph';
+import type {
+  MemberActivityFilter,
+  MemberDetailTab,
+} from '@renderer/components/team/members/memberDetailTypes';
 
 const TeamGraphOverlay = lazy(() =>
   import('./TeamGraphOverlay').then((m) => ({ default: m.TeamGraphOverlay }))
@@ -32,10 +32,10 @@ export interface TeamGraphTabProps {
   isPaneFocused?: boolean;
 }
 
-type OpenProfileOptions = {
+interface OpenProfileOptions {
   initialTab?: MemberDetailTab;
   initialActivityFilter?: MemberActivityFilter;
-};
+}
 
 export const TeamGraphTab = ({
   teamName,

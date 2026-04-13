@@ -556,8 +556,8 @@ describe('ProviderRuntimeSettingsDialog Codex connection flows', () => {
 
     const icon = host.querySelector('[data-testid="provider-api-key-icon"]');
     expect(icon).not.toBeNull();
-    expect(icon?.className).toContain('h-8');
-    expect(icon?.className).toContain('w-8');
+    expect(icon?.className).toContain('size-8');
+    expect(icon?.className).not.toContain('w-8');
     expect(icon?.className).toContain('shrink-0');
   });
 

@@ -17,6 +17,7 @@ import { ExternalLink, Loader2, MessageSquare, Plus, User } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { isTaskInReviewCycle, resolveTaskReviewer } from '../utils/taskGraphSemantics';
+
 import { GraphTaskCard } from './GraphTaskCard';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
@@ -225,7 +226,7 @@ const OverflowPopoverContent = ({
               <button
                 key={task.id}
                 type="button"
-                className="flex w-full items-start justify-between gap-2 rounded border border-[var(--color-border)] bg-[var(--color-surface-secondary)] px-2 py-2 text-left transition-colors hover:border-[var(--color-border-emphasis)]"
+                className="flex w-full items-start justify-between gap-2 rounded border border-[var(--color-border)] bg-[var(--color-surface-secondary)] p-2 text-left transition-colors hover:border-[var(--color-border-emphasis)]"
                 onClick={() => {
                   onOpenTaskDetail?.(task.id);
                   onClose();

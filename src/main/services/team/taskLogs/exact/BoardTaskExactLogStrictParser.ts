@@ -1,10 +1,9 @@
+import { yieldToEventLoop } from '@main/utils/asyncYield';
+import { parseJsonlLine } from '@main/utils/jsonl';
 import { createLogger } from '@shared/utils/logger';
 import { createReadStream } from 'fs';
 import * as fs from 'fs/promises';
 import * as readline from 'readline';
-
-import { yieldToEventLoop } from '@main/utils/asyncYield';
-import { parseJsonlLine } from '@main/utils/jsonl';
 
 import { BoardTaskExactLogsParseCache } from './BoardTaskExactLogsParseCache';
 

@@ -1,13 +1,14 @@
+import { getTaskDisplayId, taskMatchesRef } from '@shared/utils/taskIdentity';
+
 import { TeamTaskReader } from '../../TeamTaskReader';
 import { BoardTaskActivityRecordSource } from '../activity/BoardTaskActivityRecordSource';
-import type { BoardTaskActivityRecord } from '../activity/BoardTaskActivityRecord';
 import { TeamTranscriptSourceLocator } from '../discovery/TeamTranscriptSourceLocator';
 import { BoardTaskExactLogStrictParser } from '../exact/BoardTaskExactLogStrictParser';
 import { BoardTaskLogStreamService } from '../stream/BoardTaskLogStreamService';
 
+import type { BoardTaskActivityRecord } from '../activity/BoardTaskActivityRecord';
 import type { ParsedMessage } from '@main/types';
-import type { TeamTask, TaskWorkInterval } from '@shared/types';
-import { getTaskDisplayId, taskMatchesRef } from '@shared/utils/taskIdentity';
+import type { TaskWorkInterval, TeamTask } from '@shared/types';
 
 const BOARD_MCP_TOOL_PREFIXES = ['mcp__agent-teams__', 'mcp__agent_teams__'] as const;
 const MAX_EXAMPLES = 10;

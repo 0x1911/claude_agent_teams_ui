@@ -1134,7 +1134,7 @@ export const MentionableTextarea = React.forwardRef<HTMLTextAreaElement, Mention
           surfaceShellMetrics.width > 0 &&
           surfaceShellMetrics.height > 0 ? (
             <svg
-              className="message-composer-orbit-svg pointer-events-none absolute inset-0 z-[16] h-full w-full"
+              className="message-composer-orbit-svg pointer-events-none absolute inset-0 z-[16] size-full"
               viewBox={`0 0 ${surfaceShellMetrics.width} ${surfaceShellMetrics.height}`}
               aria-hidden="true"
             >

@@ -298,7 +298,7 @@ export const MessagesPanel = memo(function MessagesPanel({
     if (position !== 'bottom-sheet' || typeof ResizeObserver === 'undefined') return;
 
     const mountPointElement = mountPoint instanceof HTMLElement ? mountPoint : null;
-    const observedEntries: Array<[Element | null, (height: number) => void]> = [
+    const observedEntries: [Element | null, (height: number) => void][] = [
       [bottomSheetStickyTopRef.current, setBottomSheetStickyTopHeight],
       [mountPointElement, setBottomSheetMountHeight],
     ];
@@ -1096,7 +1096,7 @@ export const MessagesPanel = memo(function MessagesPanel({
                     {searchAndFilterControls}
                   </div>
                 )}
-                <div className="px-3 pb-3 pt-3">
+                <div className="p-3">
                   <MessageComposer
                     teamName={teamName}
                     layout="compact"

@@ -13,10 +13,10 @@ interface ExactTaskLogsSectionProps {
   taskId: string;
 }
 
-export function ExactTaskLogsSection({
+export const ExactTaskLogsSection = ({
   teamName,
   taskId,
-}: ExactTaskLogsSectionProps): React.JSX.Element {
+}: ExactTaskLogsSectionProps): React.JSX.Element => {
   const [summaries, setSummaries] = useState<BoardTaskExactLogSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -259,4 +259,4 @@ export function ExactTaskLogsSection({
       )}
     </div>
   );
-}
+};

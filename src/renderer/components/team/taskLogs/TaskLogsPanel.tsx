@@ -1,7 +1,7 @@
 import { ExecutionSessionsSection } from './ExecutionSessionsSection';
+import { isBoardTaskActivityUiEnabled, isBoardTaskExactLogsUiEnabled } from './featureGates';
 import { TaskActivitySection } from './TaskActivitySection';
 import { TaskLogStreamSection } from './TaskLogStreamSection';
-import { isBoardTaskActivityUiEnabled, isBoardTaskExactLogsUiEnabled } from './featureGates';
 
 import type { TeamTaskWithKanban } from '@shared/types';
 
@@ -17,7 +17,7 @@ interface TaskLogsPanelProps {
   onPreviewOnlineChange?: (isOnline: boolean) => void;
 }
 
-export function TaskLogsPanel({
+export const TaskLogsPanel = ({
   teamName,
   task,
   taskSince,
@@ -27,7 +27,7 @@ export function TaskLogsPanel({
   showSubagentPreview = false,
   showLeadPreview = false,
   onPreviewOnlineChange,
-}: TaskLogsPanelProps): React.JSX.Element {
+}: TaskLogsPanelProps): React.JSX.Element => {
   return (
     <div className="space-y-4">
       {isBoardTaskActivityUiEnabled() ? (
@@ -52,4 +52,4 @@ export function TaskLogsPanel({
       />
     </div>
   );
-}
+};

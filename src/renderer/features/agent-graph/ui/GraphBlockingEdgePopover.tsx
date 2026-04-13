@@ -54,7 +54,7 @@ export interface GraphBlockingEdgePopoverProps {
   onOpenTaskDetail?: (taskId: string) => void;
 }
 
-export function GraphBlockingEdgePopover({
+export const GraphBlockingEdgePopover = ({
   teamName,
   edge,
   sourceNode,
@@ -62,7 +62,7 @@ export function GraphBlockingEdgePopover({
   onClose,
   onSelectNode,
   onOpenTaskDetail,
-}: GraphBlockingEdgePopoverProps): React.JSX.Element {
+}: GraphBlockingEdgePopoverProps): React.JSX.Element => {
   const teamData = useStore((state) => selectTeamDataForName(state, teamName));
   const tasksById = useMemo(
     () => new Map((teamData?.tasks ?? []).map((task) => [task.id, task] as const)),
@@ -153,7 +153,7 @@ export function GraphBlockingEdgePopover({
       </div>
     </div>
   );
-}
+};
 
 function resolveEdgeTaskPreview(
   node: GraphNode | undefined,
@@ -173,7 +173,7 @@ function resolveEdgeTaskPreview(
     .slice(0, 4);
 }
 
-function HiddenTaskPreview({
+const HiddenTaskPreview = ({
   title,
   tasks,
   onOpenTaskDetail,
@@ -183,10 +183,10 @@ function HiddenTaskPreview({
   tasks: TeamTaskWithKanban[];
   onOpenTaskDetail?: (taskId: string) => void;
   onClose: () => void;
-}): React.JSX.Element {
+}): React.JSX.Element => {
   return (
-    <div className="mt-2 rounded border border-red-500/15 bg-red-500/5 px-2 py-2">
-      <div className="text-[10px] uppercase tracking-[0.1em] text-red-300/80">{title}</div>
+    <div className="mt-2 rounded border border-red-500/15 bg-red-500/5 p-2">
+      <div className="text-[10px] uppercase tracking-widest text-red-300/80">{title}</div>
       <div className="mt-1 space-y-1">
         {tasks.map((task) => (
           <button
@@ -204,4 +204,4 @@ function HiddenTaskPreview({
       </div>
     </div>
   );
-}
+};

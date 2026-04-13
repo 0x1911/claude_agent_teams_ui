@@ -1,5 +1,6 @@
 import { TeamTaskReader } from '../../TeamTaskReader';
 import { TeamTranscriptSourceLocator } from '../discovery/TeamTranscriptSourceLocator';
+
 import { BoardTaskActivityRecordBuilder } from './BoardTaskActivityRecordBuilder';
 import { BoardTaskActivityTranscriptReader } from './BoardTaskActivityTranscriptReader';
 

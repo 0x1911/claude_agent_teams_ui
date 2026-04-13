@@ -1,4 +1,4 @@
-import type { KanbanTaskState, KanbanColumnId, TeamTask, TeamTaskWithKanban } from '@shared/types';
+import type { KanbanColumnId, KanbanTaskState, TeamTask, TeamTaskWithKanban } from '@shared/types';
 
 type TaskColumnInput = Pick<TeamTaskWithKanban, 'status' | 'reviewState' | 'kanbanColumn'>;
 type TaskReviewerInput = Pick<TeamTaskWithKanban, 'reviewer' | 'reviewState' | 'kanbanColumn'>;

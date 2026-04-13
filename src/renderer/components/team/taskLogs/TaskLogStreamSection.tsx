@@ -54,7 +54,7 @@ function normalizeResponse(response: BoardTaskLogStreamResponse): BoardTaskLogSt
   };
 }
 
-function SegmentMarker({ segment }: { segment: BoardTaskLogSegment }): React.JSX.Element {
+const SegmentMarker = ({ segment }: { segment: BoardTaskLogSegment }): React.JSX.Element => {
   return (
     <div className="mb-2 flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
       <span className="rounded-full border border-[var(--color-border)] px-2 py-0.5 font-medium text-[var(--color-text-secondary)]">
@@ -66,27 +66,27 @@ function SegmentMarker({ segment }: { segment: BoardTaskLogSegment }): React.JSX
       </span>
     </div>
   );
-}
+};
 
-function SegmentBlock({
+const SegmentBlock = ({
   segment,
   showHeader,
 }: {
   segment: BoardTaskLogSegment;
   showHeader: boolean;
-}): React.JSX.Element {
+}): React.JSX.Element => {
   return (
     <div className="min-w-0 overflow-hidden">
       {showHeader ? <SegmentMarker segment={segment} /> : null}
       <MemberExecutionLog chunks={segment.chunks} memberName={segment.actor.memberName} />
     </div>
   );
-}
+};
 
-export function TaskLogStreamSection({
+export const TaskLogStreamSection = ({
   teamName,
   taskId,
-}: TaskLogStreamSectionProps): React.JSX.Element {
+}: TaskLogStreamSectionProps): React.JSX.Element => {
   const [stream, setStream] = useState<BoardTaskLogStreamResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -219,4 +219,4 @@ export function TaskLogStreamSection({
       )}
     </div>
   );
-}
+};

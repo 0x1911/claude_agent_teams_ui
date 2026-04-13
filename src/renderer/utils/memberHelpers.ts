@@ -484,31 +484,31 @@ export function buildMemberLaunchPresentation({
   const keepLaunchSettlingVisuals = isTeamProvisioning === true || isLaunchSettling;
 
   let launchVisualState: MemberLaunchVisualState = null;
-  if (isTeamAlive === false && !isTeamProvisioning) {
-    launchVisualState = null;
-  } else if (spawnLaunchState === 'failed_to_start' || spawnStatus === 'error') {
-    launchVisualState = 'error';
-  } else if (
-    spawnLaunchState === 'runtime_pending_bootstrap' &&
-    spawnStatus === 'online' &&
-    spawnRuntimeAlive === true
-  ) {
-    launchVisualState = 'runtime_pending';
-  } else if (
-    isLaunchStillStarting(
-      spawnStatus,
-      spawnLaunchState,
-      spawnRuntimeAlive,
-      keepLaunchSettlingVisuals
-    )
-  ) {
-    launchVisualState = spawnStatus === 'spawning' ? 'spawning' : 'waiting';
-  } else if (
-    isLaunchSettling &&
-    spawnStatus === 'online' &&
-    spawnLaunchState === 'confirmed_alive'
-  ) {
-    launchVisualState = 'settling';
+  if (isTeamAlive !== false || isTeamProvisioning) {
+    if (spawnLaunchState === 'failed_to_start' || spawnStatus === 'error') {
+      launchVisualState = 'error';
+    } else if (
+      spawnLaunchState === 'runtime_pending_bootstrap' &&
+      spawnStatus === 'online' &&
+      spawnRuntimeAlive === true
+    ) {
+      launchVisualState = 'runtime_pending';
+    } else if (
+      isLaunchStillStarting(
+        spawnStatus,
+        spawnLaunchState,
+        spawnRuntimeAlive,
+        keepLaunchSettlingVisuals
+      )
+    ) {
+      launchVisualState = spawnStatus === 'spawning' ? 'spawning' : 'waiting';
+    } else if (
+      isLaunchSettling &&
+      spawnStatus === 'online' &&
+      spawnLaunchState === 'confirmed_alive'
+    ) {
+      launchVisualState = 'settling';
+    }
   }
 
   const spawnBadgeLabel =

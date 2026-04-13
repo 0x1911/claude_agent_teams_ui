@@ -159,7 +159,7 @@ function estimateGridSkeletonCardHeight(
   if ((task.blockedBy?.length ?? 0) > 0) height += 18;
   if ((task.blocks?.length ?? 0) > 0) height += 18;
 
-  const effectiveReviewer = (kanbanState.tasks[task.id]?.reviewer ?? task.reviewer ?? '').trim();
+  const effectiveReviewer = (kanbanState.tasks[task.id]?.reviewer ?? '').trim();
   if (columnId === 'review' && !hasReviewers && effectiveReviewer.length === 0) {
     height += 14;
   }

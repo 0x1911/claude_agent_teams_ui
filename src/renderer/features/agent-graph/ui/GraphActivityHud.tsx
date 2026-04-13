@@ -6,8 +6,8 @@ import {
   resolveMessageRenderProps,
 } from '@renderer/components/team/activity/activityMessageContext';
 import { MessageExpandDialog } from '@renderer/components/team/activity/MessageExpandDialog';
-import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStableTeamMentionMeta } from '@renderer/hooks/useStableTeamMentionMeta';
+import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStore } from '@renderer/store';
 import { selectTeamDataForName } from '@renderer/store/slices/teamSlice';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
@@ -19,12 +19,12 @@ import {
   type InlineActivityEntry,
 } from '../utils/buildInlineActivityEntries';
 
+import type { GraphNode } from '@claude-teams/agent-graph';
 import type { TimelineItem } from '@renderer/components/team/activity/LeadThoughtsGroup';
 import type {
   MemberActivityFilter,
   MemberDetailTab,
 } from '@renderer/components/team/members/memberDetailTypes';
-import type { GraphNode } from '@claude-teams/agent-graph';
 import type { ResolvedTeamMember } from '@shared/types/team';
 
 interface GraphActivityHudProps {
@@ -46,7 +46,7 @@ interface GraphActivityHudProps {
   ) => void;
 }
 
-export function GraphActivityHud({
+export const GraphActivityHud = ({
   teamName,
   nodes,
   getActivityAnchorScreenPlacement,
@@ -55,7 +55,7 @@ export function GraphActivityHud({
   enabled = true,
   onOpenTaskDetail,
   onOpenMemberProfile,
-}: GraphActivityHudProps): React.JSX.Element | null {
+}: GraphActivityHudProps): React.JSX.Element | null => {
   const shellRefs = useRef(new Map<string, HTMLDivElement | null>());
   const connectorRefs = useRef(new Map<string, SVGSVGElement | null>());
   const connectorPathRefs = useRef(new Map<string, SVGPathElement | null>());
@@ -149,8 +149,7 @@ export function GraphActivityHud({
         const connectorPath = connectorPathRefs.current.get(lane.node.id) ?? null;
 
         const placement = getActivityAnchorScreenPlacement(lane.node.id);
-        const nodeScreen = getNodeScreenPosition(lane.node.id);
-        if (!placement || !placement.visible || !nodeScreen || !nodeScreen.visible) {
+        if (!placement?.visible) {
           shell.style.opacity = '0';
           if (connector) {
             connector.style.opacity = '0';
@@ -163,6 +162,11 @@ export function GraphActivityHud({
         shell.style.transform = `translate(${Math.round(placement.x)}px, ${Math.round(placement.y)}px) scale(${placement.scale.toFixed(3)})`;
 
         if (connector && connectorPath) {
+          const nodeScreen = getNodeScreenPosition(lane.node.id);
+          if (!nodeScreen?.visible) {
+            connector.style.opacity = '0';
+            continue;
+          }
           const scaledWidth = (shell.offsetWidth || 296) * placement.scale;
           const laneCenterX = placement.x + scaledWidth / 2;
           const laneIsLeft = laneCenterX < nodeScreen.x;
@@ -377,4 +381,4 @@ export function GraphActivityHud({
       />
     </>
   );
-}
+};

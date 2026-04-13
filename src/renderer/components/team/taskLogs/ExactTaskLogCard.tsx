@@ -1,7 +1,7 @@
 import { MemberExecutionLog } from '@renderer/components/team/members/MemberExecutionLog';
-import { asEnhancedChunkArray } from '@renderer/types/data';
 import { ChevronDown, ChevronRight, Clock, FileText, Loader2 } from 'lucide-react';
 
+import type { asEnhancedChunkArray } from '@renderer/types/data';
 import type { BoardTaskExactLogSummary } from '@shared/types';
 
 export interface ExactTaskLogDetailState {
@@ -61,12 +61,12 @@ interface ExactTaskLogCardProps {
   onToggle: () => void;
 }
 
-export function ExactTaskLogCard({
+export const ExactTaskLogCard = ({
   summary,
   expanded,
   detailState,
   onToggle,
-}: ExactTaskLogCardProps): React.JSX.Element {
+}: ExactTaskLogCardProps): React.JSX.Element => {
   const loadStateText = describeDetailState(detailState);
 
   return (
@@ -129,4 +129,4 @@ export function ExactTaskLogCard({
       ) : null}
     </div>
   );
-}
+};

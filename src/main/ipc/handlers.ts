@@ -89,11 +89,11 @@ import { registerValidationHandlers, removeValidationHandlers } from './validati
 import { registerWindowHandlers, removeWindowHandlers } from './window';
 
 import type {
-  BranchStatusService,
   BoardTaskActivityService,
-  BoardTaskLogStreamService,
   BoardTaskExactLogDetailService,
   BoardTaskExactLogsService,
+  BoardTaskLogStreamService,
+  BranchStatusService,
   ChangeExtractorService,
   CliInstallerService,
   FileContentResolver,

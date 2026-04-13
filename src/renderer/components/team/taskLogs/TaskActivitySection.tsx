@@ -1,10 +1,11 @@
-import { api } from '@renderer/api';
-import { AlertCircle, Loader2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+
+import { api } from '@renderer/api';
 import {
   describeBoardTaskActivityLabel,
   formatBoardTaskActivityTaskLabel,
 } from '@shared/utils/boardTaskActivityLabels';
+import { AlertCircle, Loader2 } from 'lucide-react';
 
 import type { BoardTaskActivityEntry, BoardTaskActivityTaskRef } from '@shared/types';
 
@@ -109,7 +110,7 @@ function actorLabel(entry: BoardTaskActivityEntry): string {
   return 'unknown actor';
 }
 
-function Row({ entry }: { entry: BoardTaskActivityEntry }): React.JSX.Element {
+const Row = ({ entry }: { entry: BoardTaskActivityEntry }): React.JSX.Element => {
   const context = describeContext(entry);
   const tone =
     entry.task.resolution === 'resolved'
@@ -135,12 +136,12 @@ function Row({ entry }: { entry: BoardTaskActivityEntry }): React.JSX.Element {
       </div>
     </div>
   );
-}
+};
 
-export function TaskActivitySection({
+export const TaskActivitySection = ({
   teamName,
   taskId,
-}: TaskActivitySectionProps): React.JSX.Element {
+}: TaskActivitySectionProps): React.JSX.Element => {
   const [entries, setEntries] = useState<BoardTaskActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -243,4 +244,4 @@ export function TaskActivitySection({
       {content}
     </div>
   );
-}
+};

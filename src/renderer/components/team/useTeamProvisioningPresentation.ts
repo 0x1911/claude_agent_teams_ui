@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 
 import { useStore } from '@renderer/store';
 import {
-  selectTeamDataForName,
   getCurrentProvisioningProgressForTeam,
+  selectTeamDataForName,
 } from '@renderer/store/slices/teamSlice';
 import { buildTeamProvisioningPresentation } from '@renderer/utils/teamProvisioningPresentation';
 import { useShallow } from 'zustand/react/shallow';

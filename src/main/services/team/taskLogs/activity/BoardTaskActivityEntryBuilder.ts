@@ -1,8 +1,8 @@
 import { BoardTaskActivityRecordBuilder } from './BoardTaskActivityRecordBuilder';
 
-import type { BoardTaskActivityEntry, TeamTask } from '@shared/types';
-import type { RawTaskActivityMessage } from './BoardTaskActivityTranscriptReader';
 import type { BoardTaskActivityRecord } from './BoardTaskActivityRecord';
+import type { RawTaskActivityMessage } from './BoardTaskActivityTranscriptReader';
+import type { BoardTaskActivityEntry, TeamTask } from '@shared/types';
 
 function cloneTaskRef(task: BoardTaskActivityRecord['task']): BoardTaskActivityEntry['task'] {
   return {

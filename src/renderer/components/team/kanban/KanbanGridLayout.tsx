@@ -39,10 +39,10 @@ export interface KanbanGridColumn {
   bodyBg?: string;
   content: React.ReactNode;
   showAddButton?: boolean;
-  skeletonCards?: Array<{
+  skeletonCards?: {
     key: string;
     height: number;
-  }>;
+  }[];
 }
 
 interface KanbanGridLayoutProps {

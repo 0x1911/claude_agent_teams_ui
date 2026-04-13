@@ -1,10 +1,11 @@
 import { BoardTaskActivityRecordSource } from '../activity/BoardTaskActivityRecordSource';
+
 import { BoardTaskExactLogChunkBuilder } from './BoardTaskExactLogChunkBuilder';
 import { BoardTaskExactLogDetailSelector } from './BoardTaskExactLogDetailSelector';
 import { BoardTaskExactLogStrictParser } from './BoardTaskExactLogStrictParser';
+import { BoardTaskExactLogSummarySelector } from './BoardTaskExactLogSummarySelector';
 import { isBoardTaskExactLogsReadEnabled } from './featureGates';
 import { getBoardTaskExactLogFileVersions } from './fileVersions';
-import { BoardTaskExactLogSummarySelector } from './BoardTaskExactLogSummarySelector';
 
 import type { BoardTaskExactLogDetailResult } from '@shared/types';
 

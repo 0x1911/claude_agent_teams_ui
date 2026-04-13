@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Button } from '@renderer/components/ui/button';
 import { ProviderBrandLogo } from '@renderer/components/common/ProviderBrandLogo';
+import { Button } from '@renderer/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -1059,7 +1059,7 @@ export const ProviderRuntimeSettingsDialog = ({
                 ) : null}
               </div>
 
-              {showApiKeySection ? (
+              {showApiKeySection && apiKeyConfig ? (
                 <div
                   className="space-y-3 rounded-md border p-3"
                   style={{ borderColor: 'var(--color-border-subtle)' }}
@@ -1069,7 +1069,7 @@ export const ProviderRuntimeSettingsDialog = ({
                       <div className="flex items-center gap-2">
                         <div
                           data-testid="provider-api-key-icon"
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border"
+                          className="flex size-8 shrink-0 items-center justify-center rounded-md border"
                           style={{
                             borderColor: 'var(--color-border-subtle)',
                             backgroundColor: 'rgba(255,255,255,0.03)',

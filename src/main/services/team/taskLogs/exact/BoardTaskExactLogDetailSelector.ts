@@ -1,12 +1,12 @@
 import { extractToolCalls, extractToolResults } from '@main/utils/toolExtraction';
 import { createLogger } from '@shared/utils/logger';
 
-import type { ContentBlock, ParsedMessage } from '@main/types';
 import type { BoardTaskActivityRecord } from '../activity/BoardTaskActivityRecord';
 import type {
-  BoardTaskExactLogDetailCandidate,
   BoardTaskExactLogBundleCandidate,
+  BoardTaskExactLogDetailCandidate,
 } from './BoardTaskExactLogTypes';
+import type { ContentBlock, ParsedMessage } from '@main/types';
 
 const logger = createLogger('Service:BoardTaskExactLogDetailSelector');
 
@@ -63,7 +63,7 @@ function cloneBlock<T extends ContentBlock>(block: T): T {
     } as T;
   }
 
-  return { ...block } as T;
+  return { ...block };
 }
 
 function filterAssistantContent(
@@ -249,7 +249,7 @@ function deduplicateAssistantMessagesByRequestId(
         continue;
       }
 
-      const existingRank = anchorEvidenceRank(messages[existingIndex]!, toolUseId);
+      const existingRank = anchorEvidenceRank(messages[existingIndex], toolUseId);
       const nextRank = anchorEvidenceRank(message, toolUseId);
       if (nextRank > existingRank || (nextRank === existingRank && i > existingIndex)) {
         preferredAssistantIndexByRequestId.set(message.requestId, i);

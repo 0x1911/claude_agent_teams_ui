@@ -8,15 +8,15 @@ import {
 } from '@renderer/components/team/activity/activityMessageContext';
 import { MessageExpandDialog } from '@renderer/components/team/activity/MessageExpandDialog';
 import { Button } from '@renderer/components/ui/button';
-import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { buildInlineActivityEntries } from '@renderer/features/agent-graph/utils/buildInlineActivityEntries';
+import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { mergeTeamMessages } from '@renderer/utils/mergeTeamMessages';
-import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
+import { toMessageKey } from '@renderer/utils/teamMessageKey';
 import { isLeadMember } from '@shared/utils/leadDetection';
 
-import type { TimelineItem } from '@renderer/components/team/activity/LeadThoughtsGroup';
 import type { MemberActivityFilter } from './memberDetailTypes';
+import type { TimelineItem } from '@renderer/components/team/activity/LeadThoughtsGroup';
 import type { InboxMessage, ResolvedTeamMember, TeamTaskWithKanban } from '@shared/types';
 
 interface MemberMessagesTabProps {
@@ -32,7 +32,7 @@ interface MemberMessagesTabProps {
 
 const MAX_MESSAGES = 100;
 const MEMBER_MESSAGES_PAGE_SIZE = 50;
-const FILTER_OPTIONS: ReadonlyArray<{ value: MemberActivityFilter; label: string }> = [
+const FILTER_OPTIONS: readonly { value: MemberActivityFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'messages', label: 'Messages' },
   { value: 'comments', label: 'Comments' },

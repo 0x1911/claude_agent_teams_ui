@@ -102,12 +102,12 @@ import {
 } from './utils/safeWebContentsSend';
 import { syncTelemetryFlag } from './sentry';
 import {
-  BranchStatusService,
   BoardTaskActivityRecordSource,
   BoardTaskActivityService,
   BoardTaskExactLogDetailService,
   BoardTaskExactLogsService,
   BoardTaskLogStreamService,
+  BranchStatusService,
   CliInstallerService,
   configManager,
   LocalFileSystemProvider,

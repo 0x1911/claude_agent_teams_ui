@@ -2,6 +2,12 @@ import { createLogger } from '@shared/utils/logger';
 import { getTaskDisplayId } from '@shared/utils/taskIdentity';
 
 import type {
+  ParsedBoardTaskLink,
+  ParsedBoardTaskToolAction,
+} from '../contract/BoardTaskTranscriptContract';
+import type { BoardTaskActivityRecord } from './BoardTaskActivityRecord';
+import type { RawTaskActivityMessage } from './BoardTaskActivityTranscriptReader';
+import type {
   BoardTaskActivityAction,
   BoardTaskActivityActor,
   BoardTaskActivityCategory,
@@ -10,12 +16,6 @@ import type {
   TaskRef,
   TeamTask,
 } from '@shared/types';
-import type { RawTaskActivityMessage } from './BoardTaskActivityTranscriptReader';
-import type {
-  ParsedBoardTaskLink,
-  ParsedBoardTaskToolAction,
-} from '../contract/BoardTaskTranscriptContract';
-import type { BoardTaskActivityRecord } from './BoardTaskActivityRecord';
 
 interface TaskLookup {
   byId: Map<string, TeamTask>;

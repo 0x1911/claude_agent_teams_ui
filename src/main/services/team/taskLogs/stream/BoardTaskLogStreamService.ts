@@ -4,10 +4,11 @@ import { BoardTaskActivityRecordSource } from '../activity/BoardTaskActivityReco
 import { BoardTaskExactLogChunkBuilder } from '../exact/BoardTaskExactLogChunkBuilder';
 import { BoardTaskExactLogDetailSelector } from '../exact/BoardTaskExactLogDetailSelector';
 import { BoardTaskExactLogStrictParser } from '../exact/BoardTaskExactLogStrictParser';
+import { BoardTaskExactLogSummarySelector } from '../exact/BoardTaskExactLogSummarySelector';
 import { isBoardTaskExactLogsReadEnabled } from '../exact/featureGates';
 import { getBoardTaskExactLogFileVersions } from '../exact/fileVersions';
-import { BoardTaskExactLogSummarySelector } from '../exact/BoardTaskExactLogSummarySelector';
 
+import type { BoardTaskExactLogDetailCandidate } from '../exact/BoardTaskExactLogTypes';
 import type { ContentBlock, ParsedMessage, ToolUseResultData } from '@main/types';
 import type {
   BoardTaskActivityCategory,
@@ -16,7 +17,6 @@ import type {
   BoardTaskLogSegment,
   BoardTaskLogStreamResponse,
 } from '@shared/types';
-import type { BoardTaskExactLogDetailCandidate } from '../exact/BoardTaskExactLogTypes';
 
 interface StreamSlice {
   id: string;
@@ -533,7 +533,7 @@ function cloneBlock<T extends ContentBlock>(block: T): T {
     } as T;
   }
 
-  return { ...block } as T;
+  return { ...block };
 }
 
 function cloneMessageContent(content: ParsedMessage['content']): ParsedMessage['content'] {
@@ -655,7 +655,7 @@ function rebuildMergedMessage(
 }
 
 function mergeMessages(
-  details: Array<{ filePath: string; filteredMessages: ParsedMessage[] }>
+  details: { filePath: string; filteredMessages: ParsedMessage[] }[]
 ): ParsedMessage[] {
   const byMessageKey = new Map<string, MergedMessageAccumulator>();
   let order = 0;
@@ -808,8 +808,8 @@ export class BoardTaskLogStreamService {
 
     const flushSegment = (): void => {
       if (currentSegmentSlices.length === 0) return;
-      const participantKey = currentSegmentSlices[0]!.participantKey;
-      const actor = currentSegmentSlices[0]!.actor;
+      const participantKey = currentSegmentSlices[0].participantKey;
+      const actor = currentSegmentSlices[0].actor;
       const mergedMessages = mergeMessages(
         currentSegmentSlices.map((slice) => ({
           filePath: slice.filePath,
@@ -827,8 +827,8 @@ export class BoardTaskLogStreamService {
           id: buildSegmentId(participantKey, currentSegmentSlices),
           participantKey,
           actor,
-          startTimestamp: currentSegmentSlices[0]!.timestamp,
-          endTimestamp: currentSegmentSlices[currentSegmentSlices.length - 1]!.timestamp,
+          startTimestamp: currentSegmentSlices[0].timestamp,
+          endTimestamp: currentSegmentSlices[currentSegmentSlices.length - 1].timestamp,
           chunks,
         });
       }
@@ -838,7 +838,7 @@ export class BoardTaskLogStreamService {
     for (const slice of visibleSlices) {
       if (
         currentSegmentSlices.length > 0 &&
-        currentSegmentSlices[0]!.participantKey !== slice.participantKey
+        currentSegmentSlices[0].participantKey !== slice.participantKey
       ) {
         flushSegment();
       }
@@ -847,7 +847,7 @@ export class BoardTaskLogStreamService {
     flushSegment();
 
     const namedParticipants = orderedParticipants.filter((participant) => !participant.isLead);
-    const defaultFilter = namedParticipants.length === 1 ? namedParticipants[0]!.key : 'all';
+    const defaultFilter = namedParticipants.length === 1 ? namedParticipants[0].key : 'all';
 
     return {
       participants: orderedParticipants,

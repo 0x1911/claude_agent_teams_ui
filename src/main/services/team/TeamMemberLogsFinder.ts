@@ -7,13 +7,13 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as readline from 'readline';
 
-import { TeamConfigReader } from './TeamConfigReader';
-import { TeamInboxReader } from './TeamInboxReader';
-import { TeamMembersMetaStore } from './TeamMembersMetaStore';
 import {
   canonicalizeAgentTeamsToolName,
   lineHasAgentTeamsTaskBoundaryToolName,
 } from './agentTeamsToolNames';
+import { TeamConfigReader } from './TeamConfigReader';
+import { TeamInboxReader } from './TeamInboxReader';
+import { TeamMembersMetaStore } from './TeamMembersMetaStore';
 
 import type { MemberLogSummary, MemberSubagentLogSummary } from '@shared/types';
 

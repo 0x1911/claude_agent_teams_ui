@@ -23,11 +23,11 @@ import {
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { isLeadMember } from '@shared/utils/leadDetection';
 
-import { collapseOverflowStacksWithMeta } from '../utils/collapseOverflowStacks';
 import {
   buildInlineActivityEntries,
   getGraphLeadMemberName,
 } from '../utils/buildInlineActivityEntries';
+import { collapseOverflowStacksWithMeta } from '../utils/collapseOverflowStacks';
 import {
   isTaskBlocked,
   isTaskInReviewCycle,
@@ -35,8 +35,8 @@ import {
 } from '../utils/taskGraphSemantics';
 
 import type {
-  GraphDataPort,
   GraphActivityItem,
+  GraphDataPort,
   GraphEdge,
   GraphNode,
   GraphNodeState,
@@ -48,8 +48,8 @@ import type {
   LeadActivityState,
   MemberSpawnStatusEntry,
   MemberSpawnStatusesSnapshot,
-  TeamProvisioningProgress,
   TeamData,
+  TeamProvisioningProgress,
 } from '@shared/types/team';
 import type { LeadContextUsage } from '@shared/types/team';
 

@@ -1,7 +1,6 @@
-import { createHash } from 'crypto';
-
 import { describeBoardTaskActivityLabel } from '@shared/utils/boardTaskActivityLabels';
 import { createLogger } from '@shared/utils/logger';
+import { createHash } from 'crypto';
 
 import type { BoardTaskActivityRecord } from '../activity/BoardTaskActivityRecord';
 import type {
@@ -75,7 +74,7 @@ function sourceGenerationFor(
   version: BoardTaskExactLogFileVersion | undefined
 ): string | null {
   if (!version) return null;
-  const hash = createHash('sha1');
+  const hash = createHash('sha256');
   hash.update(anchor.filePath);
   hash.update('\0');
   hash.update(String(version.size));

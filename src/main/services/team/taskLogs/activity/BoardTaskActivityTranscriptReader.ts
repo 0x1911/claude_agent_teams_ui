@@ -1,17 +1,17 @@
+import { yieldToEventLoop } from '@main/utils/asyncYield';
 import { createLogger } from '@shared/utils/logger';
 import { createReadStream } from 'fs';
 import * as fs from 'fs/promises';
 import * as readline from 'readline';
 
-import { yieldToEventLoop } from '@main/utils/asyncYield';
-
-import { BoardTaskActivityParseCache } from './BoardTaskActivityParseCache';
 import {
   parseBoardTaskLinks,
   parseBoardTaskToolActions,
   type ParsedBoardTaskLink,
   type ParsedBoardTaskToolAction,
 } from '../contract/BoardTaskTranscriptContract';
+
+import { BoardTaskActivityParseCache } from './BoardTaskActivityParseCache';
 
 const logger = createLogger('Service:BoardTaskActivityTranscriptReader');
 

@@ -1,18 +1,18 @@
-import type { ComponentProps } from 'react';
-
 import { MemberLogsTab } from '@renderer/components/team/members/MemberLogsTab';
 import { Loader2 } from 'lucide-react';
+
+import type { ComponentProps } from 'react';
 
 interface ExecutionSessionsSectionProps extends ComponentProps<typeof MemberLogsTab> {
   isRefreshing?: boolean;
   isPreviewOnline?: boolean;
 }
 
-export function ExecutionSessionsSection({
+export const ExecutionSessionsSection = ({
   isRefreshing = false,
   isPreviewOnline = false,
   ...props
-}: ExecutionSessionsSectionProps): React.JSX.Element {
+}: ExecutionSessionsSectionProps): React.JSX.Element => {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
@@ -45,4 +45,4 @@ export function ExecutionSessionsSection({
       <MemberLogsTab {...props} />
     </div>
   );
-}
+};

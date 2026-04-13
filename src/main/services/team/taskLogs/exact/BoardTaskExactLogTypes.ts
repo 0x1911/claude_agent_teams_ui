@@ -1,3 +1,4 @@
+import type { BoardTaskActivityRecord } from '../activity/BoardTaskActivityRecord';
 import type { ParsedMessage } from '@main/types';
 import type {
   BoardTaskActivityCategory,
@@ -7,7 +8,6 @@ import type {
   BoardTaskExactLogSource,
   BoardTaskExactLogSummary,
 } from '@shared/types';
-import type { BoardTaskActivityRecord } from '../activity/BoardTaskActivityRecord';
 
 export interface BoardTaskExactLogFileVersion {
   filePath: string;

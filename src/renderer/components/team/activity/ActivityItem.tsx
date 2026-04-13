@@ -575,17 +575,17 @@ function renderInlineBoldSummary(
   });
 }
 
-function TaskRecipientBadge({
+const TaskRecipientBadge = ({
   taskId,
   displayId,
   teamName,
   onTaskIdClick,
-}: {
+}: Readonly<{
   taskId: string;
   displayId: string;
   teamName?: string;
   onTaskIdClick?: (taskId: string) => void;
-}): React.JSX.Element {
+}>): React.JSX.Element => {
   const content = (
     <span
       className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium tracking-wide"
@@ -617,10 +617,10 @@ function TaskRecipientBadge({
       </button>
     </TaskTooltip>
   );
-}
+};
 
 export const ActivityItem = memo(
-  function ActivityItem({
+  ({
     message,
     teamName,
     localMemberNames,
@@ -647,7 +647,7 @@ export const ActivityItem = memo(
     onExpand,
     expandItemKey,
     onExpandContent,
-  }: ActivityItemProps): React.JSX.Element {
+  }: Readonly<ActivityItemProps>): React.JSX.Element => {
     const colors = getTeamColorSet(memberColor ?? message.color ?? '');
     const { isLight } = useTheme();
     // Hide role when it matches the sender name (avoids "lead" badge + "Team Lead" text duplication)
@@ -1489,3 +1489,5 @@ export const ActivityItem = memo(
     prev.onExpandContent === next.onExpandContent &&
     areMessagesEquivalentForActivityItem(prev.message, next.message)
 );
+
+ActivityItem.displayName = 'ActivityItem';

@@ -38,12 +38,12 @@ import type {
 } from './schedule';
 import type {
   AddMemberRequest,
-  BoardTaskActivityEntry,
-  BoardTaskLogStreamResponse,
-  BoardTaskExactLogDetailResult,
-  BoardTaskExactLogSummariesResponse,
   AddTaskCommentRequest,
   AttachmentFileData,
+  BoardTaskActivityEntry,
+  BoardTaskExactLogDetailResult,
+  BoardTaskExactLogSummariesResponse,
+  BoardTaskLogStreamResponse,
   CreateTaskRequest,
   CrossTeamMessage,
   CrossTeamSendRequest,

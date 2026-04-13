@@ -1,5 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+import { DISPLAY_STEPS } from '@renderer/components/team/provisioningSteps';
+import { StepProgressBar } from '@renderer/components/team/StepProgressBar';
+import { TeamProvisioningPanel } from '@renderer/components/team/TeamProvisioningPanel';
+import { useTeamProvisioningPresentation } from '@renderer/components/team/useTeamProvisioningPresentation';
 import { Badge } from '@renderer/components/ui/badge';
 import {
   Dialog,
@@ -8,10 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog';
-import { TeamProvisioningPanel } from '@renderer/components/team/TeamProvisioningPanel';
-import { StepProgressBar } from '@renderer/components/team/StepProgressBar';
-import { useTeamProvisioningPresentation } from '@renderer/components/team/useTeamProvisioningPresentation';
-import { DISPLAY_STEPS } from '@renderer/components/team/provisioningSteps';
 import { cn } from '@renderer/lib/utils';
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, X } from 'lucide-react';
 
@@ -87,12 +87,12 @@ export interface GraphProvisioningHudProps {
   enabled?: boolean;
 }
 
-export function GraphProvisioningHud({
+export const GraphProvisioningHud = ({
   teamName,
   leadNodeId,
   getLaunchAnchorScreenPlacement,
   enabled = true,
-}: GraphProvisioningHudProps): React.JSX.Element | null {
+}: GraphProvisioningHudProps): React.JSX.Element | null => {
   const { presentation, runInstanceKey } = useTeamProvisioningPresentation(teamName);
   const shellRef = useRef<HTMLDivElement>(null);
   const lastActiveStepRef = useRef(-1);
@@ -180,7 +180,7 @@ export function GraphProvisioningHud({
     >
       <div
         className={cn(
-          'rounded-xl border px-3 py-3 text-slate-100 shadow-[0_18px_48px_rgba(5,5,16,0.38)] backdrop-blur-xl',
+          'rounded-xl border p-3 text-slate-100 shadow-[0_18px_48px_rgba(5,5,16,0.38)] backdrop-blur-xl',
           tone.border
         )}
       >
@@ -227,7 +227,7 @@ export function GraphProvisioningHud({
 
         <button
           type="button"
-          className="border-cyan-300/12 mt-3 w-full rounded-xl border bg-[rgba(4,10,20,0.58)] px-3 py-3 text-left transition-colors hover:bg-[rgba(8,18,32,0.76)]"
+          className="border-cyan-300/12 mt-3 w-full rounded-xl border bg-[rgba(4,10,20,0.58)] p-3 text-left transition-colors hover:bg-[rgba(8,18,32,0.76)]"
           style={HUD_STEPPER_STYLE}
           onClick={() => setDetailsOpen(true)}
           aria-label="Open full launch details"
@@ -256,4 +256,4 @@ export function GraphProvisioningHud({
       </Dialog>
     </div>
   );
-}
+};

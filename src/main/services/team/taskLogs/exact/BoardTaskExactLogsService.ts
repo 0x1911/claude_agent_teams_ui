@@ -1,8 +1,9 @@
 import { BoardTaskActivityRecordSource } from '../activity/BoardTaskActivityRecordSource';
-import { isBoardTaskExactLogsReadEnabled } from './featureGates';
-import { getBoardTaskExactLogFileVersions } from './fileVersions';
+
 import { BoardTaskExactLogSummarySelector } from './BoardTaskExactLogSummarySelector';
 import { mapCandidateToSummary } from './BoardTaskExactLogTypes';
+import { isBoardTaskExactLogsReadEnabled } from './featureGates';
+import { getBoardTaskExactLogFileVersions } from './fileVersions';
 
 import type { BoardTaskExactLogSummariesResponse } from '@shared/types';
 
