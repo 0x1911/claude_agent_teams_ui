@@ -79,7 +79,7 @@ export function TmuxInstallerBannerView(): React.JSX.Element | null {
 
   return (
     <div
-      className={`mb-6 rounded-lg border-l-4 px-4 py-3 ${BANNER_MIN_H}`}
+      className={`mb-6 rounded-lg border-l-4 px-3 ${expanded ? `py-3 ${BANNER_MIN_H}` : 'py-2.5'}`}
       style={{
         borderLeftColor: viewModel.error ? '#ef4444' : '#f59e0b',
         backgroundColor: 'rgba(245, 158, 11, 0.08)',
@@ -90,28 +90,35 @@ export function TmuxInstallerBannerView(): React.JSX.Element | null {
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded((current) => !current)}
-        className="flex min-h-[1.75rem] w-full items-center justify-between gap-3 text-left"
+        className="group flex w-full items-center justify-between gap-3 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-white/[0.03]"
       >
-        <span className="flex min-w-0 items-center gap-3">
-          <span className="shrink-0">
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span className="inline-flex shrink-0 items-center justify-center">
             {viewModel.error ? (
-              <AlertTriangle className="size-4 text-red-300" />
+              <AlertTriangle className="size-3.5 text-red-300" />
             ) : (
-              <Wrench className="size-4 text-amber-300" />
+              <Wrench className="size-3.5 text-amber-300" />
             )}
           </span>
           <span
-            className="truncate text-sm leading-5"
+            className="truncate text-xs font-medium leading-5"
             style={{ color: 'var(--color-text)' }}
           >
             {SUMMARY_TITLE}
           </span>
         </span>
-        {expanded ? (
-          <ChevronUp className="size-4 shrink-0" />
-        ) : (
-          <ChevronDown className="size-4 shrink-0" />
-        )}
+        <span
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md transition-colors group-hover:bg-white/[0.03]"
+          style={{
+            color: 'var(--color-text-secondary)',
+          }}
+        >
+          {expanded ? (
+            <ChevronUp className="size-3.5 shrink-0" />
+          ) : (
+            <ChevronDown className="size-3.5 shrink-0" />
+          )}
+        </span>
       </button>
 
       {expanded && (

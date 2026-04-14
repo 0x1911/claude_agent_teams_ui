@@ -50,6 +50,8 @@ interface AdaptInput {
   detailsOpen: boolean;
 }
 
+const RESTART_REQUIRED_PATTERNS = ['restart', 'reboot', 'перезагруз', 'требуется перезагрузка'];
+
 export class TmuxInstallerBannerAdapter {
   static create(): TmuxInstallerBannerAdapter {
     return new TmuxInstallerBannerAdapter();
@@ -58,19 +60,20 @@ export class TmuxInstallerBannerAdapter {
   adapt(input: AdaptInput): TmuxInstallerBannerViewModel {
     const status = input.status;
     const snapshot = input.snapshot;
+    const displayPhase = this.#resolveDisplayPhase(snapshot, status);
     const hasActiveInstallFlow =
-      snapshot.phase !== 'idle' && snapshot.phase !== 'completed' && snapshot.phase !== 'cancelled';
+      displayPhase !== 'idle' && displayPhase !== 'completed' && displayPhase !== 'cancelled';
     const tmuxMissing = status ? !status.effective.available : !input.loading;
     const visible =
-      hasActiveInstallFlow || (snapshot.phase !== 'completed' && !input.loading && tmuxMissing);
+      hasActiveInstallFlow || (displayPhase !== 'completed' && !input.loading && tmuxMissing);
     const title =
       snapshot.message &&
-      (snapshot.phase === 'pending_external_elevation' ||
-        snapshot.phase === 'waiting_for_external_step' ||
-        snapshot.phase === 'needs_restart' ||
-        snapshot.phase === 'needs_manual_step')
+      (displayPhase === 'pending_external_elevation' ||
+        displayPhase === 'waiting_for_external_step' ||
+        displayPhase === 'needs_restart' ||
+        displayPhase === 'needs_manual_step')
         ? snapshot.message
-        : formatTmuxInstallerTitle(snapshot.phase);
+        : formatTmuxInstallerTitle(displayPhase);
     const primaryGuideUrl =
       status?.autoInstall.manualHints.find((hint) => typeof hint.url === 'string')?.url ?? null;
     const body =
@@ -95,7 +98,7 @@ export class TmuxInstallerBannerAdapter {
     const manualHints = status?.autoInstall.manualHints ?? [];
     const manualHintsCollapsible = status?.platform === 'win32' && manualHints.length > 0;
     const installLabel =
-      snapshot.phase === 'idle' &&
+      displayPhase === 'idle' &&
       status?.platform === 'win32' &&
       status.autoInstall.strategy === 'wsl' &&
       status.autoInstall.supported
@@ -104,16 +107,16 @@ export class TmuxInstallerBannerAdapter {
           : !status.wsl?.distroName
             ? 'Install Ubuntu in WSL'
             : 'Install tmux in WSL'
-        : formatInstallButtonLabel(snapshot.phase);
+        : formatInstallButtonLabel(displayPhase);
     const installDisabled =
       input.loading ||
-      snapshot.phase === 'preparing' ||
-      snapshot.phase === 'checking' ||
-      snapshot.phase === 'requesting_privileges' ||
-      snapshot.phase === 'pending_external_elevation' ||
-      snapshot.phase === 'waiting_for_external_step' ||
-      snapshot.phase === 'installing' ||
-      snapshot.phase === 'verifying';
+      displayPhase === 'preparing' ||
+      displayPhase === 'checking' ||
+      displayPhase === 'requesting_privileges' ||
+      displayPhase === 'pending_external_elevation' ||
+      displayPhase === 'waiting_for_external_step' ||
+      displayPhase === 'installing' ||
+      displayPhase === 'verifying';
     const installButtonPrimary =
       !installDisabled && (installLabel.startsWith('Install') || installLabel.startsWith('Retry'));
     const showRefreshButton =
@@ -131,8 +134,8 @@ export class TmuxInstallerBannerAdapter {
       locationLabel: formatTmuxLocationLabel(status?.effective.location ?? null),
       runtimeReadyLabel,
       versionLabel,
-      phase: snapshot.phase,
-      progressPercent: formatTmuxInstallerProgress(snapshot.phase),
+      phase: displayPhase,
+      progressPercent: formatTmuxInstallerProgress(displayPhase),
       logs: snapshot.logs,
       manualHints,
       manualHintsCollapsible,
@@ -148,5 +151,24 @@ export class TmuxInstallerBannerAdapter {
       inputSecret: snapshot.inputSecret,
       detailsOpen: input.detailsOpen,
     };
+  }
+
+  #resolveDisplayPhase(
+    snapshot: TmuxInstallerSnapshot,
+    status: TmuxStatus | null
+  ): TmuxInstallerSnapshot['phase'] {
+    if (snapshot.phase !== 'waiting_for_external_step') {
+      return snapshot.phase;
+    }
+
+    const combinedSignals = [snapshot.message, snapshot.detail, status?.wsl?.statusDetail, ...snapshot.logs]
+      .filter(Boolean)
+      .join('\n')
+      .toLowerCase();
+    const restartRequired =
+      status?.wsl?.rebootRequired === true ||
+      RESTART_REQUIRED_PATTERNS.some((pattern) => combinedSignals.includes(pattern));
+
+    return restartRequired ? 'needs_restart' : snapshot.phase;
   }
 }

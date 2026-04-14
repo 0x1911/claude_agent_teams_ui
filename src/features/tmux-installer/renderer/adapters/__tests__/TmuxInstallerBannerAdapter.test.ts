@@ -350,4 +350,47 @@ describe('TmuxInstallerBannerAdapter', () => {
     expect(result.installDisabled).toBe(true);
     expect(result.showRefreshButton).toBe(true);
   });
+
+  it('shows a restart state when external-step details already require a reboot', () => {
+    const adapter = TmuxInstallerBannerAdapter.create();
+
+    const result = adapter.adapt({
+      status: {
+        ...baseStatus,
+        platform: 'win32',
+        autoInstall: {
+          ...baseStatus.autoInstall,
+          supported: true,
+          strategy: 'wsl',
+        },
+        wsl: {
+          wslInstalled: true,
+          rebootRequired: false,
+          distroName: null,
+          distroVersion: null,
+          distroBootstrapped: false,
+          innerPackageManager: null,
+          tmuxAvailableInsideWsl: false,
+          tmuxVersion: null,
+          tmuxBinaryPath: null,
+          statusDetail: null,
+        },
+      },
+      snapshot: {
+        ...idleSnapshot,
+        phase: 'waiting_for_external_step',
+        strategy: 'wsl',
+        message: 'Checking WSL after the administrator step...',
+        detail:
+          'Требуемая операция выполнена успешно. Чтобы сделанные изменения вступили в силу, следует перезагрузить систему.',
+      },
+      loading: false,
+      error: null,
+      detailsOpen: false,
+    });
+
+    expect(result.phase).toBe('needs_restart');
+    expect(result.progressPercent).toBe(96);
+    expect(result.installLabel).toBe('Re-check after restart');
+  });
 });
