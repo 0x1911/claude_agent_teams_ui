@@ -892,12 +892,8 @@ export const TeamListView = (): React.JSX.Element => {
                 key={team.teamName}
                 role="button"
                 tabIndex={0}
-                className="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 hover:bg-[var(--color-surface-raised)]"
-                style={
-                  teamColorSet
-                    ? { borderLeftWidth: '3px', borderLeftColor: teamColorSet.border }
-                    : undefined
-                }
+                className="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-l-[3px] border-[var(--color-border)] bg-[var(--color-surface)] p-4 hover:bg-[var(--color-surface-raised)]"
+                style={teamColorSet ? { borderLeftColor: teamColorSet.border } : undefined}
                 onClick={() => openTeamTab(team.teamName, team.projectPath)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
