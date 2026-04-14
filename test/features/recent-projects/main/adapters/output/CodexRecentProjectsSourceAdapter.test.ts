@@ -19,6 +19,63 @@ function createLogger(): LoggerPort & {
 }
 
 describe('CodexRecentProjectsSourceAdapter', () => {
+  it('treats archived-only timeout as non-blocking degradation when live threads loaded', async () => {
+    const logger = createLogger();
+    const appServerClient = {
+      listRecentThreads: vi.fn().mockResolvedValue({
+        live: {
+          threads: [
+            {
+              id: 'thread-live',
+              cwd: '/Users/belief/dev/projects/headless',
+              source: 'cli',
+              updatedAt: 1_700_000_000,
+              gitInfo: { branch: 'main' },
+            },
+          ],
+        },
+        archived: {
+          threads: [],
+          error: 'JSON-RPC request timed out: thread/list',
+        },
+      }),
+      listRecentLiveThreads: vi.fn(),
+    } as unknown as CodexAppServerClient;
+    const identityResolver = {
+      resolve: vi.fn().mockResolvedValue({
+        id: 'repo:headless',
+        name: 'headless',
+      }),
+    } as unknown as RecentProjectIdentityResolver;
+
+    const adapter = new CodexRecentProjectsSourceAdapter({
+      getActiveContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      getLocalContext: () => ({ type: 'local', id: 'local-1' }) as never,
+      resolveBinary: vi.fn().mockResolvedValue('/usr/local/bin/codex'),
+      appServerClient,
+      identityResolver,
+      logger,
+    });
+
+    await expect(adapter.list()).resolves.toEqual([
+      expect.objectContaining({
+        identity: 'repo:headless',
+        primaryPath: '/Users/belief/dev/projects/headless',
+      }),
+    ]);
+
+    expect(logger.info).toHaveBeenCalledWith(
+      'codex recent-projects archived thread list degraded',
+      {
+        error: 'JSON-RPC request timed out: thread/list',
+      }
+    );
+    expect(logger.warn).not.toHaveBeenCalledWith('codex recent-projects thread list failed', {
+      segment: 'archived',
+      error: 'JSON-RPC request timed out: thread/list',
+    });
+  });
+
   it('falls back to live-only threads when the full app-server session fails fast', async () => {
     const logger = createLogger();
     const appServerClient = {

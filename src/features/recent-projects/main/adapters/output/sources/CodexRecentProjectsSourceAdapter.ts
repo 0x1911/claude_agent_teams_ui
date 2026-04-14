@@ -104,6 +104,13 @@ export class CodexRecentProjectsSourceAdapter implements RecentProjectsSourcePor
       return;
     }
 
+    if (segment === 'archived' && !result.live.error) {
+      this.deps.logger.info('codex recent-projects archived thread list degraded', {
+        error,
+      });
+      return;
+    }
+
     this.deps.logger.warn('codex recent-projects thread list failed', {
       segment,
       error,
