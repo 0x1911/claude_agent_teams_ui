@@ -2,6 +2,7 @@ import type { JsonRpcSession, JsonRpcStdioClient } from './JsonRpcStdioClient';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 3_000;
 const DEFAULT_TOTAL_TIMEOUT_MS = 8_000;
+const DEFAULT_INITIALIZE_TIMEOUT_MS = 6_000;
 const MIN_SESSION_OVERHEAD_TIMEOUT_MS = 1_500;
 const SUPPRESSED_NOTIFICATION_METHODS = [
   'thread/started',
@@ -52,6 +53,7 @@ export interface CodexRecentThreadsResult {
 interface ThreadListSessionOptions {
   binaryPath: string;
   requestTimeoutMs: number;
+  initializeTimeoutMs: number;
   totalTimeoutMs: number;
   label: string;
 }
@@ -64,19 +66,25 @@ export class CodexAppServerClient {
     options: {
       limit: number;
       requestTimeoutMs?: number;
+      initializeTimeoutMs?: number;
       totalTimeoutMs?: number;
     }
   ): Promise<CodexThreadSegmentResult> {
     const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    const initializeTimeoutMs = Math.max(
+      options.initializeTimeoutMs ?? DEFAULT_INITIALIZE_TIMEOUT_MS,
+      requestTimeoutMs
+    );
     const totalTimeoutMs = Math.max(
       options.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS,
-      requestTimeoutMs + MIN_SESSION_OVERHEAD_TIMEOUT_MS
+      initializeTimeoutMs + requestTimeoutMs + MIN_SESSION_OVERHEAD_TIMEOUT_MS
     );
 
     return this.#withThreadListSession(
       {
         binaryPath,
         requestTimeoutMs,
+        initializeTimeoutMs,
         totalTimeoutMs,
         label: 'codex app-server thread/list live',
       },
@@ -104,21 +112,27 @@ export class CodexAppServerClient {
       limit: number;
       liveRequestTimeoutMs?: number;
       archivedRequestTimeoutMs?: number;
+      initializeTimeoutMs?: number;
       totalTimeoutMs?: number;
     }
   ): Promise<CodexRecentThreadsResult> {
     const liveRequestTimeoutMs = options.liveRequestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     const archivedRequestTimeoutMs = options.archivedRequestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     const sessionRequestTimeoutMs = Math.max(liveRequestTimeoutMs, archivedRequestTimeoutMs);
+    const initializeTimeoutMs = Math.max(
+      options.initializeTimeoutMs ?? DEFAULT_INITIALIZE_TIMEOUT_MS,
+      sessionRequestTimeoutMs
+    );
     const totalTimeoutMs = Math.max(
       options.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS,
-      liveRequestTimeoutMs + archivedRequestTimeoutMs + MIN_SESSION_OVERHEAD_TIMEOUT_MS
+      initializeTimeoutMs + sessionRequestTimeoutMs + MIN_SESSION_OVERHEAD_TIMEOUT_MS
     );
 
     return this.#withThreadListSession(
       {
         binaryPath,
         requestTimeoutMs: sessionRequestTimeoutMs,
+        initializeTimeoutMs,
         totalTimeoutMs,
         label: 'codex app-server thread/list',
       },
@@ -193,7 +207,7 @@ export class CodexAppServerClient {
               optOutNotificationMethods: SUPPRESSED_NOTIFICATION_METHODS,
             },
           },
-          options.requestTimeoutMs
+          options.initializeTimeoutMs
         );
 
         await session.notify('initialized');

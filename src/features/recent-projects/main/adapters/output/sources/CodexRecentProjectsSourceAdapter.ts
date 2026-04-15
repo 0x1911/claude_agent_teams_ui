@@ -13,14 +13,15 @@ import type { RecentProjectIdentityResolver } from '@features/recent-projects/ma
 import type { ServiceContext } from '@main/services';
 
 const CODEX_THREAD_LIMIT = 40;
+const CODEX_INITIALIZE_TIMEOUT_MS = 6_000;
 const CODEX_LIVE_FETCH_TIMEOUT_MS = 4_500;
 const CODEX_ARCHIVED_FETCH_TIMEOUT_MS = 2_500;
 const CODEX_SESSION_OVERHEAD_TIMEOUT_MS = 1_500;
 const CODEX_TOTAL_FETCH_TIMEOUT_MS =
-  CODEX_LIVE_FETCH_TIMEOUT_MS + CODEX_ARCHIVED_FETCH_TIMEOUT_MS + CODEX_SESSION_OVERHEAD_TIMEOUT_MS;
+  CODEX_INITIALIZE_TIMEOUT_MS + CODEX_LIVE_FETCH_TIMEOUT_MS + CODEX_SESSION_OVERHEAD_TIMEOUT_MS;
 const CODEX_SOURCE_TIMEOUT_MS = CODEX_TOTAL_FETCH_TIMEOUT_MS + 500;
 const CODEX_LIVE_ONLY_FALLBACK_TOTAL_TIMEOUT_MS =
-  CODEX_LIVE_FETCH_TIMEOUT_MS + CODEX_SESSION_OVERHEAD_TIMEOUT_MS + 1_500;
+  CODEX_INITIALIZE_TIMEOUT_MS + CODEX_LIVE_FETCH_TIMEOUT_MS + CODEX_SESSION_OVERHEAD_TIMEOUT_MS;
 
 function isInteractiveSource(source: unknown): boolean {
   return source === 'vscode' || source === 'cli';
@@ -88,6 +89,7 @@ export class CodexRecentProjectsSourceAdapter implements RecentProjectsSourcePor
       limit: CODEX_THREAD_LIMIT,
       liveRequestTimeoutMs: CODEX_LIVE_FETCH_TIMEOUT_MS,
       archivedRequestTimeoutMs: CODEX_ARCHIVED_FETCH_TIMEOUT_MS,
+      initializeTimeoutMs: CODEX_INITIALIZE_TIMEOUT_MS,
       totalTimeoutMs: CODEX_TOTAL_FETCH_TIMEOUT_MS,
     });
 
@@ -137,6 +139,7 @@ export class CodexRecentProjectsSourceAdapter implements RecentProjectsSourcePor
         const liveFallback = await this.deps.appServerClient.listRecentLiveThreads(binaryPath, {
           limit: CODEX_THREAD_LIMIT,
           requestTimeoutMs: CODEX_LIVE_FETCH_TIMEOUT_MS,
+          initializeTimeoutMs: CODEX_INITIALIZE_TIMEOUT_MS,
           totalTimeoutMs: CODEX_LIVE_ONLY_FALLBACK_TOTAL_TIMEOUT_MS,
         });
 
