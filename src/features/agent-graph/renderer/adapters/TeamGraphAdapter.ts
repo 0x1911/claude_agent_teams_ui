@@ -30,6 +30,11 @@ import {
 } from '../../core/domain/buildInlineActivityEntries';
 import { collapseOverflowStacksWithMeta } from '../../core/domain/collapseOverflowStacks';
 import {
+  buildGraphMemberNodeIdForMember,
+  getGraphStableOwnerId,
+  GRAPH_STABLE_SLOT_LAYOUT_VERSION,
+} from '../../core/domain/graphOwnerIdentity';
+import {
   isTaskBlocked,
   isTaskInReviewCycle,
   resolveTaskReviewer,
@@ -38,8 +43,10 @@ import {
 import type {
   GraphDataPort,
   GraphEdge,
+  GraphLayoutPort,
   GraphNode,
   GraphNodeState,
+  GraphOwnerSlotAssignment,
   GraphParticle,
 } from '@claude-teams/agent-graph';
 import type {
@@ -49,6 +56,7 @@ import type {
   MemberSpawnStatusEntry,
   MemberSpawnStatusesSnapshot,
   TeamData,
+  TeamProcess,
   TeamProvisioningProgress,
 } from '@shared/types/team';
 import type { LeadContextUsage } from '@shared/types/team';
@@ -90,9 +98,20 @@ export class TeamGraphAdapter {
     toolHistory?: Record<string, ActiveToolCall[]>,
     commentReadState?: Record<string, unknown>,
     provisioningProgress?: TeamProvisioningProgress | null,
-    memberSpawnSnapshot?: MemberSpawnStatusesSnapshot
+    memberSpawnSnapshot?: MemberSpawnStatusesSnapshot,
+    slotAssignments?: Record<string, GraphOwnerSlotAssignment>
   ): GraphDataPort {
     if (teamData?.teamName !== teamName) {
+      return TeamGraphAdapter.#emptyResult(teamName);
+    }
+
+    const duplicateStableOwnerIds = TeamGraphAdapter.#collectDuplicateStableOwnerIds(
+      teamData.members.filter((member) => !member.removedAt && !isLeadMember(member))
+    );
+    if (duplicateStableOwnerIds.length > 0) {
+      console.error(
+        `[agent-graph] duplicate stable owner ids in team=${teamName}: ${duplicateStableOwnerIds.join(', ')}`
+      );
       return TeamGraphAdapter.#emptyResult(teamName);
     }
 
@@ -115,6 +134,7 @@ export class TeamGraphAdapter {
 
     const leadId = `lead:${teamName}`;
     const leadName = TeamGraphAdapter.#getLeadMemberName(teamData, teamName);
+    const memberNodeIdByName = TeamGraphAdapter.#buildMemberNodeIdByName(teamData, teamName);
     const provisioningPresentation = buildTeamProvisioningPresentation({
       progress: provisioningProgress,
       members: teamData.members,
@@ -144,6 +164,7 @@ export class TeamGraphAdapter {
       leadId,
       teamData,
       teamName,
+      memberNodeIdByName,
       spawnStatuses,
       pendingApprovalAgents,
       activeTools,
@@ -152,8 +173,8 @@ export class TeamGraphAdapter {
       isTeamProvisioning,
       isLaunchSettling
     );
-    this.#buildTaskNodes(nodes, edges, teamData, teamName, commentReadState);
-    this.#buildProcessNodes(nodes, edges, teamData, teamName);
+    this.#buildTaskNodes(nodes, edges, teamData, teamName, commentReadState, memberNodeIdByName);
+    this.#buildProcessNodes(nodes, edges, teamData, teamName, memberNodeIdByName);
     this.#attachActivityFeeds(nodes, teamData, teamName, leadId, leadName);
     this.#buildMessageParticles(
       particles,
@@ -162,9 +183,18 @@ export class TeamGraphAdapter {
       teamName,
       leadId,
       leadName,
-      edges
+      edges,
+      memberNodeIdByName
     );
-    this.#buildCommentParticles(particles, teamData, teamName, leadId, leadName, edges);
+    this.#buildCommentParticles(
+      particles,
+      teamData,
+      teamName,
+      leadId,
+      leadName,
+      edges,
+      memberNodeIdByName
+    );
 
     return {
       nodes,
@@ -173,6 +203,7 @@ export class TeamGraphAdapter {
       teamName,
       teamColor: teamData.config.color ?? undefined,
       isAlive: teamData.isAlive,
+      layout: TeamGraphAdapter.#buildLayoutPort(teamData, teamName, slotAssignments),
     };
   }
 
@@ -193,6 +224,115 @@ export class TeamGraphAdapter {
 
   static #getLeadMemberName(data: TeamData, teamName: string): string {
     return getGraphLeadMemberName(data, teamName);
+  }
+
+  static #buildMemberNodeIdByName(data: TeamData, teamName: string): Map<string, string> {
+    return new Map(
+      data.members
+        .filter((member) => !isLeadMember(member))
+        .map((member) => [member.name, buildGraphMemberNodeIdForMember(teamName, member)] as const)
+    );
+  }
+
+  static #buildLayoutPort(
+    data: TeamData,
+    teamName: string,
+    slotAssignments?: Record<string, GraphOwnerSlotAssignment>
+  ): GraphLayoutPort {
+    const ownerOrder: string[] = [];
+    const seenOwnerNodeIds = new Set<string>();
+    const visibleMembers = data.members.filter(
+      (member) => !member.removedAt && !isLeadMember(member)
+    );
+    const visibleMemberByStableOwnerId = new Map(
+      visibleMembers.map((member) => [getGraphStableOwnerId(member), member] as const)
+    );
+    const assignedStableOwnerIds = new Set(Object.keys(slotAssignments ?? {}));
+    const configStableOwnerIds = new Set(
+      (data.config.members ?? []).map((member) => getGraphStableOwnerId(member))
+    );
+
+    const pushMember = (member: TeamData['members'][number] | undefined): void => {
+      if (!member) {
+        return;
+      }
+      const nodeId = buildGraphMemberNodeIdForMember(teamName, member);
+      if (seenOwnerNodeIds.has(nodeId)) {
+        return;
+      }
+      seenOwnerNodeIds.add(nodeId);
+      ownerOrder.push(nodeId);
+    };
+
+    const assignedVisibleMembersOutsideConfig = visibleMembers
+      .filter((member) => {
+        const stableOwnerId = getGraphStableOwnerId(member);
+        return (
+          assignedStableOwnerIds.has(stableOwnerId) && !configStableOwnerIds.has(stableOwnerId)
+        );
+      })
+      .toSorted((left, right) =>
+        getGraphStableOwnerId(left).localeCompare(getGraphStableOwnerId(right))
+      );
+
+    for (const configMember of data.config.members ?? []) {
+      const stableOwnerId = getGraphStableOwnerId(configMember);
+      if (!assignedStableOwnerIds.has(stableOwnerId)) {
+        continue;
+      }
+      pushMember(visibleMemberByStableOwnerId.get(stableOwnerId));
+    }
+
+    for (const member of assignedVisibleMembersOutsideConfig) {
+      pushMember(member);
+    }
+
+    for (const configMember of data.config.members ?? []) {
+      const stableOwnerId = getGraphStableOwnerId(configMember);
+      if (assignedStableOwnerIds.has(stableOwnerId)) {
+        continue;
+      }
+      const visibleMember = visibleMemberByStableOwnerId.get(stableOwnerId);
+      pushMember(visibleMember);
+    }
+
+    const remainingMembers = visibleMembers.toSorted((left, right) =>
+      getGraphStableOwnerId(left).localeCompare(getGraphStableOwnerId(right))
+    );
+
+    for (const member of remainingMembers) {
+      pushMember(member);
+    }
+
+    const normalizedAssignments: Record<string, GraphOwnerSlotAssignment> = {};
+    for (const member of visibleMembers) {
+      const stableOwnerId = getGraphStableOwnerId(member);
+      const assignment = slotAssignments?.[stableOwnerId];
+      if (!assignment) {
+        continue;
+      }
+      normalizedAssignments[buildGraphMemberNodeIdForMember(teamName, member)] = assignment;
+    }
+
+    return {
+      version: GRAPH_STABLE_SLOT_LAYOUT_VERSION,
+      ownerOrder,
+      slotAssignments: normalizedAssignments,
+    };
+  }
+
+  static #collectDuplicateStableOwnerIds(
+    members: readonly TeamData['members'][number][]
+  ): string[] {
+    const counts = new Map<string, number>();
+    for (const member of members) {
+      const stableOwnerId = getGraphStableOwnerId(member);
+      counts.set(stableOwnerId, (counts.get(stableOwnerId) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .filter(([, count]) => count > 1)
+      .map(([stableOwnerId]) => stableOwnerId)
+      .sort((left, right) => left.localeCompare(right));
   }
 
   static #isBeforeParticleCutoff(timestamp: string | undefined, cutoffMs: number | null): boolean {
@@ -324,6 +464,7 @@ export class TeamGraphAdapter {
     leadId: string,
     data: TeamData,
     teamName: string,
+    memberNodeIdByName: ReadonlyMap<string, string>,
     spawnStatuses?: Record<string, MemberSpawnStatusEntry>,
     pendingApprovalAgents?: Set<string>,
     activeTools?: Record<string, Record<string, ActiveToolCall>>,
@@ -336,7 +477,8 @@ export class TeamGraphAdapter {
       if (member.removedAt) continue;
       if (isLeadMember(member)) continue;
 
-      const memberId = `member:${teamName}:${member.name}`;
+      const memberId =
+        memberNodeIdByName.get(member.name) ?? buildGraphMemberNodeIdForMember(teamName, member);
       const spawn = spawnStatuses?.[member.name];
       const activeTool = TeamGraphAdapter.#selectVisibleTool(
         activeTools?.[member.name],
@@ -425,7 +567,8 @@ export class TeamGraphAdapter {
     edges: GraphEdge[],
     data: TeamData,
     teamName: string,
-    commentReadState?: Record<string, unknown>
+    commentReadState?: Record<string, unknown>,
+    memberNodeIdByName?: ReadonlyMap<string, string>
   ): void {
     const taskStateById = new Map<string, Pick<TeamData['tasks'][number], 'status'>>();
     const taskDisplayIds = new Map<string, string>();
@@ -446,7 +589,7 @@ export class TeamGraphAdapter {
     for (const task of data.tasks) {
       if (task.status === 'deleted') continue;
       const taskId = `task:${teamName}:${task.id}`;
-      const ownerMemberId = task.owner ? `member:${teamName}:${task.owner}` : null;
+      const ownerMemberId = task.owner ? (memberNodeIdByName?.get(task.owner) ?? null) : null;
       const kanbanTaskState = data.kanbanState.tasks[task.id];
       const reviewerName = resolveTaskReviewer(task, kanbanTaskState);
       const isReviewCycle = isTaskInReviewCycle(task);
@@ -496,7 +639,7 @@ export class TeamGraphAdapter {
     }
 
     const { visibleNodes: visibleTaskNodes, visibleNodeIdByTaskId } =
-      collapseOverflowStacksWithMeta(rawTaskNodes, teamName, 6);
+      collapseOverflowStacksWithMeta(rawTaskNodes, teamName, 5);
     const visibleTaskIds = new Set(
       visibleTaskNodes.flatMap((taskNode) =>
         taskNode.domainRef.kind === 'task' ? [taskNode.domainRef.taskId] : []
@@ -608,18 +751,21 @@ export class TeamGraphAdapter {
     nodes: GraphNode[],
     edges: GraphEdge[],
     data: TeamData,
-    teamName: string
+    teamName: string,
+    memberNodeIdByName?: ReadonlyMap<string, string>
   ): void {
-    for (const proc of data.processes) {
-      if (proc.stoppedAt) continue;
+    for (const { process: proc, ownerId } of TeamGraphAdapter.#selectRelevantProcesses(
+      data.processes,
+      memberNodeIdByName
+    )) {
       const procId = `process:${teamName}:${proc.id}`;
-      const ownerId = proc.registeredBy ? `member:${teamName}:${proc.registeredBy}` : null;
 
       nodes.push({
         id: procId,
         kind: 'process',
         label: proc.label,
         state: 'active',
+        ownerId,
         processUrl: proc.url ?? undefined,
         processRegisteredBy: proc.registeredBy ?? undefined,
         processCommand: proc.command ?? undefined,
@@ -636,6 +782,48 @@ export class TeamGraphAdapter {
         });
       }
     }
+  }
+
+  static #selectRelevantProcesses(
+    processes: readonly TeamProcess[],
+    memberNodeIdByName?: ReadonlyMap<string, string>
+  ): { process: TeamProcess; ownerId: string }[] {
+    const selectedByOwnerId = new Map<string, TeamProcess>();
+
+    for (const process of processes) {
+      const ownerId = process.registeredBy
+        ? (memberNodeIdByName?.get(process.registeredBy) ?? null)
+        : null;
+      if (!ownerId) {
+        continue;
+      }
+
+      const existing = selectedByOwnerId.get(ownerId);
+      if (!existing || TeamGraphAdapter.#compareProcessPriority(process, existing) < 0) {
+        selectedByOwnerId.set(ownerId, process);
+      }
+    }
+
+    return Array.from(selectedByOwnerId.entries()).map(([ownerId, process]) => ({
+      process,
+      ownerId,
+    }));
+  }
+
+  static #compareProcessPriority(left: TeamProcess, right: TeamProcess): number {
+    const leftRank = left.stoppedAt ? 1 : 0;
+    const rightRank = right.stoppedAt ? 1 : 0;
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    const leftTimestamp = left.stoppedAt ?? left.registeredAt;
+    const rightTimestamp = right.stoppedAt ?? right.registeredAt;
+    if (leftTimestamp !== rightTimestamp) {
+      return rightTimestamp.localeCompare(leftTimestamp);
+    }
+
+    return left.id.localeCompare(right.id);
   }
 
   #attachActivityFeeds(
@@ -683,7 +871,8 @@ export class TeamGraphAdapter {
     teamName: string,
     leadId: string,
     leadName: string,
-    edges: GraphEdge[]
+    edges: GraphEdge[],
+    memberNodeIdByName: ReadonlyMap<string, string>
   ): void {
     const ordered = [...messages].reverse();
 
@@ -766,16 +955,22 @@ export class TeamGraphAdapter {
         continue;
       }
 
-      const edgeId = TeamGraphAdapter.#resolveMessageEdge(msg, teamName, leadId, leadName, edges);
+      const edgeId = TeamGraphAdapter.#resolveMessageEdge(
+        msg,
+        leadId,
+        leadName,
+        edges,
+        memberNodeIdByName
+      );
       if (!edgeId) continue;
 
       // Determine direction: messages FROM a teammate TO lead should reverse
       // (edges are always lead→member, but message goes member→lead)
       const fromId = TeamGraphAdapter.#resolveParticipantId(
         msg.from ?? '',
-        teamName,
         leadId,
-        leadName
+        leadName,
+        memberNodeIdByName
       );
       const isFromTeammate = fromId !== leadId;
 
@@ -815,7 +1010,8 @@ export class TeamGraphAdapter {
     teamName: string,
     leadId: string,
     leadName: string,
-    edges: GraphEdge[]
+    edges: GraphEdge[],
+    memberNodeIdByName: ReadonlyMap<string, string>
   ): void {
     // First call: record current comment counts without creating particles.
     // This prevents pre-existing comments from spawning particles when the graph opens.
@@ -854,9 +1050,9 @@ export class TeamGraphAdapter {
           }
           const authorNodeId = TeamGraphAdapter.#resolveParticipantId(
             newComment.author,
-            teamName,
             leadId,
-            leadName
+            leadName,
+            memberNodeIdByName
           );
           const taskNodeId = `task:${teamName}:${task.id}`;
           const authorEdge =
@@ -988,16 +1184,21 @@ export class TeamGraphAdapter {
 
   static #resolveMessageEdge(
     msg: InboxMessage,
-    teamName: string,
     leadId: string,
     leadName: string,
-    edges: GraphEdge[]
+    edges: GraphEdge[],
+    memberNodeIdByName: ReadonlyMap<string, string>
   ): string | null {
     const { from, to } = msg;
 
     if (from && to) {
-      const fromId = TeamGraphAdapter.#resolveParticipantId(from, teamName, leadId, leadName);
-      const toId = TeamGraphAdapter.#resolveParticipantId(to, teamName, leadId, leadName);
+      const fromId = TeamGraphAdapter.#resolveParticipantId(
+        from,
+        leadId,
+        leadName,
+        memberNodeIdByName
+      );
+      const toId = TeamGraphAdapter.#resolveParticipantId(to, leadId, leadName, memberNodeIdByName);
       return (
         edges.find((e) => e.source === fromId && e.target === toId)?.id ??
         edges.find((e) => e.source === toId && e.target === fromId)?.id ??
@@ -1006,7 +1207,12 @@ export class TeamGraphAdapter {
     }
 
     if (from && !to) {
-      const fromId = TeamGraphAdapter.#resolveParticipantId(from, teamName, leadId, leadName);
+      const fromId = TeamGraphAdapter.#resolveParticipantId(
+        from,
+        leadId,
+        leadName,
+        memberNodeIdByName
+      );
       return (
         edges.find(
           (e) =>
@@ -1021,14 +1227,14 @@ export class TeamGraphAdapter {
 
   static #resolveParticipantId(
     name: string,
-    teamName: string,
     leadId: string,
-    leadName?: string
+    leadName: string | undefined,
+    memberNodeIdByName: ReadonlyMap<string, string>
   ): string {
     const normalized = name.trim().toLowerCase();
     if (normalized === 'user' || normalized === 'team-lead') return leadId;
     if (normalized === leadName?.trim().toLowerCase()) return leadId;
-    return `member:${teamName}:${name}`;
+    return memberNodeIdByName.get(name) ?? leadId;
   }
 
   /** Extract external team name from cross-team "from" field like "team-b.alice" */

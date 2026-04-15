@@ -13,6 +13,8 @@ import {
   EyeOff,
   Maximize2,
   Pause,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pin,
   Play,
   Plus,
@@ -41,6 +43,8 @@ export interface GraphControlsProps {
   onRequestFullscreen?: () => void;
   onOpenTeamPage?: () => void;
   onCreateTask?: () => void;
+  onToggleSidebar?: () => void;
+  isSidebarVisible?: boolean;
   teamName: string;
   teamColor?: string;
   isAlive?: boolean;
@@ -60,6 +64,8 @@ export function GraphControls({
   onRequestFullscreen,
   onOpenTeamPage,
   onCreateTask,
+  onToggleSidebar,
+  isSidebarVisible = true,
   teamColor,
 }: GraphControlsProps): React.JSX.Element {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -100,6 +106,28 @@ export function GraphControls({
   return (
     <>
       <div className="absolute left-3 top-3 z-20 flex items-center gap-0.5 pointer-events-none">
+        {onToggleSidebar ? (
+          <div
+            className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
+            style={{
+              background: 'rgba(8, 12, 24, 0.8)',
+              border: `1px solid ${nameColor}25`,
+            }}
+          >
+            <ToolbarButton
+              onClick={onToggleSidebar}
+              icon={
+                isSidebarVisible ? (
+                  <PanelLeftClose size={TOPBAR_ICON_SIZE} />
+                ) : (
+                  <PanelLeftOpen size={TOPBAR_ICON_SIZE} />
+                )
+              }
+              toolbar
+              title={isSidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+            />
+          </div>
+        ) : null}
         {onOpenTeamPage ? (
           <div
             className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"

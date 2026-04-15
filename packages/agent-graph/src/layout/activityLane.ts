@@ -1,37 +1,20 @@
-import { CAMERA, KANBAN_ZONE, NODE, TASK_PILL } from '../constants/canvas-constants';
+import { CAMERA, NODE } from '../constants/canvas-constants';
 import type { GraphActivityItem, GraphNode } from '../ports/types';
+import { createStableSlotActivityLane } from './stableSlotGeometry';
 
-export const ACTIVITY_LANE = {
-  width: 296,
-  itemHeight: 72,
-  rowHeight: 80,
-  maxVisibleItems: 3,
-  headerHeight: 20,
-  overflowHeight: 32,
-  horizontalGapLead: 76,
-  horizontalGapMember: 84,
-  ownerClearanceLead: 92,
-  ownerClearanceMember: 104,
-  viewportPadding: 12,
-  visiblePadding: 80,
-  minScale: CAMERA.minZoom,
-  maxScale: CAMERA.maxZoom,
-} as const;
+const STABLE_SLOT_ACTIVITY = createStableSlotActivityLane({
+  nodeMetrics: {
+    radiusLead: NODE.radiusLead,
+    radiusMember: NODE.radiusMember,
+  },
+  zoomRange: {
+    minZoom: CAMERA.minZoom,
+    maxZoom: CAMERA.maxZoom,
+  },
+});
 
-const RESERVED_HEIGHT =
-  ACTIVITY_LANE.headerHeight
-  + ACTIVITY_LANE.maxVisibleItems * ACTIVITY_LANE.rowHeight
-  + ACTIVITY_LANE.overflowHeight;
-
-export const ACTIVITY_ANCHOR_LAYOUT = {
-  reservedWidth: ACTIVITY_LANE.width,
-  reservedHeight: RESERVED_HEIGHT,
-  memberOffsetX: ACTIVITY_LANE.width / 2 + NODE.radiusMember + ACTIVITY_LANE.horizontalGapMember,
-  memberOffsetY: -(RESERVED_HEIGHT + NODE.radiusMember + ACTIVITY_LANE.ownerClearanceMember),
-  leadOffsetX: -(ACTIVITY_LANE.width / 2 + NODE.radiusLead + ACTIVITY_LANE.horizontalGapLead),
-  leadOffsetY: -(RESERVED_HEIGHT + NODE.radiusLead + ACTIVITY_LANE.ownerClearanceLead),
-  collisionRadius: Math.ceil(Math.hypot(ACTIVITY_LANE.width / 2, RESERVED_HEIGHT / 2)) + 56,
-} as const;
+export const ACTIVITY_LANE = STABLE_SLOT_ACTIVITY.lane;
+export const ACTIVITY_ANCHOR_LAYOUT = STABLE_SLOT_ACTIVITY.anchor;
 
 export interface ActivityLaneWindow {
   items: GraphActivityItem[];
@@ -226,29 +209,14 @@ function packActivityLaneRects<T extends {
   groupBySide = true
 ): Map<string, { x: number; y: number }> {
   const placements = new Map<string, { x: number; y: number }>();
-
-  const sideGroups = groupBySide ? (['left', 'right'] as const) : (['left'] as const);
-
-  for (const side of sideGroups) {
+  for (const side of resolvePackedActivitySides(groupBySide)) {
     const sideRects = rects
       .filter((rect) => !groupBySide || rect.side === side)
       .sort((a, b) => (a.y === b.y ? a.x - b.x : a.y - b.y));
-    const placed: Array<ActivityLaneScreenRect & { placedY: number }> = [];
+    const placed: (T & { placedY: number })[] = [];
 
     for (const rect of sideRects) {
-      let placedY = rect.y;
-
-      for (const prev of placed) {
-        if (!rangesOverlap(rect.x, rect.x + rect.width, prev.x, prev.x + prev.width)) {
-          continue;
-        }
-
-        const prevBottom = prev.placedY + prev.height;
-        if (placedY < prevBottom + gap && placedY + rect.height > prev.placedY - gap) {
-          placedY = prevBottom + gap;
-        }
-      }
-
+      const placedY = resolvePackedActivityY(rect, placed, gap);
       placed.push({ ...rect, placedY });
       placements.set(rect.id, { x: rect.x, y: placedY });
     }
@@ -282,13 +250,17 @@ export function findActivityItemAt(
 
     for (let index = 0; index < items.length; index += 1) {
       const itemTop = itemsTop + index * ACTIVITY_LANE.rowHeight;
+      const item = items.at(index);
+      if (!item) {
+        continue;
+      }
       if (
         worldX >= left &&
         worldX <= left + ACTIVITY_LANE.width &&
         worldY >= itemTop &&
         worldY <= itemTop + ACTIVITY_LANE.itemHeight
       ) {
-        return { ownerNodeId: node.id, item: items[index] };
+        return { ownerNodeId: node.id, item };
       }
     }
   }
@@ -302,4 +274,34 @@ export function isActivityOwner(node: GraphNode): node is GraphNode & { kind: 'l
 
 function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
   return aStart < bEnd && aEnd > bStart;
+}
+
+function resolvePackedActivitySides(groupBySide: boolean): readonly ActivityLaneSide[] {
+  return groupBySide ? ['left', 'right'] : ['left'];
+}
+
+function resolvePackedActivityY<T extends {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}>(
+  rect: T,
+  placed: readonly (T & { placedY: number })[],
+  gap: number
+): number {
+  let placedY = rect.y;
+
+  for (const prev of placed) {
+    if (!rangesOverlap(rect.x, rect.x + rect.width, prev.x, prev.x + prev.width)) {
+      continue;
+    }
+
+    const prevBottom = prev.placedY + prev.height;
+    if (placedY < prevBottom + gap && placedY + rect.height > prev.placedY - gap) {
+      placedY = prevBottom + gap;
+    }
+  }
+
+  return placedY;
 }

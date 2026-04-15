@@ -15,8 +15,8 @@ import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/d
 import type { GraphDataPort } from '../ports/GraphDataPort';
 import type { GraphEventPort } from '../ports/GraphEventPort';
 import type { GraphConfigPort } from '../ports/GraphConfigPort';
-import type { GraphEdge, GraphNode } from '../ports/types';
-import { GraphCanvas, type GraphCanvasHandle, type GraphDrawState } from './GraphCanvas';
+import type { GraphEdge, GraphNode, GraphOwnerSlotAssignment } from '../ports/types';
+import { GraphCanvas, type GraphCanvasHandle } from './GraphCanvas';
 import { GraphControls, type GraphFilterState } from './GraphControls';
 import { GraphOverlay } from './GraphOverlay';
 import { GraphEdgeOverlay } from './GraphEdgeOverlay';
@@ -45,6 +45,14 @@ export interface GraphViewProps {
   onRequestFullscreen?: () => void;
   onOpenTeamPage?: () => void;
   onCreateTask?: () => void;
+  onToggleSidebar?: () => void;
+  isSidebarVisible?: boolean;
+  onOwnerSlotDrop?: (payload: {
+    nodeId: string;
+    assignment: GraphOwnerSlotAssignment;
+    displacedNodeId?: string;
+    displacedAssignment?: GraphOwnerSlotAssignment;
+  }) => void;
   /** Custom overlay renderer — replaces built-in GraphOverlay. Allows host app to reuse its own components. */
   renderOverlay?: (props: {
     node: GraphNode;
@@ -90,6 +98,9 @@ export function GraphView({
   onRequestFullscreen,
   onOpenTeamPage,
   onCreateTask,
+  onToggleSidebar,
+  isSidebarVisible = true,
+  onOwnerSlotDrop,
   renderOverlay,
   renderEdgeOverlay,
   renderHud,
@@ -142,18 +153,31 @@ export function GraphView({
     )
   );
 
+  const getVisibleNodes = useCallback(
+    (nodes: GraphNode[]): GraphNode[] =>
+      nodes.filter((node) => {
+        if (node.kind === 'task' && !filters.showTasks) return false;
+        if (node.kind === 'process' && !filters.showProcesses) return false;
+        return true;
+      }),
+    [filters.showProcesses, filters.showTasks]
+  );
+
+  const getVisibleEdges = useCallback(
+    (edges: GraphEdge[], visibleNodeIds: ReadonlySet<string>): GraphEdge[] =>
+      edges.filter((edge) => {
+        if (!filters.showEdges && edge.type !== 'parent-child') {
+          return false;
+        }
+        return visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target);
+      }),
+    [filters.showEdges]
+  );
+
   // ─── Sync data from adapter → simulation ────────────────────────────────
   useEffect(() => {
-    const filteredNodes = data.nodes.filter((n) => {
-      if (n.kind === 'task' && !filters.showTasks) return false;
-      if (n.kind === 'process' && !filters.showProcesses) return false;
-      return true;
-    });
-    const filteredEdges = filters.showEdges
-      ? data.edges
-      : data.edges.filter((e) => e.type === 'parent-child');
-    simulation.updateData(filteredNodes, filteredEdges, data.particles);
-  }, [data, filters.showTasks, filters.showProcesses, filters.showEdges, simulation]);
+    simulation.updateData(data.nodes, data.edges, data.particles, data.teamName, data.layout);
+  }, [data, simulation]);
 
   // ─── UNIFIED RAF LOOP: tick simulation + draw canvas ────────────────────
   const focusState = useMemo(
@@ -247,7 +271,7 @@ export function GraphView({
       return null;
     }
     const node = simulationRef.current.stateRef.current.nodes.find((candidate) => candidate.id === nodeId);
-    if (!node || node.x == null || node.y == null) {
+    if (node?.x == null || node?.y == null) {
       return null;
     }
     const transform = cameraRef.current.transformRef.current;
@@ -261,7 +285,7 @@ export function GraphView({
   }, [getViewportSize]);
   const getNodeWorldPosition = useCallback((nodeId: string) => {
     const node = simulationRef.current.stateRef.current.nodes.find((candidate) => candidate.id === nodeId);
-    if (!node || node.x == null || node.y == null) {
+    if (node?.x == null || node?.y == null) {
       return null;
     }
     return { x: node.x, y: node.y };
@@ -285,12 +309,15 @@ export function GraphView({
 
     // 3. Draw every frame: background stars and shooting stars need continuous motion.
     const state = simulationRef.current.stateRef.current;
+    const visibleNodes = getVisibleNodes(state.nodes);
+    const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+    const visibleEdges = getVisibleEdges(state.edges, visibleNodeIds);
 
     // 4. Draw canvas imperatively (NO React re-render)
     canvasHandle.current?.draw({
       teamName: data.teamName,
-      nodes: state.nodes,
-      edges: state.edges,
+      nodes: visibleNodes,
+      edges: visibleEdges,
       particles: state.particles,
       effects: state.effects,
       time: state.time,
@@ -304,8 +331,14 @@ export function GraphView({
     });
 
     rafRef.current = requestAnimationFrame(animate);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- all data read from .current refs
-  }, [focusState.focusEdgeIds, focusState.focusNodeIds, interaction.hoveredNodeId]);
+  }, [
+    data.teamName,
+    focusState.focusEdgeIds,
+    focusState.focusNodeIds,
+    getVisibleEdges,
+    getVisibleNodes,
+    interaction.hoveredNodeId,
+  ]);
 
   // Start/stop RAF
   useEffect(() => {
@@ -401,8 +434,9 @@ export function GraphView({
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const world = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-      const nodes = simulation.stateRef.current.nodes;
-      const edges = simulation.stateRef.current.edges;
+      const nodes = getVisibleNodes(simulation.stateRef.current.nodes);
+      const visibleNodeIds = new Set(nodes.map((node) => node.id));
+      const edges = getVisibleEdges(simulation.stateRef.current.edges, visibleNodeIds);
       const nodeMap = getNodeMap(nodes);
       const interactiveEdges = getInteractiveEdges(canvas, nodes, edges);
 
@@ -433,7 +467,16 @@ export function GraphView({
         }
       }
     },
-    [camera, getInteractiveEdges, getNodeMap, interaction, markUserInteracted, simulation.stateRef]
+    [
+      camera,
+      getInteractiveEdges,
+      getNodeMap,
+      getVisibleEdges,
+      getVisibleNodes,
+      interaction,
+      markUserInteracted,
+      simulation.stateRef,
+    ]
   );
 
   const handleMouseMove = useCallback(
@@ -448,7 +491,7 @@ export function GraphView({
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
         const world = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-        interaction.handleMouseMove(world.x, world.y, simulation.stateRef.current.nodes);
+        interaction.handleMouseMove(world.x, world.y, getVisibleNodes(simulation.stateRef.current.nodes));
         return;
       }
 
@@ -457,8 +500,9 @@ export function GraphView({
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const world = camera.screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
-      const nodes = simulation.stateRef.current.nodes;
-      const edges = simulation.stateRef.current.edges;
+      const nodes = getVisibleNodes(simulation.stateRef.current.nodes);
+      const visibleNodeIds = new Set(nodes.map((node) => node.id));
+      const edges = getVisibleEdges(simulation.stateRef.current.edges, visibleNodeIds);
 
       const hoveredNodeId = findNodeAt(world.x, world.y, nodes);
       interaction.hoveredNodeId.current = hoveredNodeId;
@@ -474,11 +518,14 @@ export function GraphView({
       hoveredEdgeIdRef.current = findEdgeAt(world.x, world.y, interactiveEdges, nodeMap);
       canvas.style.cursor = hoveredEdgeIdRef.current ? 'pointer' : 'grab';
     },
-    [camera, getInteractiveEdges, getNodeMap, interaction, simulation.stateRef]
+    [camera, getInteractiveEdges, getNodeMap, getVisibleEdges, getVisibleNodes, interaction, simulation.stateRef]
   );
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent) => {
+      const draggedNodeId = interaction.dragNodeId.current;
+      const wasDragging = interaction.isDragging.current;
+
       if (isPanningRef.current) {
         camera.handlePanEnd();
         isPanningRef.current = false;
@@ -489,6 +536,33 @@ export function GraphView({
       }
 
       const clickedId = interaction.handleMouseUp();
+      if (wasDragging && draggedNodeId) {
+        const draggedNode = simulation.stateRef.current.nodes.find((node) => node.id === draggedNodeId);
+        if (draggedNode?.kind === 'member' && draggedNode.x != null && draggedNode.y != null) {
+          const nearest = simulation.resolveNearestOwnerSlot(
+            draggedNodeId,
+            draggedNode.x,
+            draggedNode.y
+          );
+          if (nearest) {
+            onOwnerSlotDrop?.({
+              nodeId: draggedNodeId,
+              assignment: nearest.assignment,
+              displacedNodeId: nearest.displacedOwnerId,
+              displacedAssignment: nearest.displacedAssignment,
+            });
+            requestAnimationFrame(() => {
+              simulation.clearNodePosition(draggedNodeId);
+            });
+            edgeMouseDownRef.current = null;
+            return;
+          }
+        }
+        simulation.clearNodePosition(draggedNodeId);
+        edgeMouseDownRef.current = null;
+        return;
+      }
+
       if (clickedId) {
         setSelectedNodeId(clickedId);
         setSelectedEdgeId(null);
@@ -526,7 +600,7 @@ export function GraphView({
         }
       }
     },
-    [interaction, simulation.stateRef, events, camera, data.teamName]
+    [camera, data.teamName, events, interaction, onOwnerSlotDrop, simulation]
   );
 
   const handleDoubleClick = useCallback(
@@ -538,7 +612,7 @@ export function GraphView({
       const nodeId = interaction.handleDoubleClick(
         world.x,
         world.y,
-        simulation.stateRef.current.nodes
+        getVisibleNodes(simulation.stateRef.current.nodes)
       );
       if (nodeId) {
         setSelectedEdgeId(null);
@@ -553,7 +627,7 @@ export function GraphView({
         }
       }
     },
-    [camera, interaction, simulation.stateRef, events]
+    [camera, events, getVisibleNodes, interaction, simulation.stateRef]
   );
 
   // ─── Keyboard ───────────────────────────────────────────────────────────
@@ -598,10 +672,6 @@ export function GraphView({
   const selectedEdge: GraphEdge | null = selectedEdgeId
     ? (simulation.stateRef.current.edges.find((edge) => edge.id === selectedEdgeId) ?? null)
     : null;
-  const hasBlockingEdges = useMemo(
-    () => data.edges.some((edge) => edge.type === 'blocking'),
-    [data.edges]
-  );
   const selectedEdgeNodeMap = useMemo(
     () => getNodeMap(simulation.stateRef.current.nodes),
     [data.nodes, getNodeMap, selectedEdgeId, simulation.stateRef]
@@ -719,6 +789,8 @@ export function GraphView({
         onRequestFullscreen={onRequestFullscreen}
         onOpenTeamPage={onOpenTeamPage}
         onCreateTask={onCreateTask}
+        onToggleSidebar={onToggleSidebar}
+        isSidebarVisible={isSidebarVisible}
         teamName={data.teamName}
         teamColor={data.teamColor}
         isAlive={data.isAlive}

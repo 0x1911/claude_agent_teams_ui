@@ -5,6 +5,7 @@ This feature is a thin renderer slice over the reusable graph engine in `package
 Read first:
 - [Feature Architecture Standard](../../docs/FEATURE_ARCHITECTURE_STANDARD.md)
 - [Feature root guidance](../CLAUDE.md)
+- [Stable Slot Layout Plan](./STABLE_SLOT_LAYOUT_PLAN.md)
 
 Public entrypoint:
 - `@features/agent-graph/renderer`

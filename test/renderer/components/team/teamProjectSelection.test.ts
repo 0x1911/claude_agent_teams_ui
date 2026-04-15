@@ -105,16 +105,13 @@ describe('teamProjectSelection', () => {
       teamName: 'demo-team',
       displayName: 'Demo Team',
       description: '',
-      color: null,
-      deletedAt: null,
-      pendingCreate: false,
-      partialLaunchFailure: false,
-      teamLaunchState: null,
+      memberCount: 0,
+      taskCount: 0,
       projectPath: '/Users/test/other',
       projectPathHistory: ['/Users/test/headless', '/Users/test/archive'],
       lastActivity: null,
       members: [],
-    } as TeamSummary;
+    } satisfies TeamSummary;
 
     expect(teamMatchesProjectSelection(team, '/users/test/headless')).toBe(true);
     expect(teamMatchesProjectSelection(team, '/users/test/missing')).toBe(false);

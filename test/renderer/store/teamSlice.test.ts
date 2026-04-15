@@ -221,6 +221,88 @@ describe('teamSlice actions', () => {
     expect(store.getState().warmTaskChangeSummaries).not.toHaveBeenCalled();
   });
 
+  it('commits an owner slot drop atomically even when prior assignments were sparse', () => {
+    const store = createSliceStore();
+
+    store.getState().commitTeamGraphOwnerSlotDrop(
+      'my-team',
+      'agent-alice',
+      { ringIndex: 0, sectorIndex: 2 },
+      'agent-bob',
+      { ringIndex: 0, sectorIndex: 1 }
+    );
+
+    expect(store.getState().slotAssignmentsByTeam['my-team']).toEqual({
+      'agent-alice': { ringIndex: 0, sectorIndex: 2 },
+      'agent-bob': { ringIndex: 0, sectorIndex: 1 },
+    });
+  });
+
+  it('migrates fallback name-based slot assignments to agentId-based stable owner ids', () => {
+    const store = createSliceStore();
+    store.setState({
+      slotLayoutVersion: 'stable-slots-v1',
+      slotAssignmentsByTeam: {
+        'my-team': {
+          alice: { ringIndex: 0, sectorIndex: 3 },
+        },
+      },
+    });
+
+    store.getState().ensureTeamGraphSlotAssignments('my-team', [
+      { name: 'alice', agentId: 'agent-alice' },
+      { name: 'bob', agentId: 'agent-bob' },
+    ]);
+
+    expect(store.getState().slotAssignmentsByTeam['my-team']).toEqual({
+      'agent-alice': { ringIndex: 0, sectorIndex: 3 },
+    });
+  });
+
+  it('resets stale slot assignments when slot layout version mismatches', () => {
+    const store = createSliceStore();
+    store.setState({
+      slotLayoutVersion: 'legacy-layout-version',
+      slotAssignmentsByTeam: {
+        'other-team': {
+          'agent-old': { ringIndex: 9, sectorIndex: 9 },
+        },
+        'my-team': {
+          alice: { ringIndex: 0, sectorIndex: 1 },
+        },
+      },
+    });
+
+    store.getState().ensureTeamGraphSlotAssignments('my-team', [
+      { name: 'alice', agentId: 'agent-alice' },
+    ]);
+
+    expect(store.getState().slotLayoutVersion).toBe('stable-slots-v1');
+    expect(store.getState().slotAssignmentsByTeam).toEqual({});
+  });
+
+  it('keeps hidden-member slot assignments so the same stable owner can reuse them later', () => {
+    const store = createSliceStore();
+    store.setState({
+      slotLayoutVersion: 'stable-slots-v1',
+      slotAssignmentsByTeam: {
+        'my-team': {
+          'agent-hidden': { ringIndex: 1, sectorIndex: 5 },
+          'agent-visible': { ringIndex: 0, sectorIndex: 2 },
+        },
+      },
+    });
+
+    store.getState().ensureTeamGraphSlotAssignments('my-team', [
+      { name: 'visible', agentId: 'agent-visible' },
+    ]);
+
+    expect(store.getState().slotAssignmentsByTeam['my-team']).toEqual({
+      'agent-hidden': { ringIndex: 1, sectorIndex: 5 },
+      'agent-visible': { ringIndex: 0, sectorIndex: 2 },
+    });
+  });
+
   it('syncs both team and graph tab labels when the team display name changes', async () => {
     const store = createSliceStore();
     const getAllPaneTabs = vi.fn(() => [

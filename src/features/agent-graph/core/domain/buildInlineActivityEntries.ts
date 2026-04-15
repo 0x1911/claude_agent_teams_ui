@@ -3,6 +3,8 @@ import { getIdleGraphLabel } from '@shared/utils/idleNotificationSemantics';
 import { isInboxNoiseMessage } from '@shared/utils/inboxNoise';
 import { isLeadMember } from '@shared/utils/leadDetection';
 
+import { buildGraphMemberNodeIdForMember } from './graphOwnerIdentity';
+
 import type { GraphActivityItem } from '@claude-teams/agent-graph';
 import type {
   AttachmentMeta,
@@ -18,6 +20,8 @@ export interface InlineActivityEntry {
   ownerNodeId: string;
   graphItem: GraphActivityItem;
   message: InboxMessage;
+  sourceKind: 'message' | 'comment';
+  sourceOrder: number | null;
 }
 
 export interface ActivityEntrySourceData {
@@ -49,6 +53,11 @@ export function buildInlineActivityEntries({
   ownerNodeIds,
 }: BuildInlineActivityEntriesArgs): Map<string, InlineActivityEntry[]> {
   const entriesByOwnerNodeId = new Map<string, InlineActivityEntry[]>();
+  const memberNodeIdByName = new Map(
+    data.members
+      .filter((member) => !isLeadMember(member))
+      .map((member) => [member.name, buildGraphMemberNodeIdForMember(teamName, member)] as const)
+  );
 
   const appendEntry = (entry: InlineActivityEntry): void => {
     const targetOwnerNodeId = ownerNodeIds.has(entry.ownerNodeId) ? entry.ownerNodeId : leadId;
@@ -65,6 +74,9 @@ export function buildInlineActivityEntries({
   }
 
   const orderedMessages = [...data.messages].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const messageSourceOrderByKey = new Map(
+    data.messages.map((message, index) => [getActivityMessageKey(message), index] as const)
+  );
   for (const message of orderedMessages) {
     if (message.summary?.startsWith('Comment on ')) {
       continue;
@@ -80,10 +92,10 @@ export function buildInlineActivityEntries({
 
     const ownerNodeId = resolveMessageOwnerNodeId({
       message,
-      teamName,
       leadId,
       leadName,
       ownerNodeIds,
+      memberNodeIdByName,
     });
     if (!ownerNodeId) {
       continue;
@@ -113,6 +125,8 @@ export function buildInlineActivityEntries({
       ownerNodeId,
       graphItem,
       message,
+      sourceKind: 'message',
+      sourceOrder: messageSourceOrderByKey.get(getActivityMessageKey(message)) ?? null,
     });
   }
 
@@ -123,10 +137,10 @@ export function buildInlineActivityEntries({
     const ownerNodeId = resolveCommentOwnerNodeId({
       taskOwner: item.task.owner,
       author: item.comment.author,
-      teamName,
       leadId,
       leadName,
       ownerNodeIds,
+      memberNodeIdByName,
     });
     if (!ownerNodeId) {
       continue;
@@ -154,14 +168,13 @@ export function buildInlineActivityEntries({
         task: item.task,
         comment: item.comment,
       }),
+      sourceKind: 'comment',
+      sourceOrder: item.sourceOrder,
     });
   }
 
   for (const [ownerNodeId, entries] of entriesByOwnerNodeId) {
-    entriesByOwnerNodeId.set(
-      ownerNodeId,
-      entries.toSorted((a, b) => b.graphItem.timestamp.localeCompare(a.graphItem.timestamp))
-    );
+    entriesByOwnerNodeId.set(ownerNodeId, entries.toSorted(compareInlineActivityEntries));
   }
 
   return entriesByOwnerNodeId;
@@ -169,30 +182,55 @@ export function buildInlineActivityEntries({
 
 function collectTaskComments(
   tasks: readonly TeamTaskWithKanban[]
-): { task: TeamTaskWithKanban; comment: TaskComment }[] {
-  const items: { task: TeamTaskWithKanban; comment: TaskComment }[] = [];
+): { task: TeamTaskWithKanban; comment: TaskComment; sourceOrder: number }[] {
+  const items: { task: TeamTaskWithKanban; comment: TaskComment; sourceOrder: number }[] = [];
+  let sourceOrder = 0;
   for (const task of tasks) {
     for (const comment of task.comments ?? []) {
-      items.push({ task, comment });
+      items.push({ task, comment, sourceOrder });
+      sourceOrder += 1;
     }
   }
   return items;
 }
 
+function compareInlineActivityEntries(
+  left: InlineActivityEntry,
+  right: InlineActivityEntry
+): number {
+  const timestampDiff = right.graphItem.timestamp.localeCompare(left.graphItem.timestamp);
+  if (timestampDiff !== 0) {
+    return timestampDiff;
+  }
+
+  if (
+    left.sourceKind === right.sourceKind &&
+    left.sourceOrder != null &&
+    right.sourceOrder != null &&
+    left.sourceOrder !== right.sourceOrder
+  ) {
+    return left.sourceOrder - right.sourceOrder;
+  }
+
+  return left.graphItem.id.localeCompare(right.graphItem.id);
+}
+
 function resolveMessageOwnerNodeId(args: {
   message: InboxMessage;
-  teamName: string;
   leadId: string;
   leadName: string;
   ownerNodeIds: ReadonlySet<string>;
+  memberNodeIdByName: ReadonlyMap<string, string>;
 }): string | null {
-  const { message, teamName, leadId, leadName, ownerNodeIds } = args;
+  const { message, leadId, leadName, ownerNodeIds, memberNodeIdByName } = args;
   if (message.source === 'cross_team' || message.source === 'cross_team_sent') {
     return leadId;
   }
 
-  const fromId = resolveParticipantId(message.from ?? '', teamName, leadId, leadName);
-  const toId = message.to ? resolveParticipantId(message.to, teamName, leadId, leadName) : leadId;
+  const fromId = resolveParticipantId(message.from ?? '', leadId, leadName, memberNodeIdByName);
+  const toId = message.to
+    ? resolveParticipantId(message.to, leadId, leadName, memberNodeIdByName)
+    : leadId;
 
   if (toId !== leadId && ownerNodeIds.has(toId)) {
     return toId;
@@ -206,20 +244,20 @@ function resolveMessageOwnerNodeId(args: {
 function resolveCommentOwnerNodeId(args: {
   taskOwner: string | undefined;
   author: string;
-  teamName: string;
   leadId: string;
   leadName: string;
   ownerNodeIds: ReadonlySet<string>;
+  memberNodeIdByName: ReadonlyMap<string, string>;
 }): string | null {
-  const { taskOwner, author, teamName, leadId, leadName, ownerNodeIds } = args;
+  const { taskOwner, author, leadId, leadName, ownerNodeIds, memberNodeIdByName } = args;
   if (taskOwner) {
-    const ownerId = resolveParticipantId(taskOwner, teamName, leadId, leadName);
+    const ownerId = resolveParticipantId(taskOwner, leadId, leadName, memberNodeIdByName);
     if (ownerNodeIds.has(ownerId)) {
       return ownerId;
     }
   }
 
-  const authorId = resolveParticipantId(author, teamName, leadId, leadName);
+  const authorId = resolveParticipantId(author, leadId, leadName, memberNodeIdByName);
   if (ownerNodeIds.has(authorId)) {
     return authorId;
   }
@@ -327,9 +365,9 @@ function getActivityMessageKey(message: InboxMessage): string {
 
 function resolveParticipantId(
   name: string,
-  teamName: string,
   leadId: string,
-  leadName?: string
+  leadName: string | undefined,
+  memberNodeIdByName: ReadonlyMap<string, string>
 ): string {
   const normalized = name.trim().toLowerCase();
   if (normalized === 'user' || normalized === 'team-lead') {
@@ -338,7 +376,7 @@ function resolveParticipantId(
   if (normalized === leadName?.trim().toLowerCase()) {
     return leadId;
   }
-  return `member:${teamName}:${name}`;
+  return memberNodeIdByName.get(name) ?? leadId;
 }
 
 function buildParticipantLabel(name: string | undefined, leadName: string): string {

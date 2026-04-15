@@ -22,8 +22,8 @@ import { stripMarkdown } from '@main/utils/textFormatting';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { createLogger } from '@shared/utils/logger';
 import { EventEmitter } from 'events';
+import { Notification as ElectronNotification } from 'electron';
 import * as fsp from 'fs/promises';
-import { createRequire } from 'module';
 import * as path from 'path';
 
 import { type DetectedError } from '../error/ErrorMessageBuilder';
@@ -31,7 +31,6 @@ import { type DetectedError } from '../error/ErrorMessageBuilder';
 import type { BrowserWindow, NotificationConstructorOptions } from 'electron';
 
 const logger = createLogger('Service:NotificationManager');
-const require = createRequire(import.meta.url);
 import {
   buildDetectedErrorFromTeam,
   type TeamNotificationPayload,
@@ -108,21 +107,8 @@ interface NotificationClass {
   isSupported(): boolean;
 }
 
-let cachedNotificationClass: NotificationClass | null | undefined;
-
 function getNotificationClass(): NotificationClass | null {
-  if (cachedNotificationClass !== undefined) {
-    return cachedNotificationClass;
-  }
-
-  try {
-    const electronModule = require('electron') as { Notification?: NotificationClass };
-    cachedNotificationClass = electronModule.Notification ?? null;
-  } catch {
-    cachedNotificationClass = null;
-  }
-
-  return cachedNotificationClass;
+  return (ElectronNotification as NotificationClass | undefined) ?? null;
 }
 
 // =============================================================================
@@ -410,14 +396,14 @@ export class NotificationManager extends EventEmitter {
    * Closes over `stored` (StoredNotification) so click handler has full data.
    */
   private showErrorNativeNotification(stored: StoredNotification): void {
-    const Notification = getNotificationClass();
-    if (!Notification || !this.isNativeNotificationSupported()) return;
+    const NotificationClass = getNotificationClass();
+    if (!NotificationClass || !this.isNativeNotificationSupported()) return;
 
     const config = this.configManager.getConfig();
     const isMac = process.platform === 'darwin';
     const truncatedMessage = stripMarkdown(stored.message).slice(0, 200);
     const iconPath = isMac ? undefined : getAppIconPath();
-    const notification = new Notification({
+    const notification = new NotificationClass({
       title: 'Claude Code Error',
       ...(isMac ? { subtitle: stored.context.projectName } : {}),
       body: isMac ? truncatedMessage : `${stored.context.projectName}\n${truncatedMessage}`,
@@ -456,8 +442,8 @@ export class NotificationManager extends EventEmitter {
     stored: StoredNotification,
     payload: TeamNotificationPayload
   ): void {
-    const Notification = getNotificationClass();
-    if (!Notification || !this.isNativeNotificationSupported()) {
+    const NotificationClass = getNotificationClass();
+    if (!NotificationClass || !this.isNativeNotificationSupported()) {
       logger.warn('[team-toast] native notifications not supported — skipping');
       return;
     }
@@ -472,7 +458,7 @@ export class NotificationManager extends EventEmitter {
         `[team-toast] creating: title="${payload.teamDisplayName}" summary="${payload.summary ?? ''}" bodyLen=${truncatedBody.length}`
       );
 
-      const notification = new Notification({
+      const notification = new NotificationClass({
         title: payload.teamDisplayName,
         ...(isMac ? { subtitle: payload.summary } : {}),
         body: !isMac && payload.summary ? `${payload.summary}\n${truncatedBody}` : truncatedBody,
@@ -546,8 +532,8 @@ export class NotificationManager extends EventEmitter {
    * Returns a result object indicating success or failure reason.
    */
   sendTestNotification(): { success: boolean; error?: string } {
-    const Notification = getNotificationClass();
-    if (!this.isNativeNotificationSupported()) {
+    const NotificationClass = getNotificationClass();
+    if (!NotificationClass || !this.isNativeNotificationSupported()) {
       logger.warn('[test-notification] native notifications not supported');
       return { success: false, error: 'Native notifications are not supported on this platform' };
     }
@@ -555,7 +541,7 @@ export class NotificationManager extends EventEmitter {
     const isMac = process.platform === 'darwin';
     const iconPath = isMac ? undefined : getAppIconPath();
     logger.debug(`[test-notification] creating Notification (platform=${process.platform})`);
-    const notification = new Notification({
+    const notification = new NotificationClass({
       title: 'Test Notification',
       ...(isMac ? { subtitle: 'Claude Agent Teams UI' } : {}),
       body: isMac

@@ -48,6 +48,19 @@ export interface GraphActivityItem {
   authorLabel?: string;
 }
 
+export type GraphLayoutVersion = 'stable-slots-v1';
+
+export interface GraphOwnerSlotAssignment {
+  ringIndex: number;
+  sectorIndex: number;
+}
+
+export interface GraphLayoutPort {
+  version: GraphLayoutVersion;
+  ownerOrder: string[];
+  slotAssignments: Record<string, GraphOwnerSlotAssignment>;
+}
+
 // ─── Graph Node ──────────────────────────────────────────────────────────────
 
 export interface GraphNode {

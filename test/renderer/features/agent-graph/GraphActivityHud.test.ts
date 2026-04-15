@@ -2,6 +2,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ACTIVITY_ANCHOR_LAYOUT } from '@claude-teams/agent-graph';
 import { GraphActivityHud } from '@features/agent-graph/renderer/ui/GraphActivityHud';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
@@ -37,6 +38,14 @@ const teamState = {
 };
 
 const buildInlineActivityEntries = vi.fn();
+const originalOffsetWidthDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  'offsetWidth'
+);
+const originalOffsetHeightDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLElement.prototype,
+  'offsetHeight'
+);
 
 vi.mock('@renderer/store', () => ({
   useStore: (selector: (state: typeof teamState) => unknown) => selector(teamState),
@@ -94,10 +103,35 @@ describe('GraphActivityHud', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     buildInlineActivityEntries.mockReset();
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get() {
+        return 296;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get() {
+        return 220;
+      },
+    });
   });
 
   afterEach(() => {
     document.body.innerHTML = '';
+    vi.unstubAllGlobals();
+    if (originalOffsetWidthDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidthDescriptor);
+    } else {
+      delete (HTMLElement.prototype as { offsetWidth?: number }).offsetWidth;
+    }
+    if (originalOffsetHeightDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', originalOffsetHeightDescriptor);
+    } else {
+      delete (HTMLElement.prototype as { offsetHeight?: number }).offsetHeight;
+    }
   });
 
   it('opens the member profile on the Activity tab when +N more is clicked', async () => {
@@ -215,6 +249,91 @@ describe('GraphActivityHud', () => {
       initialTab: 'activity',
       initialActivityFilter: 'all',
     });
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps the activity lane above the owner label area when packed anchor drifts too low', async () => {
+    const message: InboxMessage = {
+      from: 'team-lead',
+      to: 'jack',
+      text: 'Latest log',
+      summary: 'Latest log',
+      timestamp: '2026-04-13T13:36:00.000Z',
+      read: false,
+      messageId: 'msg-latest',
+    };
+    buildInlineActivityEntries.mockReturnValue(
+      new Map([
+        [
+          'member:demo-team:jack',
+          [
+            {
+              ownerNodeId: 'member:demo-team:jack',
+              graphItem: {
+                id: 'item-1',
+                kind: 'inbox_message',
+                timestamp: message.timestamp,
+                title: message.summary ?? '',
+              },
+              message,
+            },
+          ],
+        ],
+      ])
+    );
+
+    const node: GraphNode = {
+      id: 'member:demo-team:jack',
+      kind: 'member',
+      label: 'jack',
+      state: 'active',
+      domainRef: { kind: 'member', teamName: 'demo-team', memberName: 'jack' },
+      activityItems: [
+        {
+          id: 'item-1',
+          kind: 'inbox_message',
+          timestamp: message.timestamp,
+          title: 'Latest log',
+        },
+      ],
+      activityOverflowCount: 0,
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const nodeWorld = { x: 320, y: 300 };
+    const packedAnchor = { x: 120, y: 260 };
+
+    await act(async () => {
+      root.render(
+        React.createElement(GraphActivityHud, {
+          teamName: 'demo-team',
+          nodes: [node],
+          getActivityAnchorScreenPlacement: () => ({ x: 40, y: 80, scale: 1, visible: true }),
+          getActivityAnchorWorldPosition: () => packedAnchor,
+          getNodeWorldPosition: () => nodeWorld,
+          getNodeScreenPosition: () => ({ x: 400, y: 300, visible: true }),
+          getViewportSize: () => ({ width: 1200, height: 800 }),
+          worldToScreen: (x: number, y: number) => ({ x, y }),
+          focusNodeIds: null,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const shell = host.querySelector('.z-10');
+    expect(shell).not.toBeNull();
+    const expectedTop =
+      nodeWorld.y +
+      ACTIVITY_ANCHOR_LAYOUT.memberOffsetY +
+      ACTIVITY_ANCHOR_LAYOUT.reservedHeight -
+      220;
+    expect((shell as HTMLDivElement).style.top).toBe(`${Math.round(expectedTop)}px`);
 
     await act(async () => {
       root.unmount();

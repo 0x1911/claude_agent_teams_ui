@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { buildGraphMemberNodeIdForMember } from '@features/agent-graph/core/domain/graphOwnerIdentity';
 import { buildInlineActivityEntries } from '@features/agent-graph/renderer';
 import { Button } from '@renderer/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from '@renderer/components/ui/dialog';
@@ -88,7 +89,8 @@ export const MemberDetailDialog = ({
     const leadId = `lead:${teamName}`;
     const leadName =
       members.find((candidate) => isLeadMember(candidate))?.name ?? `${teamName}-lead`;
-    const ownerNodeId = member.name === leadName ? leadId : `member:${teamName}:${member.name}`;
+    const ownerNodeId =
+      member.name === leadName ? leadId : buildGraphMemberNodeIdForMember(teamName, member);
     const entries = buildInlineActivityEntries({
       data: {
         members,

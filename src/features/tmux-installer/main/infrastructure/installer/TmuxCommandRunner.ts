@@ -40,7 +40,7 @@ export class TmuxCommandRunner {
         flush: () => void;
       } => {
         let pending = '';
-        let pendingBytes = Buffer.alloc(0);
+        let pendingBytes: Buffer<ArrayBufferLike> = Buffer.alloc(0);
 
         const emitLine = (line: string): void => {
           const normalizedLine = line.replace(/\r$/, '');

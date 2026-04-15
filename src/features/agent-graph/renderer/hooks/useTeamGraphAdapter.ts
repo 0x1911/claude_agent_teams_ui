@@ -3,7 +3,7 @@
  * Thin wrapper — instantiates the class adapter and calls adapt() with store data.
  */
 
-import { useMemo, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 
 import { getSnapshot, subscribe } from '@renderer/services/commentReadStorage';
 import { useStore } from '@renderer/store';
@@ -31,6 +31,8 @@ export function useTeamGraphAdapter(teamName: string): GraphDataPort {
     toolHistory,
     provisioningProgress,
     memberSpawnSnapshot,
+    slotAssignments,
+    ensureTeamGraphSlotAssignments,
   } = useStore(
     useShallow((s) => ({
       teamData: selectTeamDataForName(s, teamName),
@@ -43,6 +45,8 @@ export function useTeamGraphAdapter(teamName: string): GraphDataPort {
       toolHistory: teamName ? s.toolHistoryByTeam[teamName] : undefined,
       provisioningProgress: teamName ? getCurrentProvisioningProgressForTeam(s, teamName) : null,
       memberSpawnSnapshot: teamName ? s.memberSpawnSnapshotsByTeam[teamName] : undefined,
+      slotAssignments: teamName ? s.slotAssignmentsByTeam[teamName] : undefined,
+      ensureTeamGraphSlotAssignments: s.ensureTeamGraphSlotAssignments,
     }))
   );
 
@@ -58,6 +62,13 @@ export function useTeamGraphAdapter(teamName: string): GraphDataPort {
 
   const commentReadState = useSyncExternalStore(subscribe, getSnapshot);
 
+  useEffect(() => {
+    if (!teamName || !teamData) {
+      return;
+    }
+    ensureTeamGraphSlotAssignments(teamName, teamData.members);
+  }, [ensureTeamGraphSlotAssignments, teamData, teamName]);
+
   return useMemo(
     () =>
       adapterRef.current.adapt(
@@ -72,7 +83,8 @@ export function useTeamGraphAdapter(teamName: string): GraphDataPort {
         toolHistory,
         commentReadState,
         provisioningProgress,
-        memberSpawnSnapshot
+        memberSpawnSnapshot,
+        slotAssignments
       ),
     [
       teamData,
@@ -87,6 +99,7 @@ export function useTeamGraphAdapter(teamName: string): GraphDataPort {
       commentReadState,
       provisioningProgress,
       memberSpawnSnapshot,
+      slotAssignments,
     ]
   );
 }

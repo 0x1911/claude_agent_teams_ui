@@ -12,6 +12,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
+      "@claude-teams/agent-graph": ["./packages/agent-graph/src/index.ts"],
       "@features/*": ["./src/features/*"],
       "@main/*": ["./src/main/*"],
       "@preload/*": ["./src/preload/*"],

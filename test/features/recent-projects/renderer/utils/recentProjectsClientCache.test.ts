@@ -13,9 +13,13 @@ const project = (id: string): DashboardRecentProject => ({
   name: id,
   primaryPath: `/tmp/${id}`,
   associatedPaths: [`/tmp/${id}`],
-  primaryBranch: null,
+  mostRecentActivity: Date.parse('2026-04-14T12:00:00.000Z'),
   providerIds: ['anthropic'],
-  updatedAt: '2026-04-14T12:00:00.000Z',
+  source: 'claude',
+  openTarget: {
+    type: 'synthetic-path',
+    path: `/tmp/${id}`,
+  },
 });
 
 describe('recentProjectsClientCache', () => {
@@ -64,11 +68,15 @@ describe('recentProjectsClientCache', () => {
   });
 
   it('deduplicates concurrent client refreshes', async () => {
-    let resolveLoader: ((projects: DashboardRecentProject[]) => void) | null = null;
+    const resolveLoaderRef: {
+      current: ((projects: DashboardRecentProject[]) => void) | null;
+    } = {
+      current: null,
+    };
     const loader = vi.fn(
       () =>
         new Promise<DashboardRecentProject[]>((resolve) => {
-          resolveLoader = resolve;
+          resolveLoaderRef.current = resolve;
         })
     );
 
@@ -77,7 +85,7 @@ describe('recentProjectsClientCache', () => {
 
     expect(loader).toHaveBeenCalledTimes(1);
 
-    resolveLoader?.([project('alpha')]);
+    resolveLoaderRef.current?.([project('alpha')]);
 
     await expect(first).resolves.toEqual([project('alpha')]);
     await expect(second).resolves.toEqual([project('alpha')]);

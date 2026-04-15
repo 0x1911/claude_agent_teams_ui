@@ -76,6 +76,7 @@ export function TmuxInstallerBannerView(): React.JSX.Element | null {
 
   const manualHintsVisible =
     viewModel.manualHints.length > 0 && (!viewModel.manualHintsCollapsible || manualHintsExpanded);
+  const primaryGuideUrl = viewModel.primaryGuideUrl;
 
   return (
     <div
@@ -249,10 +250,10 @@ export function TmuxInstallerBannerView(): React.JSX.Element | null {
                 Cancel
               </button>
             )}
-            {viewModel.primaryGuideUrl && (
+            {primaryGuideUrl && (
               <button
                 type="button"
-                onClick={() => void openExternal(viewModel.primaryGuideUrl)}
+                onClick={() => void openExternal(primaryGuideUrl)}
                 className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-white/5"
                 style={{ borderColor: 'var(--color-border)' }}
               >

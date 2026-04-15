@@ -39,6 +39,7 @@ export interface TeamUpdateConfigRequest {
 
 export interface TeamSummaryMember {
   name: string;
+  agentId?: string;
   role?: string;
   color?: string;
 }
@@ -679,6 +680,7 @@ export type UpdateKanbanPatch =
 
 export interface ResolvedTeamMember {
   name: string;
+  agentId?: string;
   status: MemberStatus;
   currentTaskId: string | null;
   taskCount: number;

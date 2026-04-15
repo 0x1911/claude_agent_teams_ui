@@ -3,6 +3,7 @@ import {
   ACTIVITY_ANCHOR_LAYOUT,
   resolveActivityLaneSide,
 } from './activityLane';
+import { createStableSlotLaunchAnchorLayout } from './stableSlotGeometry';
 
 export interface WorldBounds {
   left: number;
@@ -18,17 +19,9 @@ export interface LaunchAnchorScreenPlacement {
   visible: boolean;
 }
 
-export const LAUNCH_ANCHOR_LAYOUT = {
-  compactWidth: 336,
-  compactHeight: 132,
-  anchorCenterOffsetX: 336 / 2 + NODE.radiusLead + 40,
-  anchorCenterOffsetY: -(132 / 2 + NODE.radiusLead + 36),
-  collisionRadius: Math.ceil(Math.hypot(336 / 2, 132 / 2)) + 14,
-  viewportPadding: 12,
-  visiblePadding: 80,
-  minScale: 0,
-  maxScale: 1,
-} as const;
+export const LAUNCH_ANCHOR_LAYOUT = createStableSlotLaunchAnchorLayout({
+  radiusLead: NODE.radiusLead,
+});
 
 const LAUNCH_ANCHOR_PREFIX = '__launch_anchor__:';
 const ACTIVITY_ANCHOR_PREFIX = '__activity_anchor__:';

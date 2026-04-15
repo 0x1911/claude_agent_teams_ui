@@ -7,10 +7,11 @@ import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 
 import { GraphView } from '@claude-teams/agent-graph';
 import { TeamSidebarHost } from '@renderer/components/team/sidebar/TeamSidebarHost';
-import { useStore } from '@renderer/store';
 
 import { useGraphCreateTaskDialog } from '../hooks/useGraphCreateTaskDialog';
+import { useGraphSidebarVisibility } from '../hooks/useGraphSidebarVisibility';
 import { useTeamGraphAdapter } from '../hooks/useTeamGraphAdapter';
+import { useTeamGraphSurfaceActions } from '../hooks/useTeamGraphSurfaceActions';
 
 import { GraphActivityHud } from './GraphActivityHud';
 import { GraphBlockingEdgePopover } from './GraphBlockingEdgePopover';
@@ -44,11 +45,13 @@ export const TeamGraphTab = ({
   isPaneFocused = false,
 }: TeamGraphTabProps): React.JSX.Element => {
   const graphData = useTeamGraphAdapter(teamName);
+  const { openTeamPage, commitOwnerSlotDrop } = useTeamGraphSurfaceActions(teamName);
   const leadNodeId = useMemo(
     () => graphData.nodes.find((node) => node.kind === 'lead')?.id ?? null,
     [graphData.nodes]
   );
   const [fullscreen, setFullscreen] = useState(false);
+  const { sidebarVisible, toggleSidebarVisible } = useGraphSidebarVisibility();
   const { dialog: createTaskDialog, openCreateTaskDialog } = useGraphCreateTaskDialog(teamName);
 
   // Typed event dispatchers (DRY — used in both events + renderOverlay)
@@ -73,9 +76,6 @@ export const TeamGraphTab = ({
       ),
     [teamName]
   );
-  const openTeamPage = useCallback(() => {
-    useStore.getState().openTeamTab(teamName);
-  }, [teamName]);
   const openCreateTask = useCallback(() => {
     openCreateTaskDialog('');
   }, [openCreateTaskDialog]);
@@ -130,12 +130,14 @@ export const TeamGraphTab = ({
 
   return (
     <div className="flex size-full overflow-hidden" style={{ background: '#050510' }}>
-      <TeamSidebarHost
-        teamName={teamName}
-        surface="graph-tab"
-        isActive={isActive}
-        isFocused={isPaneFocused}
-      />
+      {sidebarVisible ? (
+        <TeamSidebarHost
+          teamName={teamName}
+          surface="graph-tab"
+          isActive={isActive}
+          isFocused={isPaneFocused}
+        />
+      ) : null}
       <div className="min-w-0 flex-1">
         <GraphView
           data={graphData}
@@ -145,6 +147,9 @@ export const TeamGraphTab = ({
           onRequestFullscreen={() => setFullscreen(true)}
           onOpenTeamPage={openTeamPage}
           onCreateTask={openCreateTask}
+          onToggleSidebar={toggleSidebarVisible}
+          isSidebarVisible={sidebarVisible}
+          onOwnerSlotDrop={commitOwnerSlotDrop}
           renderHud={(hudProps) => {
             const extraHudProps = hudProps as typeof hudProps & {
               getViewportSize?: () => { width: number; height: number };
@@ -227,6 +232,8 @@ export const TeamGraphTab = ({
           <TeamGraphOverlay
             teamName={teamName}
             onClose={() => setFullscreen(false)}
+            sidebarVisible={sidebarVisible}
+            onToggleSidebar={toggleSidebarVisible}
             onSendMessage={dispatchSendMessage}
             onOpenTaskDetail={dispatchOpenTask}
             onOpenMemberProfile={dispatchOpenProfile}

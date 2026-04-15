@@ -22,6 +22,9 @@ export default defineConfig({
       '@main': resolve(__dirname, 'src/main'),
       '@renderer': resolve(__dirname, 'src/renderer'),
       '@preload': resolve(__dirname, 'src/preload'),
+      '@claude-teams/agent-graph': resolve(__dirname, 'packages/agent-graph/src/index.ts'),
+      react: resolve(__dirname, 'node_modules/react'),
+      'react-dom': resolve(__dirname, 'node_modules/react-dom'),
     },
   },
 });

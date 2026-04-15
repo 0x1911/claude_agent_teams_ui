@@ -168,16 +168,18 @@ describe('TmuxInstallerRunnerAdapter', () => {
         retryWithUpdateCommand: null,
       })),
     };
-    let resolveTerminalRun: ((result: { exitCode: number }) => void) | null = null;
+    const resolveTerminalRunRef: { current: ((result: { exitCode: number }) => void) | null } = {
+      current: null,
+    };
     const terminalSession = {
       run: vi.fn(
         () =>
           new Promise<{ exitCode: number }>((resolve) => {
-            resolveTerminalRun = resolve;
+            resolveTerminalRunRef.current = resolve;
           })
       ),
       writeLine: vi.fn((input: string) => {
-        resolveTerminalRun?.({ exitCode: 0 });
+        resolveTerminalRunRef.current?.({ exitCode: 0 });
         return input;
       }),
       cancel: vi.fn(),
@@ -208,12 +210,14 @@ describe('TmuxInstallerRunnerAdapter', () => {
       getStatus: vi.fn(async () => createBaseStatus()),
       invalidateStatus: vi.fn(),
     };
-    let resolveCommandRun: ((result: { exitCode: number }) => void) | null = null;
+    const resolveCommandRunRef: { current: ((result: { exitCode: number }) => void) | null } = {
+      current: null,
+    };
     const commandRunner = {
       run: vi.fn(
         () =>
           new Promise<{ exitCode: number }>((resolve) => {
-            resolveCommandRun = resolve;
+            resolveCommandRunRef.current = resolve;
           })
       ),
       cancel: vi.fn(),
@@ -244,7 +248,7 @@ describe('TmuxInstallerRunnerAdapter', () => {
       (snapshot) => snapshot.canCancel
     );
     await runner.cancel();
-    resolveCommandRun?.({ exitCode: 1 });
+    resolveCommandRunRef.current?.({ exitCode: 1 });
 
     await expect(installPromise).resolves.toBeUndefined();
 

@@ -44,27 +44,30 @@ describe('TmuxStatusSourceAdapter', () => {
 
   it('does not reuse or recache a stale in-flight probe after invalidateStatus()', async () => {
     const childProcess = await import('node:child_process');
-    let firstCallback:
-      | ((error: Error | null, stdout: string | Buffer, stderr: string | Buffer) => void)
-      | null = null;
+    type ExecFileCallback = (
+      error: Error | null,
+      stdout: string | Buffer,
+      stderr: string | Buffer
+    ) => void;
+    const firstCallbackRef: { current: ExecFileCallback | null } = {
+      current: null,
+    };
 
     const execFileMock = vi.mocked(childProcess.execFile);
-    execFileMock.mockImplementation(
-      (
-        _command: string,
-        _args: string[],
-        _options: unknown,
-        callback: (error: Error | null, stdout: string | Buffer, stderr: string | Buffer) => void
-      ) => {
-        if (!firstCallback) {
-          firstCallback = callback;
-          return {} as never;
-        }
-
-        callback(null, 'tmux second\n', '');
+    execFileMock.mockImplementation(((
+      _command: string,
+      _args: readonly string[] | null | undefined,
+      _options: unknown,
+      callback: ExecFileCallback
+    ) => {
+      if (!firstCallbackRef.current) {
+        firstCallbackRef.current = callback;
         return {} as never;
       }
-    );
+
+      callback(null, 'tmux second\n', '');
+      return {} as never;
+    }) as never);
 
     const adapter = new TmuxStatusSourceAdapter(
       {
@@ -92,7 +95,7 @@ describe('TmuxStatusSourceAdapter', () => {
 
     expect(secondStatus.host.version).toBe('tmux second');
 
-    firstCallback?.(null, 'tmux first\n', '');
+    firstCallbackRef.current?.(null, 'tmux first\n', '');
     await firstStatusPromise;
     await Promise.resolve();
 

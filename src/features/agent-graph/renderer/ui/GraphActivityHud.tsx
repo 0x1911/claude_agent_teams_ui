@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
+import { ACTIVITY_ANCHOR_LAYOUT, ACTIVITY_LANE } from '@claude-teams/agent-graph';
 import { ActivityItem } from '@renderer/components/team/activity/ActivityItem';
 import {
   buildMessageContext,
@@ -8,16 +9,14 @@ import {
 import { MessageExpandDialog } from '@renderer/components/team/activity/MessageExpandDialog';
 import { useStableTeamMentionMeta } from '@renderer/hooks/useStableTeamMentionMeta';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
-import { useStore } from '@renderer/store';
-import { selectTeamDataForName } from '@renderer/store/slices/teamSlice';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
-import { useShallow } from 'zustand/react/shallow';
 
 import {
   buildInlineActivityEntries,
   getGraphLeadMemberName,
   type InlineActivityEntry,
 } from '../../core/domain/buildInlineActivityEntries';
+import { useGraphActivityContext } from '../hooks/useGraphActivityContext';
 
 import type { GraphNode } from '@claude-teams/agent-graph';
 import type { TimelineItem } from '@renderer/components/team/activity/LeadThoughtsGroup';
@@ -66,18 +65,12 @@ export const GraphActivityHud = ({
   onOpenTaskDetail,
   onOpenMemberProfile,
 }: GraphActivityHudProps): React.JSX.Element | null => {
-  const ACTIVITY_LANE_WIDTH = 296;
   const worldLayerRef = useRef<HTMLDivElement | null>(null);
   const shellRefs = useRef(new Map<string, HTMLDivElement | null>());
   const connectorRefs = useRef(new Map<string, SVGSVGElement | null>());
   const connectorPathRefs = useRef(new Map<string, SVGPathElement | null>());
   const [expandedItem, setExpandedItem] = useState<TimelineItem | null>(null);
-  const { teamData, teams } = useStore(
-    useShallow((state) => ({
-      teamData: selectTeamDataForName(state, teamName),
-      teams: state.teams,
-    }))
-  );
+  const { teamData, teams } = useGraphActivityContext(teamName);
 
   const ownerNodes = useMemo(
     () =>
@@ -159,15 +152,14 @@ export const GraphActivityHud = ({
         worldLayer.style.transform = `translate(${Math.round(origin.x)}px, ${Math.round(origin.y)}px) scale(${zoom.toFixed(3)})`;
       }
 
-      const measurableLanes: Array<{
+      const measurableLanes: {
         lane: (typeof visibleLanes)[number];
         shell: HTMLDivElement;
         connector: SVGSVGElement | null;
         connectorPath: SVGPathElement | null;
         laneTopLeft: { x: number; y: number };
         nodeWorld: { x: number; y: number };
-        scale: number;
-      }> = [];
+      }[] = [];
 
       for (const lane of visibleLanes) {
         const shell = shellRefs.current.get(lane.node.id);
@@ -189,7 +181,7 @@ export const GraphActivityHud = ({
         }
 
         const scale = Math.max(getCameraZoom(), 0.001);
-        const widthScreen = Math.max(1, (shell.offsetWidth || ACTIVITY_LANE_WIDTH) * scale);
+        const widthScreen = Math.max(1, (shell.offsetWidth || ACTIVITY_LANE.width) * scale);
         const heightScreen = Math.max(1, (shell.offsetHeight || 220) * scale);
         const viewport = getViewportSize?.();
         const laneVisible = viewport
@@ -215,26 +207,31 @@ export const GraphActivityHud = ({
           connectorPath,
           laneTopLeft,
           nodeWorld,
-          scale,
         });
       }
 
       for (const entry of measurableLanes) {
-        const { lane, shell, connector, connectorPath, laneTopLeft, nodeWorld, scale } = entry;
+        const { lane, shell, connector, connectorPath, laneTopLeft, nodeWorld } = entry;
         const baseOpacity = focusNodeIds && !focusNodeIds.has(lane.node.id) ? 0.25 : 1;
+        const widthWorld = shell.offsetWidth || ACTIVITY_LANE.width;
+        const heightWorld = shell.offsetHeight || 220;
+        const ownerBottomLimit =
+          nodeWorld.y +
+          (lane.node.kind === 'lead'
+            ? ACTIVITY_ANCHOR_LAYOUT.leadOffsetY + ACTIVITY_ANCHOR_LAYOUT.reservedHeight
+            : ACTIVITY_ANCHOR_LAYOUT.memberOffsetY + ACTIVITY_ANCHOR_LAYOUT.reservedHeight);
+        const adjustedLaneTop = Math.min(laneTopLeft.y, ownerBottomLimit - heightWorld);
+
         shell.style.opacity = String(baseOpacity);
         shell.style.left = `${Math.round(laneTopLeft.x)}px`;
-        shell.style.top = `${Math.round(laneTopLeft.y)}px`;
+        shell.style.top = `${Math.round(adjustedLaneTop)}px`;
         shell.style.transform = '';
 
         if (connector && connectorPath) {
-          const widthWorld = shell.offsetWidth || ACTIVITY_LANE_WIDTH;
-          const laneCenterX = laneTopLeft.x + widthWorld / 2;
-          const laneIsLeft = laneCenterX < nodeWorld.x;
-          const endX = laneIsLeft ? laneTopLeft.x + widthWorld - 8 : laneTopLeft.x + 8;
-          const endY = laneTopLeft.y + 10;
+          const endX = laneTopLeft.x + widthWorld / 2;
+          const endY = adjustedLaneTop + heightWorld - 6;
           const startX = nodeWorld.x;
-          const startY = nodeWorld.y - 10 / scale;
+          const startY = nodeWorld.y - 18;
           const minX = Math.min(startX, endX);
           const minY = Math.min(startY, endY);
           const connectorWidth = Math.max(1, Math.abs(endX - startX));
@@ -367,14 +364,14 @@ export const GraphActivityHud = ({
       return;
     }
 
-    const listeners: Array<{ shell: HTMLDivElement; handler: (event: WheelEvent) => void }> = [];
+    const listeners: { shell: HTMLDivElement; handler: (event: WheelEvent) => void }[] = [];
 
     for (const lane of visibleLanes) {
       const shell = shellRefs.current.get(lane.node.id);
       if (!shell) {
         continue;
       }
-      const handler = (event: WheelEvent) => forwardWheelToGraph(event, shell);
+      const handler = (event: WheelEvent): void => forwardWheelToGraph(event, shell);
       shell.addEventListener('wheel', handler, { passive: false });
       listeners.push({ shell, handler });
     }
@@ -421,7 +418,7 @@ export const GraphActivityHud = ({
                 shellRefs.current.set(lane.node.id, element);
               }}
               className="pointer-events-auto absolute z-10 origin-top-left opacity-0"
-              style={{ width: `${ACTIVITY_LANE_WIDTH}px`, maxWidth: `${ACTIVITY_LANE_WIDTH}px` }}
+              style={{ width: `${ACTIVITY_LANE.width}px`, maxWidth: `${ACTIVITY_LANE.width}px` }}
             >
               <div className="mb-1 px-1 text-[10px] font-semibold tracking-[0.2em] text-slate-400/70">
                 Activity
