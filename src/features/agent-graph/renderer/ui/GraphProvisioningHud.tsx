@@ -34,7 +34,7 @@ const HUD_STEPPER_STYLE: CSSProperties = {
 };
 
 function shouldRenderLaunchHud(presentation: TeamProvisioningPresentation | null): boolean {
-  return presentation != null;
+  return presentation != null && (presentation.isActive || presentation.isFailed);
 }
 
 export interface GraphProvisioningHudProps {
@@ -80,8 +80,10 @@ export const GraphProvisioningHud = ({
     <>
       <button
         type="button"
-        className="focus-visible:ring-white/18 w-full rounded-xl bg-transparent px-1 py-0.5 text-left text-slate-100 transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-1"
+        className="focus-visible:ring-white/18 w-full touch-none select-none rounded-xl bg-transparent px-1 py-0.5 text-left text-slate-100 transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-1"
         onClick={() => setDetailsOpen(true)}
+        onMouseDown={(event) => event.preventDefault()}
+        onDragStart={(event) => event.preventDefault()}
         aria-label={ariaLabel}
       >
         <div className="px-1 py-0.5" style={HUD_STEPPER_STYLE}>

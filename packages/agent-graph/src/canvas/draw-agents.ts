@@ -266,24 +266,49 @@ function drawLaunchStage(
   ctx.save();
   switch (visualState) {
     case 'waiting': {
-      const ringR = r + 7 + Math.sin(time * 3.2) * 1.2;
-      const pulseAlpha = 0.2 + 0.14 * (0.5 + 0.5 * Math.sin(time * 3.2));
+      const ringR = r + 8 + Math.sin(time * 3.2) * 1.4;
+      const pulseAlpha = 0.28 + 0.18 * (0.5 + 0.5 * Math.sin(time * 3.2));
+      const dotOrbit = r + 11;
       ctx.beginPath();
       ctx.arc(x, y, ringR, 0, Math.PI * 2);
       ctx.strokeStyle = hexWithAlpha('#d4d4d8', pulseAlpha);
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([4, 5]);
       ctx.stroke();
+      ctx.setLineDash([]);
+      for (let index = 0; index < 3; index += 1) {
+        const angle = time * 1.2 + (Math.PI * 2 * index) / 3;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(angle) * dotOrbit, y + Math.sin(angle) * dotOrbit, 1.7, 0, Math.PI * 2);
+        ctx.fillStyle = hexWithAlpha('#e4e4e7', 0.72);
+        ctx.fill();
+      }
       break;
     }
     case 'spawning': {
       const ringR = r + 7;
-      const rotation = time * 2.4;
+      const rotation = time * 2.7;
       ctx.beginPath();
       ctx.arc(x, y, ringR, rotation, rotation + Math.PI * 1.15);
       ctx.strokeStyle = hexWithAlpha('#f59e0b', 0.8);
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.8;
       ctx.lineCap = 'round';
       ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(x, y, ringR + 4, rotation + Math.PI, rotation + Math.PI + Math.PI * 0.4);
+      ctx.strokeStyle = hexWithAlpha('#fbbf24', 0.65);
+      ctx.lineWidth = 1.8;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      const glow = ctx.createRadialGradient(x, y, r * 0.5, x, y, ringR + 12);
+      glow.addColorStop(0, hexWithAlpha('#f59e0b', 0.18));
+      glow.addColorStop(1, hexWithAlpha('#f59e0b', 0));
+      ctx.beginPath();
+      ctx.arc(x, y, ringR + 12, 0, Math.PI * 2);
+      ctx.fillStyle = glow;
+      ctx.fill();
       break;
     }
     case 'runtime_pending': {
@@ -291,27 +316,37 @@ function drawLaunchStage(
       ctx.beginPath();
       ctx.arc(x, y, ringR, 0, Math.PI * 2);
       ctx.strokeStyle = hexWithAlpha('#38bdf8', 0.48);
-      ctx.lineWidth = 1.75;
+      ctx.lineWidth = 1.9;
+      ctx.setLineDash([5, 4]);
       ctx.stroke();
+      ctx.setLineDash([]);
 
-      const orbit = time * 1.6;
-      const dotR = 2.2;
-      const dotX = x + Math.cos(orbit) * ringR;
-      const dotY = y + Math.sin(orbit) * ringR;
-      ctx.beginPath();
-      ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
-      ctx.fillStyle = hexWithAlpha('#67e8f9', 0.9);
-      ctx.fill();
+      const orbit = time * 1.8;
+      for (let index = 0; index < 2; index += 1) {
+        const angle = orbit + Math.PI * index;
+        const dotX = x + Math.cos(angle) * ringR;
+        const dotY = y + Math.sin(angle) * ringR;
+        ctx.beginPath();
+        ctx.arc(dotX, dotY, 2.3, 0, Math.PI * 2);
+        ctx.fillStyle = hexWithAlpha(index === 0 ? '#67e8f9' : '#38bdf8', 0.92);
+        ctx.fill();
+      }
       break;
     }
     case 'settling': {
       const ringR = r + 6;
-      const arc = 0.65 + 0.08 * Math.sin(time * 2.2);
+      const arc = 0.72 + 0.08 * Math.sin(time * 2.2);
       const rotation = time * 1.25;
+      ctx.beginPath();
+      ctx.arc(x, y, ringR, 0, Math.PI * 2);
+      ctx.strokeStyle = hexWithAlpha('#22c55e', 0.18);
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+
       ctx.beginPath();
       ctx.arc(x, y, ringR, rotation, rotation + Math.PI * arc);
       ctx.strokeStyle = hexWithAlpha('#22c55e', 0.62);
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2.2;
       ctx.lineCap = 'round';
       ctx.stroke();
       break;
@@ -321,9 +356,14 @@ function drawLaunchStage(
       ctx.beginPath();
       ctx.arc(x, y, ringR, Math.PI * 0.2, Math.PI * 1.15);
       ctx.strokeStyle = hexWithAlpha('#ef4444', 0.72);
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.4;
       ctx.lineCap = 'round';
       ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(x + ringR * 0.52, y - ringR * 0.5, 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = hexWithAlpha('#f87171', 0.92);
+      ctx.fill();
       break;
     }
   }

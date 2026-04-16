@@ -49,6 +49,7 @@ export interface GraphControlsProps {
   teamColor?: string;
   isAlive?: boolean;
   topToolbarContent?: React.ReactNode;
+  interactionLocked?: boolean;
 }
 
 const TOPBAR_BUTTON_SIZE = 25;
@@ -69,6 +70,7 @@ export function GraphControls({
   isSidebarVisible = true,
   teamColor,
   topToolbarContent,
+  interactionLocked = false,
 }: GraphControlsProps): React.JSX.Element {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -104,6 +106,9 @@ export function GraphControls({
   }, [isSettingsOpen]);
 
   const nameColor = teamColor ?? '#aaeeff';
+  const chromeInteractivityClass = interactionLocked
+    ? 'pointer-events-none select-none'
+    : 'pointer-events-auto';
 
   return (
     <>
@@ -111,7 +116,7 @@ export function GraphControls({
         <div className="absolute left-0 top-0 flex shrink-0 items-center gap-0.5">
           {onToggleSidebar ? (
             <div
-              className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
+              className={`${chromeInteractivityClass} flex items-center rounded-md p-0 backdrop-blur-sm`}
               style={{
                 background: 'rgba(8, 12, 24, 0.8)',
                 border: `1px solid ${nameColor}25`,
@@ -133,7 +138,7 @@ export function GraphControls({
           ) : null}
           {onOpenTeamPage ? (
             <div
-              className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
+              className={`${chromeInteractivityClass} flex items-center rounded-md p-0 backdrop-blur-sm`}
               style={{
                 background: 'rgba(8, 12, 24, 0.8)',
                 border: `1px solid ${nameColor}25`,
@@ -149,7 +154,7 @@ export function GraphControls({
           ) : null}
           {onCreateTask ? (
             <div
-              className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
+              className={`${chromeInteractivityClass} flex items-center rounded-md p-0 backdrop-blur-sm`}
               style={{
                 background: 'rgba(8, 12, 24, 0.8)',
                 border: `1px solid ${nameColor}25`,
@@ -167,7 +172,7 @@ export function GraphControls({
 
         <div className="absolute left-1/2 top-0 w-[min(360px,38vw)] -translate-x-1/2 px-2">
           {topToolbarContent ? (
-            <div className="pointer-events-auto min-w-0">
+            <div className={`${chromeInteractivityClass} min-w-0`}>
               {topToolbarContent}
             </div>
           ) : null}
@@ -175,7 +180,7 @@ export function GraphControls({
 
         <div className="absolute right-0 top-0 flex shrink-0 items-center gap-0.5">
           <div
-            className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
+            className={`${chromeInteractivityClass} flex items-center rounded-md p-0 backdrop-blur-sm`}
             style={{
               background: 'rgba(8, 12, 24, 0.8)',
               border: '1px solid rgba(100, 200, 255, 0.08)',
@@ -189,7 +194,7 @@ export function GraphControls({
             />
           </div>
 
-          <div ref={settingsRef} className="relative pointer-events-auto">
+          <div ref={settingsRef} className={`relative ${chromeInteractivityClass}`}>
             <div
               className="flex items-center gap-0.5 rounded-md p-0 backdrop-blur-sm"
               style={{
@@ -240,7 +245,7 @@ export function GraphControls({
           </div>
 
           <div
-            className="pointer-events-auto flex items-center gap-0.5 rounded-md p-0 backdrop-blur-sm"
+            className={`${chromeInteractivityClass} flex items-center gap-0.5 rounded-md p-0 backdrop-blur-sm`}
             style={{
               background: 'rgba(8, 12, 24, 0.8)',
               border: '1px solid rgba(100, 200, 255, 0.08)',
