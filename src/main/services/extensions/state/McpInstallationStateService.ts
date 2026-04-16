@@ -27,15 +27,16 @@ interface TimedCache<T> {
 }
 
 export class McpInstallationStateService {
-  private cache: TimedCache<InstalledMcpEntry[]> | null = null;
+  private cache = new Map<string, TimedCache<InstalledMcpEntry[]>>();
 
   /**
    * Get all installed MCP servers across user and project scopes.
    */
   async getInstalled(projectPath?: string): Promise<InstalledMcpEntry[]> {
-    // Cache is project-path-dependent, so invalidate on path change
-    if (this.cache && Date.now() - this.cache.fetchedAt < CACHE_TTL_MS) {
-      return this.cache.data;
+    const cacheKey = projectPath ?? '__user__';
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+      return cached.data;
     }
 
     const entries: InstalledMcpEntry[] = [];
@@ -50,7 +51,7 @@ export class McpInstallationStateService {
       entries.push(...projectEntries);
     }
 
-    this.cache = { data: entries, fetchedAt: Date.now() };
+    this.cache.set(cacheKey, { data: entries, fetchedAt: Date.now() });
     return entries;
   }
 
@@ -58,7 +59,7 @@ export class McpInstallationStateService {
    * Invalidate cache. Call after install/uninstall operations.
    */
   invalidateCache(): void {
-    this.cache = null;
+    this.cache.clear();
   }
 
   // ── Private ────────────────────────────────────────────────────────────
