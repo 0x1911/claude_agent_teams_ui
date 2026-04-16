@@ -7,6 +7,7 @@ import {
   formatInstallCount,
   getCapabilityLabel,
   getPrimaryCapabilityLabel,
+  hasInstallationInScope,
   inferCapabilities,
   normalizeCategory,
   normalizeRepoUrl,
@@ -146,6 +147,24 @@ describe('buildPluginId', () => {
     expect(buildPluginId('context7', 'claude-plugins-official')).toBe(
       'context7@claude-plugins-official',
     );
+  });
+});
+
+describe('hasInstallationInScope', () => {
+  it('returns true when the selected scope exists', () => {
+    expect(
+      hasInstallationInScope(
+        [
+          { scope: 'user' },
+          { scope: 'project' },
+        ],
+        'project',
+      ),
+    ).toBe(true);
+  });
+
+  it('returns false when the selected scope is missing', () => {
+    expect(hasInstallationInScope([{ scope: 'user' }], 'project')).toBe(false);
   });
 });
 

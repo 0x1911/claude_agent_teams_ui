@@ -2,7 +2,12 @@
  * Pure-function normalizers for Extension Store data.
  */
 
-import type { PluginCapability, PluginCatalogItem } from '@shared/types/extensions';
+import type {
+  InstallScope,
+  InstalledPluginEntry,
+  PluginCapability,
+  PluginCatalogItem,
+} from '@shared/types/extensions';
 
 /**
  * Normalize a repository URL for dedup comparison.
@@ -92,6 +97,16 @@ export function normalizeCategory(raw: string | undefined): string {
  */
 export function buildPluginId(pluginName: string, marketplaceName: string): string {
   return `${pluginName}@${marketplaceName}`;
+}
+
+/**
+ * Check whether a plugin has an installation for the selected scope.
+ */
+export function hasInstallationInScope(
+  installations: Pick<InstalledPluginEntry, 'scope'>[],
+  scope: InstallScope
+): boolean {
+  return installations.some((installation) => installation.scope === scope);
 }
 
 /**

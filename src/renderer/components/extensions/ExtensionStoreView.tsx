@@ -38,6 +38,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
     fetchSkillsCatalog,
     mcpBrowse,
     mcpFetchInstalled,
+    apiKeysLoading,
     pluginCatalogLoading,
     mcpBrowseLoading,
     skillsLoading,
@@ -55,6 +56,7 @@ export const ExtensionStoreView = (): React.JSX.Element => {
       fetchSkillsCatalog: s.fetchSkillsCatalog,
       mcpBrowse: s.mcpBrowse,
       mcpFetchInstalled: s.mcpFetchInstalled,
+      apiKeysLoading: s.apiKeysLoading,
       pluginCatalogLoading: s.pluginCatalogLoading,
       mcpBrowseLoading: s.mcpBrowseLoading,
       skillsLoading: s.skillsLoading,
@@ -143,13 +145,24 @@ export const ExtensionStoreView = (): React.JSX.Element => {
 
   // Refresh all data (plugins + MCP browse + installed + skills)
   const handleRefresh = useCallback(() => {
+    void fetchCliStatus();
+    void fetchApiKeys();
     void fetchPluginCatalog(projectPath ?? undefined, true);
     void mcpBrowse(); // re-fetch first page
     void mcpFetchInstalled(projectPath ?? undefined);
     void fetchSkillsCatalog(projectPath ?? undefined);
-  }, [fetchPluginCatalog, fetchSkillsCatalog, mcpBrowse, mcpFetchInstalled, projectPath]);
+  }, [
+    fetchApiKeys,
+    fetchCliStatus,
+    fetchPluginCatalog,
+    fetchSkillsCatalog,
+    mcpBrowse,
+    mcpFetchInstalled,
+    projectPath,
+  ]);
 
-  const isRefreshing = pluginCatalogLoading || mcpBrowseLoading || skillsLoading;
+  const isRefreshing =
+    cliStatusLoading || apiKeysLoading || pluginCatalogLoading || mcpBrowseLoading || skillsLoading;
   const cliStatusBanner = useMemo(() => {
     if (cliStatusLoading || cliStatus === null) {
       return (

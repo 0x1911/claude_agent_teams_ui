@@ -6,6 +6,7 @@ import { Badge } from '@renderer/components/ui/badge';
 import { useStore } from '@renderer/store';
 import {
   getCapabilityLabel,
+  hasInstallationInScope,
   inferCapabilities,
   normalizeCategory,
 } from '@shared/utils/extensionNormalizers';
@@ -29,6 +30,7 @@ export const PluginCard = ({ plugin, index, onClick }: PluginCardProps): React.J
   const installPlugin = useStore((s) => s.installPlugin);
   const uninstallPlugin = useStore((s) => s.uninstallPlugin);
   const installError = useStore((s) => s.installErrors[plugin.pluginId]);
+  const isUserInstalled = hasInstallationInScope(plugin.installations, 'user');
   const baseStriped = index % 2 === 0;
   const smStriped = Math.floor(index / 2) % 2 === 0;
   const xlStriped = Math.floor(index / 3) % 2 === 0;
@@ -112,9 +114,9 @@ export const PluginCard = ({ plugin, index, onClick }: PluginCardProps): React.J
         <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
           <InstallButton
             state={installProgress}
-            isInstalled={plugin.isInstalled}
+            isInstalled={isUserInstalled}
             onInstall={() => installPlugin({ pluginId: plugin.pluginId, scope: 'user' })}
-            onUninstall={() => uninstallPlugin(plugin.pluginId)}
+            onUninstall={() => uninstallPlugin(plugin.pluginId, 'user')}
             size="sm"
             errorMessage={installError}
           />

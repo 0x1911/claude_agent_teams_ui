@@ -26,6 +26,7 @@ import {
 import { useStore } from '@renderer/store';
 import {
   getCapabilityLabel,
+  hasInstallationInScope,
   inferCapabilities,
   normalizeCategory,
 } from '@shared/utils/extensionNormalizers';
@@ -54,13 +55,21 @@ export const PluginDetailDialog = ({
   open,
   onClose,
 }: PluginDetailDialogProps): React.JSX.Element => {
-  const { fetchPluginReadme, readmes, readmeLoading, installPlugin, uninstallPlugin } = useStore(
+  const {
+    fetchPluginReadme,
+    readmes,
+    readmeLoading,
+    installPlugin,
+    uninstallPlugin,
+    pluginCatalogProjectPath,
+  } = useStore(
     useShallow((s) => ({
       fetchPluginReadme: s.fetchPluginReadme,
       readmes: s.pluginReadmes,
       readmeLoading: s.pluginReadmeLoading,
       installPlugin: s.installPlugin,
       uninstallPlugin: s.uninstallPlugin,
+      pluginCatalogProjectPath: s.pluginCatalogProjectPath,
     }))
   );
   const installProgress = useStore(
@@ -69,6 +78,7 @@ export const PluginDetailDialog = ({
   const installError = useStore((s) => (plugin ? s.installErrors[plugin.pluginId] : undefined));
 
   const [scope, setScope] = useState<InstallScope>('user');
+  const projectScopeAvailable = Boolean(pluginCatalogProjectPath);
 
   useEffect(() => {
     if (plugin && open) {
@@ -76,12 +86,19 @@ export const PluginDetailDialog = ({
     }
   }, [plugin, open, fetchPluginReadme]);
 
+  useEffect(() => {
+    if (scope === 'project' && !projectScopeAvailable) {
+      setScope('user');
+    }
+  }, [projectScopeAvailable, scope]);
+
   if (!plugin) return <></>;
 
   const capabilities = inferCapabilities(plugin);
   const category = normalizeCategory(plugin.category);
   const readme = readmes[plugin.pluginId];
   const isReadmeLoading = readmeLoading[plugin.pluginId] ?? false;
+  const isInstalledForScope = hasInstallationInScope(plugin.installations, scope);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -158,7 +175,11 @@ export const PluginDetailDialog = ({
               </SelectTrigger>
               <SelectContent>
                 {SCOPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
+                  <SelectItem
+                    key={opt.value}
+                    value={opt.value}
+                    disabled={opt.value === 'project' && !projectScopeAvailable}
+                  >
                     {opt.label}
                   </SelectItem>
                 ))}
@@ -167,9 +188,23 @@ export const PluginDetailDialog = ({
           </div>
           <InstallButton
             state={installProgress}
-            isInstalled={plugin.isInstalled}
-            onInstall={() => installPlugin({ pluginId: plugin.pluginId, scope })}
-            onUninstall={() => uninstallPlugin(plugin.pluginId, scope)}
+            isInstalled={isInstalledForScope}
+            onInstall={() =>
+              installPlugin({
+                pluginId: plugin.pluginId,
+                scope,
+                ...(scope === 'project' && pluginCatalogProjectPath
+                  ? { projectPath: pluginCatalogProjectPath }
+                  : {}),
+              })
+            }
+            onUninstall={() =>
+              uninstallPlugin(
+                plugin.pluginId,
+                scope,
+                scope === 'project' ? (pluginCatalogProjectPath ?? undefined) : undefined
+              )
+            }
             size="default"
             errorMessage={installError}
           />
