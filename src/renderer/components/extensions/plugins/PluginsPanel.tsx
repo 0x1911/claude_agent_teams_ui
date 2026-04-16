@@ -2,7 +2,7 @@
  * PluginsPanel — search, filter, sort and browse the plugin catalog.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { Badge } from '@renderer/components/ui/badge';
 import { Button } from '@renderer/components/ui/button';
@@ -141,6 +141,12 @@ export const PluginsPanel = ({
       selectedPluginId ? (catalog.find((p) => p.pluginId === selectedPluginId) ?? null) : null,
     [catalog, selectedPluginId]
   );
+
+  useEffect(() => {
+    if (selectedPluginId && !loading && !selectedPlugin) {
+      setSelectedPluginId(null);
+    }
+  }, [loading, selectedPlugin, selectedPluginId, setSelectedPluginId]);
 
   const sortValue = `${pluginSort.field}:${pluginSort.order}`;
   const activeFilterCount =

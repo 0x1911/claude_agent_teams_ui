@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
+import { getExtensionActionDisableReason } from '@shared/utils/extensionNormalizers';
 import { Check, Loader2, Trash2 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -43,18 +44,11 @@ export const InstallButton = ({
       cliStatusLoading: s.cliStatusLoading,
     }))
   );
-  const cliUnknown = cliStatus === null;
-  const cliMissing = cliStatus?.installed === false;
-  const authMissing = cliStatus?.installed === true && !cliStatus.authLoggedIn;
-  const disableReason = cliStatusLoading
-    ? 'Checking Claude CLI status...'
-    : cliUnknown
-      ? 'Checking Claude CLI availability...'
-      : cliMissing
-        ? 'Claude CLI required. Install it from the Dashboard.'
-        : authMissing
-          ? 'Claude CLI is installed but not signed in. Open the Dashboard to sign in.'
-          : null;
+  const disableReason = getExtensionActionDisableReason({
+    isInstalled,
+    cliStatus,
+    cliStatusLoading,
+  });
   const isDisabled = disabled || Boolean(disableReason);
   const [lastAction, setLastAction] = useState<'install' | 'uninstall' | null>(null);
 

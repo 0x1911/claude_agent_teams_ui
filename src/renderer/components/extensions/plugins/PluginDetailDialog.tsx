@@ -25,6 +25,7 @@ import {
 } from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
 import {
+  getInstallationSummaryLabel,
   getCapabilityLabel,
   hasInstallationInScope,
   inferCapabilities,
@@ -99,6 +100,7 @@ export const PluginDetailDialog = ({
   const readme = readmes[plugin.pluginId];
   const isReadmeLoading = readmeLoading[plugin.pluginId] ?? false;
   const isInstalledForScope = hasInstallationInScope(plugin.installations, scope);
+  const installSummaryLabel = getInstallationSummaryLabel(plugin.installations);
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -110,12 +112,12 @@ export const PluginDetailDialog = ({
               <DialogDescription className="mt-1">{plugin.description}</DialogDescription>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              {plugin.isInstalled && (
+              {installSummaryLabel && (
                 <Badge
                   className="shrink-0 border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                   variant="outline"
                 >
-                  Installed
+                  {installSummaryLabel}
                 </Badge>
               )}
               <SourceBadge source={plugin.source} />

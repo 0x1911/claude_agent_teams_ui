@@ -3,11 +3,12 @@
  */
 
 import type {
+  CliInstallationStatus,
   InstallScope,
   InstalledPluginEntry,
   PluginCapability,
   PluginCatalogItem,
-} from '@shared/types/extensions';
+} from '@shared/types';
 
 /**
  * Normalize a repository URL for dedup comparison.
@@ -107,6 +108,61 @@ export function hasInstallationInScope(
   scope: InstallScope
 ): boolean {
   return installations.some((installation) => installation.scope === scope);
+}
+
+/**
+ * Build a concise install-status label for plugin badges.
+ */
+export function getInstallationSummaryLabel(
+  installations: Pick<InstalledPluginEntry, 'scope'>[]
+): string | null {
+  const scopes = Array.from(new Set(installations.map((installation) => installation.scope)));
+  if (scopes.length === 0) {
+    return null;
+  }
+
+  if (scopes.length > 1) {
+    return `Installed in ${scopes.length} scopes`;
+  }
+
+  switch (scopes[0]) {
+    case 'user':
+      return 'Installed globally';
+    case 'project':
+      return 'Installed in project';
+    case 'local':
+      return 'Installed locally';
+    default:
+      return 'Installed';
+  }
+}
+
+/**
+ * Install actions require Claude auth, but uninstall only requires a working CLI.
+ */
+export function getExtensionActionDisableReason(options: {
+  isInstalled: boolean;
+  cliStatus: Pick<CliInstallationStatus, 'installed' | 'authLoggedIn'> | null;
+  cliStatusLoading: boolean;
+}): string | null {
+  const { isInstalled, cliStatus, cliStatusLoading } = options;
+  if (cliStatusLoading) {
+    return 'Checking Claude CLI status...';
+  }
+
+  if (cliStatus === null) {
+    return 'Checking Claude CLI availability...';
+  }
+
+  if (cliStatus.installed === false) {
+    return 'Claude CLI required. Install it from the Dashboard.';
+  }
+
+  if (!isInstalled && !cliStatus.authLoggedIn) {
+    return 'Claude CLI is installed but not signed in. Open the Dashboard to sign in.';
+  }
+
+  return null;
 }
 
 /**
