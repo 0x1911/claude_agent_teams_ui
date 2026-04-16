@@ -32,6 +32,7 @@ import {
   readSkillTemplateContent,
   updateSkillTemplateFrontmatter,
 } from './skillDraftUtils';
+import { resolveSkillProjectPath } from './skillProjectUtils';
 import { SkillReviewDialog } from './SkillReviewDialog';
 
 import type {
@@ -228,14 +229,30 @@ export const SkillEditorDialog = ({
   }, [detail, mode, open, projectPath]);
 
   useEffect(() => {
+    if (open && mode === 'create' && scope === 'project' && !projectPath) {
+      setScope('user');
+    }
+  }, [mode, open, projectPath, scope]);
+
+  useEffect(() => {
     rawContentRef.current = rawContent;
   }, [rawContent]);
+
+  const effectiveProjectPath = useMemo(
+    () =>
+      resolveSkillProjectPath(
+        scope,
+        projectPath,
+        mode === 'edit' ? detail?.item.projectRoot : undefined
+      ),
+    [detail?.item.projectRoot, mode, projectPath, scope]
+  );
 
   const request = useMemo(
     () => ({
       scope,
       rootKind,
-      projectPath: scope === 'project' ? (projectPath ?? undefined) : undefined,
+      projectPath: effectiveProjectPath,
       folderName,
       existingSkillId: mode === 'edit' ? detail?.item.id : undefined,
       files: buildSkillDraftFiles({
@@ -252,10 +269,10 @@ export const SkillEditorDialog = ({
       includeReferences,
       includeScripts,
       mode,
-      projectPath,
       rawContent,
       rootKind,
       scope,
+      effectiveProjectPath,
     ]
   );
   const draftFilePaths = useMemo(
@@ -285,7 +302,7 @@ export const SkillEditorDialog = ({
     if (!folderName.trim()) {
       return 'Choose a folder name for this skill.';
     }
-    if (scope === 'project' && !projectPath) {
+    if (scope === 'project' && !effectiveProjectPath) {
       return 'Project skills need an active project.';
     }
     return null;

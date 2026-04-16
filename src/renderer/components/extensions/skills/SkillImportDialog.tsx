@@ -23,6 +23,7 @@ import { useStore } from '@renderer/store';
 import { FileSearch, FolderOpen, X } from 'lucide-react';
 
 import { SkillReviewDialog } from './SkillReviewDialog';
+import { resolveSkillProjectPath } from './skillProjectUtils';
 
 import type { SkillReviewPreview } from '@shared/types/extensions';
 
@@ -125,7 +126,7 @@ export const SkillImportDialog = ({
         folderName: folderName || undefined,
         scope,
         rootKind,
-        projectPath: scope === 'project' ? (projectPath ?? undefined) : undefined,
+        projectPath: resolveSkillProjectPath(scope, projectPath),
       });
       setPreview(nextPreview);
       setReviewOpen(true);
@@ -149,7 +150,7 @@ export const SkillImportDialog = ({
         folderName: folderName || undefined,
         scope,
         rootKind,
-        projectPath: scope === 'project' ? (projectPath ?? undefined) : undefined,
+        projectPath: resolveSkillProjectPath(scope, projectPath),
         reviewPlanId: preview?.planId,
       });
       setReviewOpen(false);
