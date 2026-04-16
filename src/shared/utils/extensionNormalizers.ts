@@ -5,6 +5,7 @@
 import type {
   CliInstallationStatus,
   InstallScope,
+  InstalledMcpEntry,
   InstalledPluginEntry,
   PluginCapability,
   PluginCatalogItem,
@@ -122,6 +123,55 @@ export function hasInstallationInScope(
  */
 export function getInstallationSummaryLabel(
   installations: Pick<InstalledPluginEntry, 'scope'>[]
+): string | null {
+  const scopes = Array.from(new Set(installations.map((installation) => installation.scope)));
+  if (scopes.length === 0) {
+    return null;
+  }
+
+  if (scopes.length > 1) {
+    return `Installed in ${scopes.length} scopes`;
+  }
+
+  switch (scopes[0]) {
+    case 'user':
+      return 'Installed globally';
+    case 'project':
+      return 'Installed in project';
+    case 'local':
+      return 'Installed locally';
+    default:
+      return 'Installed';
+  }
+}
+
+const MCP_SCOPE_PRIORITY: Record<InstalledMcpEntry['scope'], number> = {
+  user: 0,
+  project: 1,
+  local: 2,
+};
+
+/**
+ * Pick a stable MCP installation entry when multiple scopes are installed.
+ * Prefer user scope because it is the only safe direct-card action target.
+ */
+export function getPreferredMcpInstallationEntry(
+  installations: InstalledMcpEntry[]
+): InstalledMcpEntry | null {
+  if (installations.length === 0) {
+    return null;
+  }
+
+  return [...installations].sort(
+    (left, right) => MCP_SCOPE_PRIORITY[left.scope] - MCP_SCOPE_PRIORITY[right.scope]
+  )[0]!;
+}
+
+/**
+ * Build a concise install-status label for MCP badges.
+ */
+export function getMcpInstallationSummaryLabel(
+  installations: Pick<InstalledMcpEntry, 'scope'>[]
 ): string | null {
   const scopes = Array.from(new Set(installations.map((installation) => installation.scope)));
   if (scopes.length === 0) {

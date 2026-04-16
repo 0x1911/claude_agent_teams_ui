@@ -25,7 +25,11 @@ import {
   SelectValue,
 } from '@renderer/components/ui/select';
 import { useStore } from '@renderer/store';
-import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
+import {
+  getMcpInstallationSummaryLabel,
+  getPreferredMcpInstallationEntry,
+  sanitizeMcpServerName,
+} from '@shared/utils/extensionNormalizers';
 import { ExternalLink, Lock, Plus, Star, Trash2, Wrench } from 'lucide-react';
 
 import { InstallButton } from '../common/InstallButton';
@@ -42,6 +46,7 @@ interface McpServerDetailDialogProps {
   server: McpCatalogItem | null;
   isInstalled: boolean;
   installedEntry?: InstalledMcpEntry | null;
+  installedEntries?: InstalledMcpEntry[];
   diagnostic?: McpServerDiagnostic | null;
   diagnosticsLoading?: boolean;
   projectPath: string | null;
@@ -61,6 +66,7 @@ export const McpServerDetailDialog = ({
   server,
   isInstalled,
   installedEntry,
+  installedEntries = [],
   diagnostic,
   diagnosticsLoading,
   projectPath,
@@ -83,6 +89,15 @@ export const McpServerDetailDialog = ({
   const [headers, setHeaders] = useState<McpHeaderDef[]>([]);
   const [imgError, setImgError] = useState(false);
   const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set());
+  const normalizedInstalledEntries = installedEntries.length
+    ? installedEntries
+    : installedEntry
+      ? [installedEntry]
+      : [];
+  const preferredInstalledEntry = getPreferredMcpInstallationEntry(normalizedInstalledEntries);
+  const selectedInstalledEntry =
+    normalizedInstalledEntries.find((entry) => entry.scope === scope) ?? null;
+  const installSummaryLabel = getMcpInstallationSummaryLabel(normalizedInstalledEntries);
 
   // Initialize form when dialog opens or server changes
   useEffect(() => {
@@ -102,11 +117,19 @@ export const McpServerDetailDialog = ({
         locked: true,
       }))
     );
-    setServerName(installedEntry?.name ?? sanitizeMcpServerName(server.name));
-    setScope(installedEntry?.scope ?? 'user');
+    setServerName(preferredInstalledEntry?.name ?? sanitizeMcpServerName(server.name));
+    setScope(preferredInstalledEntry?.scope ?? 'user');
     setImgError(false);
     setAutoFilledFields(new Set());
-  }, [installedEntry?.name, installedEntry?.scope, open, server?.id]);
+  }, [open, preferredInstalledEntry?.name, preferredInstalledEntry?.scope, server?.id]);
+
+  useEffect(() => {
+    if (!server || !open) {
+      return;
+    }
+
+    setServerName(selectedInstalledEntry?.name ?? sanitizeMcpServerName(server.name));
+  }, [open, scope, selectedInstalledEntry?.name, server]);
 
   useEffect(() => {
     if (open && scope === 'project' && !projectPath) {
@@ -153,10 +176,10 @@ export const McpServerDetailDialog = ({
   const missingRequiredHeaders = headers.some(
     (header) => header.isRequired && !header.value.trim()
   );
-  const uninstallServerName = installedEntry?.name ?? serverName;
-  const uninstallScope = installedEntry?.scope ?? scope;
-  const scopeRequiresProjectPath =
-    (scope === 'project' || uninstallScope === 'project') && !projectPath;
+  const isInstalledForScope = selectedInstalledEntry !== null;
+  const uninstallServerName = selectedInstalledEntry?.name ?? serverName;
+  const uninstallScope = selectedInstalledEntry?.scope ?? scope;
+  const scopeRequiresProjectPath = scope === 'project' && !projectPath;
   const installDisabled =
     !serverName.trim() ||
     missingRequiredEnvVars ||
@@ -231,7 +254,7 @@ export const McpServerDetailDialog = ({
                       className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                       variant="outline"
                     >
-                      Installed
+                      {installSummaryLabel ?? 'Installed'}
                     </Badge>
                   )}
                   {server.source !== 'official' && <SourceBadge source={server.source} />}
@@ -325,7 +348,7 @@ export const McpServerDetailDialog = ({
             does not describe them. If connection fails after install, check the provider docs.
           </div>
         )}
-        {(isInstalled || diagnosticsLoading) && (
+        {isInstalledForScope && (
           <div className="space-y-2 rounded-md border border-border bg-surface-raised px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-medium text-text">Claude Status</span>
@@ -364,7 +387,7 @@ export const McpServerDetailDialog = ({
         {canAutoInstall && (
           <div className="space-y-3 rounded-md border border-border bg-surface-raised p-4">
             <h4 className="text-sm font-medium text-text">
-              {isInstalled ? 'Manage Installation' : 'Install Server'}
+              {isInstalledForScope ? 'Manage Installation' : 'Install Server'}
             </h4>
 
             {/* Server name */}
@@ -378,7 +401,7 @@ export const McpServerDetailDialog = ({
                 onChange={(e) => setServerName(e.target.value)}
                 placeholder="my-server"
                 className="h-8 text-sm"
-                disabled={isInstalled}
+                disabled={isInstalledForScope}
               />
             </div>
 
@@ -502,7 +525,7 @@ export const McpServerDetailDialog = ({
             <div className="flex justify-end pt-1">
               <InstallButton
                 state={installProgress}
-                isInstalled={isInstalled}
+                isInstalled={isInstalledForScope}
                 onInstall={handleInstall}
                 onUninstall={handleUninstall}
                 disabled={installDisabled}

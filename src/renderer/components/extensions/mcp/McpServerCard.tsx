@@ -11,7 +11,10 @@ import { Button } from '@renderer/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { useStore } from '@renderer/store';
 import { formatCompactNumber, formatRelativeTime } from '@renderer/utils/formatters';
-import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
+import {
+  getMcpInstallationSummaryLabel,
+  sanitizeMcpServerName,
+} from '@shared/utils/extensionNormalizers';
 import { Clock, Cloud, Globe, KeyRound, Lock, Monitor, Star, Tag, Wrench } from 'lucide-react';
 import { Github as GithubIcon } from 'lucide-react';
 
@@ -28,6 +31,7 @@ interface McpServerCardProps {
   server: McpCatalogItem;
   isInstalled: boolean;
   installedEntry?: InstalledMcpEntry | null;
+  installedEntries?: InstalledMcpEntry[];
   diagnostic?: McpServerDiagnostic | null;
   diagnosticsLoading?: boolean;
   onClick: (serverId: string) => void;
@@ -37,6 +41,7 @@ export const McpServerCard = ({
   server,
   isInstalled,
   installedEntry,
+  installedEntries = [],
   diagnostic,
   diagnosticsLoading,
   onClick,
@@ -49,17 +54,22 @@ export const McpServerCard = ({
     server.repositoryUrl ? s.mcpGitHubStars[server.repositoryUrl] : undefined
   );
   const canAutoInstall = !!server.installSpec;
+  const normalizedInstalledEntries = installedEntries.length
+    ? installedEntries
+    : installedEntry
+      ? [installedEntry]
+      : [];
   const requiresConfiguration =
     server.installSpec?.type === 'http' ||
     server.envVars.length > 0 ||
     server.requiresAuth ||
     (server.authHeaders?.length ?? 0) > 0;
   const defaultServerName = sanitizeMcpServerName(server.name);
+  const userInstallEntry =
+    normalizedInstalledEntries.find((entry) => entry.scope === 'user') ?? null;
+  const installSummaryLabel = getMcpInstallationSummaryLabel(normalizedInstalledEntries);
   const supportsDirectInstalledAction =
-    isInstalled &&
-    installedEntry?.scope === 'user' &&
-    installedEntry.name === defaultServerName &&
-    !requiresConfiguration;
+    isInstalled && userInstallEntry?.name === defaultServerName && !requiresConfiguration;
   const shouldShowDirectInstallButton =
     canAutoInstall && (!isInstalled ? !requiresConfiguration : supportsDirectInstalledAction);
   const [imgError, setImgError] = useState(false);
@@ -117,7 +127,7 @@ export const McpServerCard = ({
                   className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                   variant="outline"
                 >
-                  Installed
+                  {installSummaryLabel ?? 'Installed'}
                 </Badge>
               )}
               {isInstalled && diagnosticsLoading && !diagnostic && (
@@ -253,7 +263,7 @@ export const McpServerCard = ({
                 })
               }
               onUninstall={() =>
-                uninstallMcpServer(server.id, installedEntry?.name ?? defaultServerName, 'user')
+                uninstallMcpServer(server.id, userInstallEntry?.name ?? defaultServerName, 'user')
               }
               size="sm"
               errorMessage={installError}

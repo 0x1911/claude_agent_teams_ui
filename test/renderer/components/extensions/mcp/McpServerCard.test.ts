@@ -175,6 +175,7 @@ describe('McpServerCard direct action safety', () => {
           server: makeServer(),
           isInstalled: true,
           installedEntry,
+          installedEntries: [installedEntry],
           diagnostic: null,
           diagnosticsLoading: false,
           onClick: vi.fn(),
@@ -183,6 +184,39 @@ describe('McpServerCard direct action safety', () => {
       await Promise.resolve();
     });
 
+    expect(host.querySelector('[data-testid="install-button"]')).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps direct user action when the same server is installed in multiple scopes', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const installedEntries: InstalledMcpEntry[] = [
+      { name: 'context7', scope: 'user' },
+      { name: 'context7', scope: 'project' },
+    ];
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerCard, {
+          server: makeServer(),
+          isInstalled: true,
+          installedEntry: installedEntries[1],
+          installedEntries,
+          diagnostic: null,
+          diagnosticsLoading: false,
+          onClick: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Installed in 2 scopes');
     expect(host.querySelector('[data-testid="install-button"]')).not.toBeNull();
 
     await act(async () => {

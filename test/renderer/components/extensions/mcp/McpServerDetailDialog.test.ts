@@ -281,6 +281,7 @@ describe('McpServerDetailDialog installed entry handling', () => {
           server: makeServer(),
           isInstalled: true,
           installedEntry,
+          installedEntries: [installedEntry],
           diagnostic: null,
           diagnosticsLoading: false,
           projectPath,
@@ -313,6 +314,7 @@ describe('McpServerDetailDialog installed entry handling', () => {
           server: makeServer(),
           isInstalled: false,
           installedEntry: null,
+          installedEntries: [],
           diagnostic: null,
           diagnosticsLoading: false,
           projectPath,
@@ -343,6 +345,62 @@ describe('McpServerDetailDialog installed entry handling', () => {
         projectPath,
       })
     );
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('uses selected scope instead of aggregated installed state', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const installedEntry: InstalledMcpEntry = {
+      name: 'context7',
+      scope: 'user',
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server: makeServer(),
+          isInstalled: true,
+          installedEntry,
+          installedEntries: [installedEntry],
+          diagnostic: null,
+          diagnosticsLoading: false,
+          projectPath: '/tmp/project',
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+    await act(async () => {
+      scopeSelect.value = 'project';
+      scopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const actionButton = host.querySelector('[data-testid="install-button"]') as HTMLButtonElement;
+    expect(actionButton.textContent).toBe('Install');
+
+    await act(async () => {
+      actionButton.click();
+      await Promise.resolve();
+    });
+
+    expect(storeState.installMcpServer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registryId: 'io.github.upstash/context7',
+        scope: 'project',
+        projectPath: '/tmp/project',
+      })
+    );
+    expect(storeState.uninstallMcpServer).not.toHaveBeenCalled();
 
     await act(async () => {
       root.unmount();

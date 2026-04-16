@@ -16,7 +16,10 @@ import {
 import { useStore } from '@renderer/store';
 import { formatRelativeTime } from '@renderer/utils/formatters';
 import { CLI_NOT_FOUND_MARKER } from '@shared/constants/cli';
-import { sanitizeMcpServerName } from '@shared/utils/extensionNormalizers';
+import {
+  getPreferredMcpInstallationEntry,
+  sanitizeMcpServerName,
+} from '@shared/utils/extensionNormalizers';
 import { AlertTriangle, RefreshCw, Search, Server } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -138,17 +141,24 @@ export const McpServersPanel = ({
     [installedServers]
   );
 
-  const installedEntriesByName = useMemo(
-    () => new Map(installedServers.map((entry) => [entry.name.toLowerCase(), entry] as const)),
-    [installedServers]
-  );
+  const installedEntriesByName = useMemo(() => {
+    const entriesByName = new Map<string, InstalledMcpEntry[]>();
+    for (const entry of installedServers) {
+      const key = entry.name.toLowerCase();
+      entriesByName.set(key, [...(entriesByName.get(key) ?? []), entry]);
+    }
+    return entriesByName;
+  }, [installedServers]);
 
   /** Check if a catalog server is installed by comparing sanitized names */
   const isServerInstalled = (server: McpCatalogItem): boolean =>
     installedNames.has(sanitizeMcpServerName(server.name));
 
+  const getInstalledEntries = (server: McpCatalogItem): InstalledMcpEntry[] =>
+    installedEntriesByName.get(sanitizeMcpServerName(server.name)) ?? [];
+
   const getInstalledEntry = (server: McpCatalogItem): InstalledMcpEntry | null =>
-    installedEntriesByName.get(sanitizeMcpServerName(server.name)) ?? null;
+    getPreferredMcpInstallationEntry(getInstalledEntries(server));
 
   const getDiagnostic = (server: McpCatalogItem): McpServerDiagnostic | null => {
     const installedEntry = getInstalledEntry(server);
@@ -377,6 +387,7 @@ export const McpServersPanel = ({
               server={server}
               isInstalled={isServerInstalled(server)}
               installedEntry={getInstalledEntry(server)}
+              installedEntries={getInstalledEntries(server)}
               diagnostic={getDiagnostic(server)}
               diagnosticsLoading={mcpDiagnosticsLoading}
               onClick={setSelectedMcpServerId}
@@ -404,6 +415,7 @@ export const McpServersPanel = ({
         server={selectedServer}
         isInstalled={selectedServer ? isServerInstalled(selectedServer) : false}
         installedEntry={selectedServer ? getInstalledEntry(selectedServer) : null}
+        installedEntries={selectedServer ? getInstalledEntries(selectedServer) : []}
         diagnostic={selectedServer ? getDiagnostic(selectedServer) : null}
         diagnosticsLoading={mcpDiagnosticsLoading}
         projectPath={projectPath}

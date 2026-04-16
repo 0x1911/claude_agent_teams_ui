@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PluginCatalogItem } from '@shared/types/extensions';
+import type { InstalledMcpEntry, PluginCatalogItem } from '@shared/types/extensions';
 
 import {
   buildPluginId,
@@ -8,6 +8,8 @@ import {
   getExtensionActionDisableReason,
   getCapabilityLabel,
   getInstallationSummaryLabel,
+  getMcpInstallationSummaryLabel,
+  getPreferredMcpInstallationEntry,
   getPluginOperationKey,
   getPrimaryCapabilityLabel,
   hasInstallationInScope,
@@ -198,6 +200,44 @@ describe('getInstallationSummaryLabel', () => {
         { scope: 'project' },
         { scope: 'user' },
       ]),
+    ).toBe('Installed in 2 scopes');
+  });
+});
+
+describe('getPreferredMcpInstallationEntry', () => {
+  it('returns null when there are no MCP installs', () => {
+    expect(getPreferredMcpInstallationEntry([])).toBeNull();
+  });
+
+  it('prefers user scope over project and local', () => {
+    const installations: InstalledMcpEntry[] = [
+      { name: 'context7', scope: 'project' },
+      { name: 'context7', scope: 'user' },
+      { name: 'context7', scope: 'local' },
+    ];
+
+    expect(getPreferredMcpInstallationEntry(installations)).toEqual({
+      name: 'context7',
+      scope: 'user',
+    });
+  });
+});
+
+describe('getMcpInstallationSummaryLabel', () => {
+  it('returns null when there are no MCP installations', () => {
+    expect(getMcpInstallationSummaryLabel([])).toBeNull();
+  });
+
+  it('describes a single local MCP installation', () => {
+    expect(getMcpInstallationSummaryLabel([{ scope: 'local' }])).toBe('Installed locally');
+  });
+
+  it('summarizes multiple MCP scopes', () => {
+    expect(
+      getMcpInstallationSummaryLabel([
+        { scope: 'user' },
+        { scope: 'project' },
+      ])
     ).toBe('Installed in 2 scopes');
   });
 });
