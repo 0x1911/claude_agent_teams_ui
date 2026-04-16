@@ -46,8 +46,6 @@ vi.mock('@renderer/components/team/TeamProvisioningPanel', () => ({
     ),
 }));
 
-const placement = { x: 120, y: 80, scale: 1, visible: true };
-
 describe('GraphProvisioningHud', () => {
   afterEach(() => {
     document.body.innerHTML = '';
@@ -77,8 +75,6 @@ describe('GraphProvisioningHud', () => {
       root.render(
         React.createElement(GraphProvisioningHud, {
           teamName: 'northstar-core',
-          leadNodeId: 'lead:northstar-core',
-          getLaunchAnchorScreenPlacement: () => placement,
         })
       );
       await Promise.resolve();
@@ -117,14 +113,12 @@ describe('GraphProvisioningHud', () => {
       root.render(
         React.createElement(GraphProvisioningHud, {
           teamName: 'northstar-core',
-          leadNodeId: 'lead:northstar-core',
-          getLaunchAnchorScreenPlacement: () => placement,
         })
       );
       await Promise.resolve();
     });
 
-    const openButton = host.querySelector('button[aria-label="Open full launch details"]');
+    const openButton = host.querySelector('button[aria-label="Open launch details"]');
     expect(openButton).not.toBeNull();
 
     await act(async () => {
@@ -165,8 +159,6 @@ describe('GraphProvisioningHud', () => {
       root.render(
         React.createElement(GraphProvisioningHud, {
           teamName: 'northstar-core',
-          leadNodeId: 'lead:northstar-core',
-          getLaunchAnchorScreenPlacement: () => placement,
           enabled: false,
         })
       );

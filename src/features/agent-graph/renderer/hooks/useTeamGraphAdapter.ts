@@ -8,8 +8,11 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { getSnapshot, subscribe } from '@renderer/services/commentReadStorage';
 import { useStore } from '@renderer/store';
 import {
+  getDefaultTeamGraphSlotAssignmentsForMembers,
   getCurrentProvisioningProgressForTeam,
   selectResolvedMembersForTeamName,
+  hasAppliedDefaultTeamGraphSlotAssignments,
+  isTeamGraphSlotPersistenceDisabled,
   selectTeamDataForName,
   selectTeamMessages,
 } from '@renderer/store/slices/teamSlice';
@@ -80,6 +83,20 @@ export function useTeamGraphAdapter(teamName: string): GraphDataPort {
 
   const commentReadState = useSyncExternalStore(subscribe, getSnapshot);
 
+  const effectiveSlotAssignments = useMemo(() => {
+    if (!teamData) {
+      return slotAssignments;
+    }
+    if (!isTeamGraphSlotPersistenceDisabled()) {
+      return slotAssignments;
+    }
+    if (hasAppliedDefaultTeamGraphSlotAssignments(teamName)) {
+      return slotAssignments;
+    }
+    const defaults = getDefaultTeamGraphSlotAssignmentsForMembers(teamData.members);
+    return Object.keys(defaults).length === 0 ? undefined : defaults;
+  }, [slotAssignments, teamData, teamName]);
+
   useEffect(() => {
     if (!teamName || !teamData) {
       return;
@@ -102,7 +119,7 @@ export function useTeamGraphAdapter(teamName: string): GraphDataPort {
         commentReadState,
         provisioningProgress,
         memberSpawnSnapshot,
-        slotAssignments
+        effectiveSlotAssignments
       ),
     [
       teamData,
@@ -117,7 +134,7 @@ export function useTeamGraphAdapter(teamName: string): GraphDataPort {
       commentReadState,
       provisioningProgress,
       memberSpawnSnapshot,
-      slotAssignments,
+      effectiveSlotAssignments,
     ]
   );
 }

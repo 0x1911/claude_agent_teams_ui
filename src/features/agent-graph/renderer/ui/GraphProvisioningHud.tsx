@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { DISPLAY_STEPS } from '@renderer/components/team/provisioningSteps';
 import { StepProgressBar } from '@renderer/components/team/StepProgressBar';
@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@renderer/components/ui/dialog';
 import { cn } from '@renderer/lib/utils';
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 
 import type { TeamProvisioningPresentation } from '@renderer/utils/teamProvisioningPresentation';
 import type { CSSProperties } from 'react';
@@ -51,28 +51,28 @@ function getToneClasses(tone: TeamProvisioningPresentation['compactTone']): {
       return {
         border: 'border-red-400/35 bg-[rgba(26,10,16,0.92)]',
         badge: 'border-red-500/30 text-red-300',
-        icon: <AlertTriangle size={13} />,
+        icon: <AlertTriangle size={12} />,
         iconClassName: 'text-red-400',
       };
     case 'warning':
       return {
         border: 'border-amber-400/35 bg-[rgba(31,18,8,0.92)]',
         badge: 'border-amber-500/30 text-amber-200',
-        icon: <AlertTriangle size={13} />,
+        icon: <AlertTriangle size={12} />,
         iconClassName: 'text-amber-400',
       };
     case 'success':
       return {
         border: 'border-emerald-400/35 bg-[rgba(8,24,18,0.92)]',
         badge: 'border-emerald-500/30 text-emerald-200',
-        icon: <CheckCircle2 size={13} />,
+        icon: <CheckCircle2 size={12} />,
         iconClassName: 'text-emerald-400',
       };
     default:
       return {
         border: 'border-cyan-400/25 bg-[rgba(8,14,26,0.92)]',
         badge: 'border-cyan-500/20 text-cyan-200',
-        icon: <Loader2 size={13} className="animate-spin" />,
+        icon: <Loader2 size={12} className="animate-spin" />,
         iconClassName: 'text-cyan-300',
       };
   }
@@ -80,26 +80,17 @@ function getToneClasses(tone: TeamProvisioningPresentation['compactTone']): {
 
 export interface GraphProvisioningHudProps {
   teamName: string;
-  leadNodeId: string | null;
-  getLaunchAnchorScreenPlacement: (
-    leadNodeId: string
-  ) => { x: number; y: number; scale: number; visible: boolean } | null;
   enabled?: boolean;
 }
 
 export const GraphProvisioningHud = ({
   teamName,
-  leadNodeId,
-  getLaunchAnchorScreenPlacement,
   enabled = true,
 }: GraphProvisioningHudProps): React.JSX.Element | null => {
   const { presentation, runInstanceKey } = useTeamProvisioningPresentation(teamName);
-  const shellRef = useRef<HTMLDivElement>(null);
   const lastActiveStepRef = useRef(-1);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  const shouldRender =
-    enabled && shouldRenderLaunchHud(presentation) && !dismissed && Boolean(leadNodeId);
+  const shouldRender = enabled && shouldRenderLaunchHud(presentation);
   const tone = presentation ? getToneClasses(presentation.compactTone) : null;
   const errorStepIndex = presentation?.isFailed
     ? lastActiveStepRef.current >= 0
@@ -109,15 +100,8 @@ export const GraphProvisioningHud = ({
 
   useEffect(() => {
     setDetailsOpen(false);
-    setDismissed(false);
     lastActiveStepRef.current = -1;
   }, [runInstanceKey, teamName]);
-
-  useEffect(() => {
-    if (!shouldRender || !leadNodeId) {
-      setDetailsOpen(false);
-    }
-  }, [leadNodeId, shouldRender]);
 
   useEffect(() => {
     if (presentation && !presentation.isFailed && presentation.currentStepIndex >= 0) {
@@ -125,47 +109,12 @@ export const GraphProvisioningHud = ({
     }
   }, [presentation]);
 
-  useLayoutEffect(() => {
-    if (!shouldRender || !leadNodeId) {
-      return;
-    }
-    let frameId = 0;
-    const updatePosition = (): void => {
-      const shell = shellRef.current;
-      if (!shell) {
-        frameId = window.requestAnimationFrame(updatePosition);
-        return;
-      }
-      const placement = getLaunchAnchorScreenPlacement(leadNodeId);
-      if (!placement) {
-        shell.style.opacity = '0';
-        frameId = window.requestAnimationFrame(updatePosition);
-        return;
-      }
-
-      if (!placement.visible) {
-        shell.style.opacity = '0';
-        frameId = window.requestAnimationFrame(updatePosition);
-        return;
-      }
-
-      shell.style.opacity = '1';
-      shell.style.transform = `translate(${Math.round(placement.x)}px, ${Math.round(placement.y)}px) scale(${placement.scale.toFixed(3)})`;
-      frameId = window.requestAnimationFrame(updatePosition);
-    };
-
-    updatePosition();
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [getLaunchAnchorScreenPlacement, leadNodeId, shouldRender]);
-
   const compactLabel = useMemo(() => {
     if (!presentation?.compactDetail) {
       return null;
     }
-    return presentation.compactDetail.length > 88
-      ? `${presentation.compactDetail.slice(0, 88)}...`
+    return presentation.compactDetail.length > 54
+      ? `${presentation.compactDetail.slice(0, 54)}...`
       : presentation.compactDetail;
   }, [presentation?.compactDetail]);
 
@@ -174,21 +123,21 @@ export const GraphProvisioningHud = ({
   }
 
   return (
-    <div
-      ref={shellRef}
-      className="pointer-events-auto absolute z-10 w-[336px] origin-top-left opacity-0 transition-opacity"
-    >
-      <div
+    <>
+      <button
+        type="button"
         className={cn(
-          'rounded-xl border p-3 text-slate-100 shadow-[0_18px_48px_rgba(5,5,16,0.38)] backdrop-blur-xl',
+          'w-full rounded-xl border px-3 py-2 text-left text-slate-100 shadow-[0_14px_34px_rgba(5,5,16,0.24)] backdrop-blur-xl transition-colors hover:bg-[rgba(12,18,32,0.96)]',
           tone.border
         )}
+        onClick={() => setDetailsOpen(true)}
+        aria-label="Open launch details"
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className={cn('shrink-0', tone.iconClassName)}>{tone.icon}</span>
-              <div className="truncate text-sm font-semibold text-slate-50">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={cn('shrink-0', tone.iconClassName)}>{tone.icon}</span>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="truncate text-[11px] font-semibold text-slate-50">
                 {presentation.compactTitle}
               </div>
               <Badge variant="outline" className={cn('px-1.5 py-0 text-[10px]', tone.badge)}>
@@ -202,35 +151,16 @@ export const GraphProvisioningHud = ({
               </Badge>
             </div>
             {compactLabel ? (
-              <div className="mt-1 text-[11px] leading-5 text-slate-300">{compactLabel}</div>
+              <div className="mt-0.5 truncate text-[10px] leading-4 text-slate-300">
+                {compactLabel}
+              </div>
             ) : null}
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              className="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-100"
-              onClick={() => setDetailsOpen(true)}
-              aria-label="Open launch details"
-            >
-              <ExternalLink size={14} />
-            </button>
-            <button
-              type="button"
-              className="inline-flex size-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-400 transition-colors hover:bg-white/10 hover:text-slate-100"
-              onClick={() => setDismissed(true)}
-              aria-label="Dismiss launch overlay"
-            >
-              <X size={14} />
-            </button>
           </div>
         </div>
 
-        <button
-          type="button"
-          className="border-cyan-300/12 mt-3 w-full rounded-xl border bg-[rgba(4,10,20,0.58)] p-3 text-left transition-colors hover:bg-[rgba(8,18,32,0.76)]"
+        <div
+          className="border-cyan-300/12 mt-2 overflow-hidden rounded-lg border bg-[rgba(4,10,20,0.58)] px-2 py-1.5"
           style={HUD_STEPPER_STYLE}
-          onClick={() => setDetailsOpen(true)}
-          aria-label="Open full launch details"
         >
           <StepProgressBar
             steps={MINI_STEPS}
@@ -238,8 +168,8 @@ export const GraphProvisioningHud = ({
             errorIndex={errorStepIndex}
             className="w-full"
           />
-        </button>
-      </div>
+        </div>
+      </button>
 
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
         <DialogContent className="w-[min(1120px,92vw)] max-w-5xl p-0">
@@ -254,6 +184,6 @@ export const GraphProvisioningHud = ({
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 };

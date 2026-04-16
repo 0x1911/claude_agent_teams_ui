@@ -48,6 +48,7 @@ export interface GraphControlsProps {
   teamName: string;
   teamColor?: string;
   isAlive?: boolean;
+  topToolbarContent?: React.ReactNode;
 }
 
 const TOPBAR_BUTTON_SIZE = 25;
@@ -67,6 +68,7 @@ export function GraphControls({
   onToggleSidebar,
   isSidebarVisible = true,
   teamColor,
+  topToolbarContent,
 }: GraphControlsProps): React.JSX.Element {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
@@ -105,160 +107,170 @@ export function GraphControls({
 
   return (
     <>
-      <div className="absolute left-3 top-3 z-20 flex items-center gap-0.5 pointer-events-none">
-        {onToggleSidebar ? (
-          <div
-            className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
-            style={{
-              background: 'rgba(8, 12, 24, 0.8)',
-              border: `1px solid ${nameColor}25`,
-            }}
-          >
-            <ToolbarButton
-              onClick={onToggleSidebar}
-              icon={
-                isSidebarVisible ? (
-                  <PanelLeftClose size={TOPBAR_ICON_SIZE} />
-                ) : (
-                  <PanelLeftOpen size={TOPBAR_ICON_SIZE} />
-                )
-              }
-              toolbar
-              title={isSidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
-            />
-          </div>
-        ) : null}
-        {onOpenTeamPage ? (
-          <div
-            className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
-            style={{
-              background: 'rgba(8, 12, 24, 0.8)',
-              border: `1px solid ${nameColor}25`,
-            }}
-          >
-            <ToolbarButton
-              onClick={onOpenTeamPage}
-              icon={<Users size={TOPBAR_ICON_SIZE} />}
-              toolbar
-              title="Open team page"
-            />
-          </div>
-        ) : null}
-        {onCreateTask ? (
-          <div
-            className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
-            style={{
-              background: 'rgba(8, 12, 24, 0.8)',
-              border: `1px solid ${nameColor}25`,
-            }}
-          >
-            <ToolbarButton
-              onClick={onCreateTask}
-              icon={<Plus size={TOPBAR_ICON_SIZE} />}
-              toolbar
-              title="Create task"
-            />
-          </div>
-        ) : null}
-      </div>
-
-      <div className="absolute right-3 top-3 z-20 flex items-center gap-0.5 pointer-events-none">
-        <div
-          className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
-          style={{
-            background: 'rgba(8, 12, 24, 0.8)',
-            border: '1px solid rgba(100, 200, 255, 0.08)',
-          }}
-        >
-          <ToolbarButton
-            onClick={() => toggle('paused')}
-            icon={filters.paused ? <Play size={TOPBAR_ICON_SIZE} /> : <Pause size={TOPBAR_ICON_SIZE} />}
-            toolbar
-            title={filters.paused ? 'Resume animation' : 'Pause animation'}
-          />
+      <div className="absolute inset-x-3 top-3 z-20 flex items-start gap-2 pointer-events-none">
+        <div className="flex shrink-0 items-center gap-0.5">
+          {onToggleSidebar ? (
+            <div
+              className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
+              style={{
+                background: 'rgba(8, 12, 24, 0.8)',
+                border: `1px solid ${nameColor}25`,
+              }}
+            >
+              <ToolbarButton
+                onClick={onToggleSidebar}
+                icon={
+                  isSidebarVisible ? (
+                    <PanelLeftClose size={TOPBAR_ICON_SIZE} />
+                  ) : (
+                    <PanelLeftOpen size={TOPBAR_ICON_SIZE} />
+                  )
+                }
+                toolbar
+                title={isSidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+              />
+            </div>
+          ) : null}
+          {onOpenTeamPage ? (
+            <div
+              className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
+              style={{
+                background: 'rgba(8, 12, 24, 0.8)',
+                border: `1px solid ${nameColor}25`,
+              }}
+            >
+              <ToolbarButton
+                onClick={onOpenTeamPage}
+                icon={<Users size={TOPBAR_ICON_SIZE} />}
+                toolbar
+                title="Open team page"
+              />
+            </div>
+          ) : null}
+          {onCreateTask ? (
+            <div
+              className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
+              style={{
+                background: 'rgba(8, 12, 24, 0.8)',
+                border: `1px solid ${nameColor}25`,
+              }}
+            >
+              <ToolbarButton
+                onClick={onCreateTask}
+                icon={<Plus size={TOPBAR_ICON_SIZE} />}
+                toolbar
+                title="Create task"
+              />
+            </div>
+          ) : null}
         </div>
 
-        <div ref={settingsRef} className="relative pointer-events-auto">
+        <div className="flex min-w-0 flex-1 justify-end px-2">
+          {topToolbarContent ? (
+            <div className="pointer-events-auto min-w-0 max-w-[min(360px,42vw)]">
+              {topToolbarContent}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-0.5">
           <div
-            className="flex items-center gap-0.5 rounded-md p-0 backdrop-blur-sm"
+            className="pointer-events-auto flex items-center rounded-md p-0 backdrop-blur-sm"
             style={{
               background: 'rgba(8, 12, 24, 0.8)',
               border: '1px solid rgba(100, 200, 255, 0.08)',
             }}
           >
             <ToolbarButton
-              onClick={() => setIsSettingsOpen((value) => !value)}
-              icon={<Settings2 size={TOPBAR_ICON_SIZE} />}
-              active={isSettingsOpen}
+              onClick={() => toggle('paused')}
+              icon={filters.paused ? <Play size={TOPBAR_ICON_SIZE} /> : <Pause size={TOPBAR_ICON_SIZE} />}
               toolbar
-              title="Graph settings"
+              title={filters.paused ? 'Resume animation' : 'Pause animation'}
             />
           </div>
 
-          {isSettingsOpen && (
+          <div ref={settingsRef} className="relative pointer-events-auto">
             <div
-              className="absolute right-0 top-[calc(100%+0.5rem)] w-44 rounded-xl p-1.5 shadow-2xl"
+              className="flex items-center gap-0.5 rounded-md p-0 backdrop-blur-sm"
               style={{
-                background: 'rgba(8, 12, 24, 0.96)',
-                border: '1px solid rgba(100, 200, 255, 0.12)',
+                background: 'rgba(8, 12, 24, 0.8)',
+                border: '1px solid rgba(100, 200, 255, 0.08)',
               }}
             >
-              <ToolbarToggle
-                active={filters.showTasks}
-                onClick={() => toggle('showTasks')}
-                icon={<Columns3 size={13} />}
-                label="Tasks"
-                block
-              />
-              <ToolbarToggle
-                active={filters.showProcesses}
-                onClick={() => toggle('showProcesses')}
-                icon={<Server size={13} />}
-                label="Processes"
-                block
-              />
-              <ToolbarToggle
-                active={filters.showEdges}
-                onClick={() => toggle('showEdges')}
-                icon={filters.showEdges ? <Eye size={13} /> : <EyeOff size={13} />}
-                label="Edges"
-                block
+              <ToolbarButton
+                onClick={() => setIsSettingsOpen((value) => !value)}
+                icon={<Settings2 size={TOPBAR_ICON_SIZE} />}
+                active={isSettingsOpen}
+                toolbar
+                title="Graph settings"
               />
             </div>
-          )}
-        </div>
 
-        <div
-          className="pointer-events-auto flex items-center gap-0.5 rounded-md p-0 backdrop-blur-sm"
-          style={{
-            background: 'rgba(8, 12, 24, 0.8)',
-            border: '1px solid rgba(100, 200, 255, 0.08)',
-          }}
-        >
-          {onRequestPinAsTab && (
-            <ToolbarButton
-              onClick={onRequestPinAsTab}
-              icon={<Pin size={TOPBAR_ICON_SIZE} />}
-              toolbar
-              title="Pin as tab"
-            />
-          )}
-          {onRequestFullscreen && (
-            <ToolbarButton
-              onClick={onRequestFullscreen}
-              icon={<Expand size={TOPBAR_ICON_SIZE} />}
-              toolbar
-              title="Fullscreen"
-            />
-          )}
-          {onRequestClose && (
-            <ToolbarButton
-              onClick={onRequestClose}
-              icon={<X size={TOPBAR_ICON_SIZE} />}
-              toolbar
-              title="Close graph"
-            />
-          )}
+            {isSettingsOpen && (
+              <div
+                className="absolute right-0 top-[calc(100%+0.5rem)] w-44 rounded-xl p-1.5 shadow-2xl"
+                style={{
+                  background: 'rgba(8, 12, 24, 0.96)',
+                  border: '1px solid rgba(100, 200, 255, 0.12)',
+                }}
+              >
+                <ToolbarToggle
+                  active={filters.showTasks}
+                  onClick={() => toggle('showTasks')}
+                  icon={<Columns3 size={13} />}
+                  label="Tasks"
+                  block
+                />
+                <ToolbarToggle
+                  active={filters.showProcesses}
+                  onClick={() => toggle('showProcesses')}
+                  icon={<Server size={13} />}
+                  label="Processes"
+                  block
+                />
+                <ToolbarToggle
+                  active={filters.showEdges}
+                  onClick={() => toggle('showEdges')}
+                  icon={filters.showEdges ? <Eye size={13} /> : <EyeOff size={13} />}
+                  label="Edges"
+                  block
+                />
+              </div>
+            )}
+          </div>
+
+          <div
+            className="pointer-events-auto flex items-center gap-0.5 rounded-md p-0 backdrop-blur-sm"
+            style={{
+              background: 'rgba(8, 12, 24, 0.8)',
+              border: '1px solid rgba(100, 200, 255, 0.08)',
+            }}
+          >
+            {onRequestPinAsTab && (
+              <ToolbarButton
+                onClick={onRequestPinAsTab}
+                icon={<Pin size={TOPBAR_ICON_SIZE} />}
+                toolbar
+                title="Pin as tab"
+              />
+            )}
+            {onRequestFullscreen && (
+              <ToolbarButton
+                onClick={onRequestFullscreen}
+                icon={<Expand size={TOPBAR_ICON_SIZE} />}
+                toolbar
+                title="Fullscreen"
+              />
+            )}
+            {onRequestClose && (
+              <ToolbarButton
+                onClick={onRequestClose}
+                icon={<X size={TOPBAR_ICON_SIZE} />}
+                toolbar
+                title="Close graph"
+              />
+            )}
+          </div>
         </div>
       </div>
 

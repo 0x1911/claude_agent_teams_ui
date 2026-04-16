@@ -3,10 +3,12 @@
  * Provides Fullscreen button that opens the overlay.
  */
 
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useState } from 'react';
 
 import { GraphView } from '@claude-teams/agent-graph';
 import { TeamSidebarHost } from '@renderer/components/team/sidebar/TeamSidebarHost';
+import { useStore } from '@renderer/store';
+import { isTeamGraphSlotPersistenceDisabled } from '@renderer/store/slices/teamSlice';
 
 import { useGraphCreateTaskDialog } from '../hooks/useGraphCreateTaskDialog';
 import { useGraphSidebarVisibility } from '../hooks/useGraphSidebarVisibility';
@@ -46,9 +48,8 @@ export const TeamGraphTab = ({
 }: TeamGraphTabProps): React.JSX.Element => {
   const graphData = useTeamGraphAdapter(teamName);
   const { openTeamPage, commitOwnerSlotDrop } = useTeamGraphSurfaceActions(teamName);
-  const leadNodeId = useMemo(
-    () => graphData.nodes.find((node) => node.kind === 'lead')?.id ?? null,
-    [graphData.nodes]
+  const resetTeamGraphSlotAssignmentsToDefaults = useStore(
+    (s) => s.resetTeamGraphSlotAssignmentsToDefaults
   );
   const [fullscreen, setFullscreen] = useState(false);
   const { sidebarVisible, toggleSidebarVisible } = useGraphSidebarVisibility();
@@ -79,6 +80,13 @@ export const TeamGraphTab = ({
   const openCreateTask = useCallback(() => {
     openCreateTaskDialog('');
   }, [openCreateTaskDialog]);
+
+  useLayoutEffect(() => {
+    if (!isTeamGraphSlotPersistenceDisabled() || !isActive) {
+      return;
+    }
+    resetTeamGraphSlotAssignmentsToDefaults(teamName);
+  }, [isActive, resetTeamGraphSlotAssignmentsToDefaults, teamName]);
 
   // Task action dispatchers
   const dispatchTaskAction = useCallback(
@@ -144,52 +152,47 @@ export const TeamGraphTab = ({
           events={events}
           className="team-graph-view size-full"
           suspendAnimation={!isActive}
+          isSurfaceActive={isActive}
           onRequestFullscreen={() => setFullscreen(true)}
           onOpenTeamPage={openTeamPage}
           onCreateTask={openCreateTask}
           onToggleSidebar={toggleSidebarVisible}
           isSidebarVisible={sidebarVisible}
+          renderTopToolbarContent={() => (
+            <GraphProvisioningHud teamName={teamName} enabled={isActive} />
+          )}
           onOwnerSlotDrop={commitOwnerSlotDrop}
           renderHud={(hudProps) => {
             const extraHudProps = hudProps as typeof hudProps & {
               getViewportSize?: () => { width: number; height: number };
-              getActivityAnchorWorldPosition?: (
-                ownerNodeId: string
-              ) => { x: number; y: number } | null;
+              getActivityWorldRect?: (ownerNodeId: string) => {
+                left: number;
+                top: number;
+                right: number;
+                bottom: number;
+                width: number;
+                height: number;
+              } | null;
               getCameraZoom?: () => number;
               worldToScreen?: (x: number, y: number) => { x: number; y: number };
               getNodeWorldPosition?: (nodeId: string) => { x: number; y: number } | null;
             };
-            const {
-              getLaunchAnchorScreenPlacement,
-              getActivityAnchorScreenPlacement,
-              getViewportSize,
-              getNodeScreenPosition,
-              focusNodeIds,
-            } = extraHudProps;
+            const { getViewportSize, focusNodeIds } = extraHudProps;
 
             return (
               <>
                 <GraphActivityHud
                   teamName={teamName}
                   nodes={graphData.nodes}
-                  getActivityAnchorScreenPlacement={getActivityAnchorScreenPlacement}
-                  getActivityAnchorWorldPosition={extraHudProps.getActivityAnchorWorldPosition}
+                  getActivityWorldRect={extraHudProps.getActivityWorldRect}
                   getCameraZoom={extraHudProps.getCameraZoom}
                   worldToScreen={extraHudProps.worldToScreen}
                   getNodeWorldPosition={extraHudProps.getNodeWorldPosition}
                   getViewportSize={getViewportSize}
-                  getNodeScreenPosition={getNodeScreenPosition}
                   focusNodeIds={focusNodeIds}
                   enabled={isActive}
                   onOpenTaskDetail={dispatchOpenTask}
                   onOpenMemberProfile={dispatchOpenProfile}
-                />
-                <GraphProvisioningHud
-                  teamName={teamName}
-                  leadNodeId={leadNodeId}
-                  getLaunchAnchorScreenPlacement={getLaunchAnchorScreenPlacement}
-                  enabled={isActive}
                 />
               </>
             );

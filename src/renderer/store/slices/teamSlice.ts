@@ -12,6 +12,7 @@ import { IpcError, unwrapIpc } from '@renderer/utils/unwrapIpc';
 import { mergeTeamMessages } from '@renderer/utils/mergeTeamMessages';
 import { stripAgentBlocks } from '@shared/constants/agentBlocks';
 import { DEFAULT_TOOL_APPROVAL_SETTINGS } from '@shared/types/team';
+import { isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
 import { getTaskKanbanColumn } from '@shared/utils/reviewState';
 import { formatTaskDisplayLabel } from '@shared/utils/taskIdentity';
@@ -61,6 +62,7 @@ import type {
 import type { StateCreator } from 'zustand';
 
 const GRAPH_STABLE_SLOT_LAYOUT_VERSION = 'stable-slots-v1' as const;
+const DISABLE_PERSISTED_TEAM_GRAPH_SLOT_ASSIGNMENTS = true;
 const logger = createLogger('teamSlice');
 
 const TEAM_GET_DATA_TIMEOUT_MS = 30_000;
@@ -98,11 +100,33 @@ const teamRefreshBurstDiagnostics = new Map<
   { windowStartedAt: number; count: number; lastWarnAt: number }
 >();
 const memberSpawnUiEqualLastWarnAtByTeam = new Map<string, number>();
+const sessionDefaultGraphSlotAssignmentsAppliedByTeam = new Set<string>();
 interface RefreshTeamDataOptions {
   withDedup?: boolean;
 }
 
 type TeamGraphSlotAssignments = Record<string, GraphOwnerSlotAssignment>;
+type TeamGraphMemberSeedInput = Pick<TeamMemberSnapshot, 'name' | 'agentId' | 'removedAt'>;
+
+const SMALL_TEAM_CARDINAL_SLOT_PRESETS: ReadonlyArray<ReadonlyArray<GraphOwnerSlotAssignment>> = [
+  [],
+  [{ ringIndex: 0, sectorIndex: 0 }],
+  [
+    { ringIndex: 0, sectorIndex: 0 },
+    { ringIndex: 0, sectorIndex: 1 },
+  ],
+  [
+    { ringIndex: 0, sectorIndex: 0 },
+    { ringIndex: 0, sectorIndex: 1 },
+    { ringIndex: 0, sectorIndex: 2 },
+  ],
+  [
+    { ringIndex: 0, sectorIndex: 0 },
+    { ringIndex: 0, sectorIndex: 1 },
+    { ringIndex: 0, sectorIndex: 2 },
+    { ringIndex: 0, sectorIndex: 3 },
+  ],
+];
 
 export function isTeamDataRefreshPending(teamName: string): boolean {
   return (
@@ -147,6 +171,7 @@ export function __resetTeamSliceModuleStateForTests(): void {
   resolvedMemberSelectorCache.clear();
   mergedMessagesSelectorCache.clear();
   memberMessagesSelectorCache.clear();
+  sessionDefaultGraphSlotAssignmentsAppliedByTeam.clear();
 }
 
 function nowIso(): string {
@@ -1307,7 +1332,7 @@ export function selectTeamDataForName(
 
 function migrateStableSlotAssignmentsForMembers(
   assignments: TeamGraphSlotAssignments | undefined,
-  members: readonly Pick<TeamViewSnapshot['members'][number], 'name' | 'agentId'>[]
+  members: readonly TeamGraphMemberSeedInput[]
 ): { assignments: TeamGraphSlotAssignments; changed: boolean } {
   const nextAssignments: TeamGraphSlotAssignments = { ...(assignments ?? {}) };
   let changed = false;
@@ -1485,6 +1510,74 @@ function isMemberActivityMetaStale(
   return meta.feedRevision !== feedRevision;
 }
 
+function seedStableSlotAssignmentsForMembers(
+  assignments: TeamGraphSlotAssignments,
+  members: readonly TeamGraphMemberSeedInput[]
+): { assignments: TeamGraphSlotAssignments; changed: boolean } {
+  const visibleMembers = members.filter((member) => !member.removedAt && !isLeadMember(member));
+  if (visibleMembers.length === 0 || visibleMembers.length > 4) {
+    return { assignments, changed: false };
+  }
+
+  const visibleStableOwnerIds = visibleMembers.map((member) => getStableTeamOwnerId(member));
+  const hasAnyVisibleAssignments = visibleStableOwnerIds.some(
+    (stableOwnerId) => assignments[stableOwnerId] != null
+  );
+  if (hasAnyVisibleAssignments) {
+    return { assignments, changed: false };
+  }
+
+  const preset = SMALL_TEAM_CARDINAL_SLOT_PRESETS[visibleMembers.length];
+  if (!preset || preset.length !== visibleMembers.length) {
+    return { assignments, changed: false };
+  }
+
+  const nextAssignments: TeamGraphSlotAssignments = { ...assignments };
+  visibleMembers.forEach((member, index) => {
+    nextAssignments[getStableTeamOwnerId(member)] = preset[index]!;
+  });
+
+  return { assignments: nextAssignments, changed: true };
+}
+
+function areTeamGraphSlotAssignmentsEqual(
+  left: TeamGraphSlotAssignments | undefined,
+  right: TeamGraphSlotAssignments | undefined
+): boolean {
+  const leftEntries = Object.entries(left ?? {});
+  const rightEntries = Object.entries(right ?? {});
+  if (leftEntries.length !== rightEntries.length) {
+    return false;
+  }
+
+  for (const [stableOwnerId, leftAssignment] of leftEntries) {
+    const rightAssignment = right?.[stableOwnerId];
+    if (
+      !rightAssignment ||
+      rightAssignment.ringIndex !== leftAssignment.ringIndex ||
+      rightAssignment.sectorIndex !== leftAssignment.sectorIndex
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function getDefaultTeamGraphSlotAssignmentsForMembers(
+  members: readonly TeamGraphMemberSeedInput[]
+): TeamGraphSlotAssignments {
+  return seedStableSlotAssignmentsForMembers({}, members).assignments;
+}
+
+export function isTeamGraphSlotPersistenceDisabled(): boolean {
+  return DISABLE_PERSISTED_TEAM_GRAPH_SLOT_ASSIGNMENTS;
+}
+
+export function hasAppliedDefaultTeamGraphSlotAssignments(teamName: string): boolean {
+  return sessionDefaultGraphSlotAssignmentsAppliedByTeam.has(teamName);
+}
+
 function isVisibleInActiveTeamSurface(
   state: Pick<AppState, 'paneLayout'>,
   teamName: string | null | undefined
@@ -1594,7 +1687,7 @@ export interface TeamSlice {
   clearKanbanFilter: () => void;
   ensureTeamGraphSlotAssignments: (
     teamName: string,
-    members: readonly Pick<TeamViewSnapshot['members'][number], 'name' | 'agentId'>[]
+    members: readonly TeamGraphMemberSeedInput[]
   ) => void;
   setTeamGraphOwnerSlotAssignment: (
     teamName: string,
@@ -2301,15 +2394,41 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       if (state.slotLayoutVersion !== GRAPH_STABLE_SLOT_LAYOUT_VERSION) {
         nextState.slotLayoutVersion = GRAPH_STABLE_SLOT_LAYOUT_VERSION;
         nextSlotAssignmentsByTeam = {};
+        sessionDefaultGraphSlotAssignmentsAppliedByTeam.clear();
         changed = true;
+      }
+
+      if (DISABLE_PERSISTED_TEAM_GRAPH_SLOT_ASSIGNMENTS) {
+        if (!sessionDefaultGraphSlotAssignmentsAppliedByTeam.has(teamName)) {
+          const currentAssignments = nextSlotAssignmentsByTeam[teamName];
+          const defaultAssignments = getDefaultTeamGraphSlotAssignmentsForMembers(members);
+          if (!areTeamGraphSlotAssignmentsEqual(currentAssignments, defaultAssignments)) {
+            nextSlotAssignmentsByTeam = { ...nextSlotAssignmentsByTeam };
+            if (Object.keys(defaultAssignments).length === 0) {
+              delete nextSlotAssignmentsByTeam[teamName];
+            } else {
+              nextSlotAssignmentsByTeam[teamName] = defaultAssignments;
+            }
+            changed = true;
+          }
+          sessionDefaultGraphSlotAssignmentsAppliedByTeam.add(teamName);
+        }
+
+        if (!changed) {
+          return {};
+        }
+
+        nextState.slotAssignmentsByTeam = nextSlotAssignmentsByTeam;
+        return nextState;
       }
 
       const currentAssignments = nextSlotAssignmentsByTeam[teamName];
       const migrated = migrateStableSlotAssignmentsForMembers(currentAssignments, members);
-      if (migrated.changed) {
+      const seeded = seedStableSlotAssignmentsForMembers(migrated.assignments, members);
+      if (migrated.changed || seeded.changed) {
         nextSlotAssignmentsByTeam = {
           ...nextSlotAssignmentsByTeam,
-          [teamName]: migrated.assignments,
+          [teamName]: seeded.assignments,
         };
         changed = true;
       }
@@ -2450,6 +2569,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   clearTeamGraphSlotAssignments: (teamName) => {
     set((state) => {
       if (!teamName) {
+        sessionDefaultGraphSlotAssignmentsAppliedByTeam.clear();
         if (
           Object.keys(state.slotAssignmentsByTeam).length === 0 &&
           state.slotLayoutVersion === GRAPH_STABLE_SLOT_LAYOUT_VERSION
@@ -2468,6 +2588,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
       const nextAssignmentsByTeam = { ...state.slotAssignmentsByTeam };
       delete nextAssignmentsByTeam[teamName];
+      sessionDefaultGraphSlotAssignmentsAppliedByTeam.delete(teamName);
       return {
         slotLayoutVersion: GRAPH_STABLE_SLOT_LAYOUT_VERSION,
         slotAssignmentsByTeam: nextAssignmentsByTeam,
@@ -2477,13 +2598,48 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
   resetTeamGraphSlotAssignmentsToDefaults: (teamName) => {
     set((state) => {
+      if (!DISABLE_PERSISTED_TEAM_GRAPH_SLOT_ASSIGNMENTS) {
+        const currentAssignments = state.slotAssignmentsByTeam[teamName];
+        if (!currentAssignments || Object.keys(currentAssignments).length === 0) {
+          return {};
+        }
+
+        const nextAssignmentsByTeam = { ...state.slotAssignmentsByTeam };
+        delete nextAssignmentsByTeam[teamName];
+        return {
+          slotLayoutVersion: GRAPH_STABLE_SLOT_LAYOUT_VERSION,
+          slotAssignmentsByTeam: nextAssignmentsByTeam,
+        };
+      }
+
+      const teamData = selectTeamDataForName(state, teamName);
+      const defaultAssignments = teamData
+        ? getDefaultTeamGraphSlotAssignmentsForMembers(teamData.members)
+        : {};
       const currentAssignments = state.slotAssignmentsByTeam[teamName];
-      if (!currentAssignments || Object.keys(currentAssignments).length === 0) {
+      const hasCurrentAssignments =
+        currentAssignments && Object.keys(currentAssignments).length > 0;
+
+      if (
+        areTeamGraphSlotAssignmentsEqual(currentAssignments, defaultAssignments) &&
+        sessionDefaultGraphSlotAssignmentsAppliedByTeam.has(teamName)
+      ) {
         return {};
       }
 
       const nextAssignmentsByTeam = { ...state.slotAssignmentsByTeam };
-      delete nextAssignmentsByTeam[teamName];
+      if (Object.keys(defaultAssignments).length === 0) {
+        delete nextAssignmentsByTeam[teamName];
+        sessionDefaultGraphSlotAssignmentsAppliedByTeam.delete(teamName);
+      } else {
+        nextAssignmentsByTeam[teamName] = defaultAssignments;
+        sessionDefaultGraphSlotAssignmentsAppliedByTeam.add(teamName);
+      }
+
+      if (!hasCurrentAssignments && Object.keys(defaultAssignments).length === 0) {
+        return {};
+      }
+
       return {
         slotLayoutVersion: GRAPH_STABLE_SLOT_LAYOUT_VERSION,
         slotAssignmentsByTeam: nextAssignmentsByTeam,

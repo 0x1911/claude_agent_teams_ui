@@ -1,7 +1,7 @@
 import { KANBAN_ZONE, TASK_PILL } from '../constants/canvas-constants';
 import type { GraphLayoutPort, GraphNode, GraphOwnerSlotAssignment } from '../ports/types';
-import { ACTIVITY_ANCHOR_LAYOUT, ACTIVITY_LANE } from './activityLane';
-import { LAUNCH_ANCHOR_LAYOUT, type WorldBounds } from './launchAnchor';
+import { ACTIVITY_LANE } from './activityLane';
+import type { WorldBounds } from './launchAnchor';
 import {
   STABLE_SLOT_GEOMETRY,
   STABLE_SLOT_SECTOR_VECTORS,
@@ -24,11 +24,13 @@ export interface OwnerFootprint {
   slotHeight: number;
   widthBucket: StableSlotWidthBucket;
   radialDepth: number;
-  activityWidth: number;
-  activityHeight: number;
-  processRailWidth: number;
-  taskBandWidth: number;
-  taskBandHeight: number;
+  activityColumnWidth: number;
+  activityColumnHeight: number;
+  processBandWidth: number;
+  kanbanBandWidth: number;
+  kanbanBandHeight: number;
+  boardBandWidth: number;
+  boardBandHeight: number;
   taskColumnCount: number;
   processCount: number;
 }
@@ -41,9 +43,10 @@ export interface SlotFrame {
   bounds: StableRect;
   ownerX: number;
   ownerY: number;
-  activityRect: StableRect;
+  boardBandRect: StableRect;
+  activityColumnRect: StableRect;
   processBandRect: StableRect;
-  taskBandRect: StableRect;
+  kanbanBandRect: StableRect;
   taskColumnCount: number;
 }
 
@@ -52,11 +55,13 @@ export interface StableSlotLayoutSnapshot {
   teamName: string;
   leadNodeId: string | null;
   leadCoreRect: StableRect;
+  leadSlotFrame: SlotFrame;
   leadActivityRect: StableRect;
   launchHudRect: StableRect;
   launchAnchor: { x: number; y: number } | null;
   leadCentralReservedBlock: StableRect;
   runtimeCentralExclusion: StableRect;
+  centralCollisionRects: StableRect[];
   memberSlotFrames: SlotFrame[];
   memberSlotFrameByOwnerId: Map<string, SlotFrame>;
   unassignedTaskRect: StableRect | null;
@@ -72,6 +77,8 @@ interface NearestSlotAssignmentResult {
   assignment: GraphOwnerSlotAssignment;
   displacedOwnerId?: string;
   displacedAssignment?: GraphOwnerSlotAssignment;
+  previewOwnerX: number;
+  previewOwnerY: number;
 }
 
 interface RankedNearestSlotAssignmentResult extends NearestSlotAssignmentResult {
@@ -93,18 +100,59 @@ type RingLayoutStateMap = ReadonlyMap<string, RingLayoutState>;
 
 const SLOT_GEOMETRY = {
   ...STABLE_SLOT_GEOMETRY,
-  activityHeight: ACTIVITY_ANCHOR_LAYOUT.reservedHeight,
-  activityWidth: ACTIVITY_LANE.width,
-  activityToOwnerGap: STABLE_SLOT_GEOMETRY.slotVerticalGap,
-  ownerToProcessGap: STABLE_SLOT_GEOMETRY.slotVerticalGap,
-  processToTaskGap: STABLE_SLOT_GEOMETRY.slotVerticalGap,
-  taskBandHeight:
+  activityColumnHeight:
     ACTIVITY_LANE.headerHeight +
+    ACTIVITY_LANE.maxVisibleItems * ACTIVITY_LANE.rowHeight +
+    ACTIVITY_LANE.overflowHeight,
+  activityColumnWidth: ACTIVITY_LANE.width,
+  ownerToProcessGap: STABLE_SLOT_GEOMETRY.slotVerticalGap,
+  processToBoardGap: STABLE_SLOT_GEOMETRY.slotVerticalGap,
+  boardColumnGap: 24,
+  processRailMinWidth: STABLE_SLOT_GEOMETRY.processRailWidth,
+  kanbanBandHeight:
+    KANBAN_ZONE.headerHeight +
     STABLE_SLOT_GEOMETRY.taskMaxVisibleRows * KANBAN_ZONE.rowHeight,
   centralPadding: STABLE_SLOT_GEOMETRY.centralSafetyPadding,
 } as const;
 
+const PROCESS_RAIL_NODE_GAP = 42;
+const PROCESS_RAIL_NODE_FOOTPRINT = 28;
+const GEOMETRY_EPSILON = 0.001;
+const SMALL_TEAM_CARDINAL_RADIUS_STEP = 24;
+
 const SECTOR_VECTORS = STABLE_SLOT_SECTOR_VECTORS;
+const SMALL_TEAM_CARDINAL_LAYOUTS: ReadonlyArray<
+  ReadonlyArray<{
+    assignment: GraphOwnerSlotAssignment;
+    vector: { x: number; y: number };
+  }>
+> = [
+  [],
+  [{ assignment: { ringIndex: 0, sectorIndex: 0 }, vector: { x: 0, y: -1 } }],
+  [
+    { assignment: { ringIndex: 0, sectorIndex: 0 }, vector: { x: -1, y: 0 } },
+    { assignment: { ringIndex: 0, sectorIndex: 1 }, vector: { x: 1, y: 0 } },
+  ],
+  [
+    { assignment: { ringIndex: 0, sectorIndex: 0 }, vector: { x: 0, y: -1 } },
+    { assignment: { ringIndex: 0, sectorIndex: 1 }, vector: { x: -1, y: 0 } },
+    { assignment: { ringIndex: 0, sectorIndex: 2 }, vector: { x: 1, y: 0 } },
+  ],
+  [
+    { assignment: { ringIndex: 0, sectorIndex: 0 }, vector: { x: 0, y: -1 } },
+    { assignment: { ringIndex: 0, sectorIndex: 1 }, vector: { x: 1, y: 0 } },
+    { assignment: { ringIndex: 0, sectorIndex: 2 }, vector: { x: 0, y: 1 } },
+    { assignment: { ringIndex: 0, sectorIndex: 3 }, vector: { x: -1, y: 0 } },
+  ],
+];
+
+const SMALL_TEAM_CARDINAL_ASSIGNMENTS: ReadonlyArray<ReadonlyArray<GraphOwnerSlotAssignment>> =
+  SMALL_TEAM_CARDINAL_LAYOUTS.map((layout) => layout.map((slot) => slot.assignment));
+const SMALL_TEAM_CARDINAL_VECTOR_BY_ASSIGNMENT_KEY = new Map(
+  SMALL_TEAM_CARDINAL_LAYOUTS.flatMap((layout) =>
+    layout.map((slot) => [buildAssignmentKey(slot.assignment), slot.vector] as const)
+  )
+);
 
 export function buildStableSlotLayoutSnapshot({
   teamName,
@@ -116,44 +164,41 @@ export function buildStableSlotLayoutSnapshot({
     return null;
   }
 
-  const leadCoreRect = createCenteredRect(0, 0, 200, 168);
-  const leadActivityRect = createRect(
-    leadCoreRect.left - SLOT_GEOMETRY.centralBlockGap - ACTIVITY_LANE.width,
-    -ACTIVITY_ANCHOR_LAYOUT.reservedHeight / 2,
-    ACTIVITY_LANE.width,
-    ACTIVITY_ANCHOR_LAYOUT.reservedHeight
+  const leadCoreRect = createCenteredRect(0, 0, 200, 96);
+  const leadFootprint = computeOwnerFootprintForOwnerId(nodes, leadNode.id);
+  const leadSlotFrame = buildSlotFrameAtRadius(
+    leadFootprint,
+    { ringIndex: 0, sectorIndex: 0 },
+    0
   );
-  const launchHudRect = createRect(
-    leadCoreRect.right + SLOT_GEOMETRY.centralBlockGap,
-    -LAUNCH_ANCHOR_LAYOUT.compactHeight / 2,
-    LAUNCH_ANCHOR_LAYOUT.compactWidth,
-    LAUNCH_ANCHOR_LAYOUT.compactHeight
-  );
-  const leadCentralReservedBlock = unionRects([leadCoreRect, leadActivityRect, launchHudRect]);
+  const leadActivityRect = leadSlotFrame.activityColumnRect;
+  const launchHudRect = createRect(leadCoreRect.right, leadCoreRect.top, 0, 0);
+  const leadCentralReservedBlock = leadSlotFrame.bounds;
 
   const ownerFootprints = computeOwnerFootprints(nodes, layout);
   const unassignedTaskRect = buildUnassignedTaskRect(nodes, leadCentralReservedBlock);
+  const centralCollisionRects = buildCentralCollisionRects({
+    leadCentralReservedBlock,
+    unassignedTaskRect,
+  });
   const runtimeCentralExclusion = padRect(
-    unionRects(
-      unassignedTaskRect
-        ? [leadCentralReservedBlock, unassignedTaskRect]
-        : [leadCentralReservedBlock]
-    ),
+    unionRects(centralCollisionRects),
     SLOT_GEOMETRY.centralPadding
   );
 
-  const memberSlotFrames = planOwnerSlots(ownerFootprints, runtimeCentralExclusion, layout);
+  const memberSlotFrames = planOwnerSlots(
+    ownerFootprints,
+    centralCollisionRects,
+    runtimeCentralExclusion,
+    layout
+  );
   const memberSlotFrameByOwnerId = new Map(
     memberSlotFrames.map((frame) => [frame.ownerId, frame] as const)
   );
   const fitBounds = unionRects(
     [
-      leadCentralReservedBlock,
-      leadActivityRect,
-      launchHudRect,
       runtimeCentralExclusion,
       ...memberSlotFrames.map((frame) => frame.bounds),
-      ...(unassignedTaskRect ? [unassignedTaskRect] : []),
     ].filter(Boolean)
   );
 
@@ -162,19 +207,43 @@ export function buildStableSlotLayoutSnapshot({
     teamName,
     leadNodeId: leadNode.id,
     leadCoreRect,
+    leadSlotFrame,
     leadActivityRect,
     launchHudRect,
-    launchAnchor: {
-      x: launchHudRect.left + launchHudRect.width / 2,
-      y: launchHudRect.top + launchHudRect.height / 2,
-    },
+    launchAnchor: null,
     leadCentralReservedBlock,
     runtimeCentralExclusion,
+    centralCollisionRects,
     memberSlotFrames,
     memberSlotFrameByOwnerId,
     unassignedTaskRect,
     fitBounds,
   };
+}
+
+function buildCentralCollisionRects(args: {
+  leadCentralReservedBlock: StableRect;
+  unassignedTaskRect: StableRect | null;
+}): StableRect[] {
+  const rects = [args.leadCentralReservedBlock];
+  if (args.unassignedTaskRect) {
+    rects.push(args.unassignedTaskRect);
+  }
+  return rects;
+}
+
+function padCentralCollisionRects(
+  rects: readonly StableRect[],
+  padding: number
+): StableRect[] {
+  return rects.map((rect) => padRect(rect, padding));
+}
+
+function rectOverlapsAnyCentralRect(
+  rect: StableRect,
+  centralCollisionRects: readonly StableRect[]
+): boolean {
+  return centralCollisionRects.some((centralRect) => rectsOverlap(rect, centralRect));
 }
 
 export function computeOwnerFootprints(
@@ -210,57 +279,96 @@ export function computeOwnerFootprints(
       return [];
     }
 
-    const taskColumnCount = taskColumnsByOwnerId.get(ownerId)?.size ?? 0;
-    const taskBandWidth =
-      taskColumnCount <= 1
-        ? TASK_PILL.width
-        : TASK_PILL.width + (taskColumnCount - 1) * KANBAN_ZONE.columnWidth;
-    const innerContentWidth = Math.max(
-      SLOT_GEOMETRY.activityWidth,
-      SLOT_GEOMETRY.ownerMinWidth,
-      SLOT_GEOMETRY.processRailWidth,
-      taskBandWidth
-    );
-    const slotWidth = innerContentWidth + SLOT_GEOMETRY.memberSlotInnerPadding * 2;
-    const slotHeight =
-      SLOT_GEOMETRY.memberSlotInnerPadding * 2 +
-      SLOT_GEOMETRY.activityHeight +
-      SLOT_GEOMETRY.activityToOwnerGap +
-      SLOT_GEOMETRY.ownerBandHeight +
-      SLOT_GEOMETRY.ownerToProcessGap +
-      SLOT_GEOMETRY.processBandHeight +
-      SLOT_GEOMETRY.processToTaskGap +
-      SLOT_GEOMETRY.taskBandHeight;
-    const radialDepth = Math.max(
-      SLOT_GEOMETRY.memberSlotInnerPadding +
-        SLOT_GEOMETRY.activityHeight +
-        SLOT_GEOMETRY.activityToOwnerGap +
-        SLOT_GEOMETRY.ownerBandHeight / 2,
-      SLOT_GEOMETRY.memberSlotInnerPadding +
-        SLOT_GEOMETRY.ownerBandHeight / 2 +
-        SLOT_GEOMETRY.ownerToProcessGap +
-        SLOT_GEOMETRY.processBandHeight +
-        SLOT_GEOMETRY.processToTaskGap +
-        SLOT_GEOMETRY.taskBandHeight
-    );
-
     return [
-      {
+      buildOwnerFootprint({
         ownerId,
-        slotWidth,
-        slotHeight,
-        widthBucket: classifyWidthBucket(slotWidth),
-        radialDepth,
-        activityWidth: SLOT_GEOMETRY.activityWidth,
-        activityHeight: SLOT_GEOMETRY.activityHeight,
-        processRailWidth: SLOT_GEOMETRY.processRailWidth,
-        taskBandWidth,
-        taskBandHeight: SLOT_GEOMETRY.taskBandHeight,
-        taskColumnCount,
+        taskColumnCount: taskColumnsByOwnerId.get(ownerId)?.size ?? 0,
         processCount: processCountByOwnerId.get(ownerId) ?? 0,
-      } satisfies OwnerFootprint,
+      }),
     ];
   });
+}
+
+function computeOwnerFootprintForOwnerId(
+  nodes: readonly GraphNode[],
+  ownerId: string
+): OwnerFootprint {
+  const taskColumns = new Set<string>();
+  let processCount = 0;
+
+  for (const node of nodes) {
+    if (node.kind === 'task' && node.ownerId === ownerId) {
+      taskColumns.add(resolveTaskColumnKey(node));
+    }
+    if (node.kind === 'process' && node.ownerId === ownerId) {
+      processCount += 1;
+    }
+  }
+
+  return buildOwnerFootprint({
+    ownerId,
+    taskColumnCount: taskColumns.size,
+    processCount,
+  });
+}
+
+function buildOwnerFootprint(args: {
+  ownerId: string;
+  taskColumnCount: number;
+  processCount: number;
+}): OwnerFootprint {
+  const kanbanBandWidth =
+    args.taskColumnCount <= 1
+      ? TASK_PILL.width
+      : TASK_PILL.width + (args.taskColumnCount - 1) * KANBAN_ZONE.columnWidth;
+  const processBandWidth = computeProcessBandWidth(args.processCount);
+  const boardBandWidth =
+    SLOT_GEOMETRY.activityColumnWidth +
+    SLOT_GEOMETRY.boardColumnGap +
+    kanbanBandWidth;
+  const boardBandHeight = Math.max(
+    SLOT_GEOMETRY.activityColumnHeight,
+    SLOT_GEOMETRY.kanbanBandHeight
+  );
+  const innerContentWidth = Math.max(
+    SLOT_GEOMETRY.ownerMinWidth,
+    processBandWidth,
+    boardBandWidth
+  );
+  const slotWidth = innerContentWidth + SLOT_GEOMETRY.memberSlotInnerPadding * 2;
+  const slotHeight =
+    SLOT_GEOMETRY.memberSlotInnerPadding * 2 +
+    SLOT_GEOMETRY.ownerBandHeight +
+    SLOT_GEOMETRY.ownerToProcessGap +
+    SLOT_GEOMETRY.processBandHeight +
+    SLOT_GEOMETRY.processToBoardGap +
+    boardBandHeight;
+  const radialDepth = Math.max(
+    SLOT_GEOMETRY.memberSlotInnerPadding + SLOT_GEOMETRY.ownerBandHeight / 2,
+    SLOT_GEOMETRY.memberSlotInnerPadding +
+      SLOT_GEOMETRY.ownerBandHeight / 2 +
+      SLOT_GEOMETRY.ownerToProcessGap +
+      SLOT_GEOMETRY.processBandHeight +
+      SLOT_GEOMETRY.processToBoardGap +
+      boardBandHeight
+  );
+
+  return {
+    ownerId: args.ownerId,
+    slotWidth,
+    slotHeight,
+    widthBucket: classifyWidthBucket(slotWidth),
+    radialDepth,
+    activityColumnWidth: SLOT_GEOMETRY.activityColumnWidth,
+    activityColumnHeight: SLOT_GEOMETRY.activityColumnHeight,
+    processBandWidth,
+    kanbanBandWidth,
+    kanbanBandHeight: SLOT_GEOMETRY.kanbanBandHeight,
+    boardBandWidth,
+    boardBandHeight,
+    taskColumnCount: args.taskColumnCount,
+    processCount: args.processCount,
+  } satisfies OwnerFootprint;
 }
 
 export function classifyWidthBucket(width: number): StableSlotWidthBucket {
@@ -271,6 +379,16 @@ export function classifyWidthBucket(width: number): StableSlotWidthBucket {
     return 'M';
   }
   return 'L';
+}
+
+export function computeProcessBandWidth(processCount: number): number {
+  if (processCount <= 1) {
+    return SLOT_GEOMETRY.processRailMinWidth;
+  }
+
+  const occupiedWidth =
+    (processCount - 1) * PROCESS_RAIL_NODE_GAP + PROCESS_RAIL_NODE_FOOTPRINT;
+  return Math.max(SLOT_GEOMETRY.processRailMinWidth, occupiedWidth);
 }
 
 export function resolveNearestSlotAssignment(args: {
@@ -293,6 +411,17 @@ export function resolveNearestSlotAssignment(args: {
   const currentFrame = args.snapshot.memberSlotFrameByOwnerId.get(args.ownerId);
   if (!currentFrame) {
     return null;
+  }
+
+  const strictSmallTeamCandidate = resolveStrictSmallTeamNearestSlotAssignment({
+    ownerId: args.ownerId,
+    ownerX: args.ownerX,
+    ownerY: args.ownerY,
+    currentFrame,
+    snapshot: args.snapshot,
+  });
+  if (strictSmallTeamCandidate) {
+    return strictSmallTeamCandidate;
   }
 
   const existingFrames = args.snapshot.memberSlotFrames.filter((frame) => frame.ownerId !== args.ownerId);
@@ -320,6 +449,7 @@ export function resolveNearestSlotAssignment(args: {
       footprintByOwnerId,
       currentFrame,
       existingFrames,
+      centralCollisionRects: args.snapshot.centralCollisionRects,
       runtimeCentralExclusion: args.snapshot.runtimeCentralExclusion,
       ringStates,
       pointerX: args.ownerX,
@@ -339,8 +469,91 @@ export function resolveNearestSlotAssignment(args: {
         assignment: best.assignment,
         displacedOwnerId: best.displacedOwnerId,
         displacedAssignment: best.displacedAssignment,
+        previewOwnerX: best.previewOwnerX,
+        previewOwnerY: best.previewOwnerY,
       }
     : null;
+}
+
+function resolveStrictSmallTeamNearestSlotAssignment(args: {
+  ownerId: string;
+  ownerX: number;
+  ownerY: number;
+  currentFrame: SlotFrame;
+  snapshot: StableSlotLayoutSnapshot;
+}): NearestSlotAssignmentResult | null {
+  const strictFrames = getStrictSmallTeamFrames(args.snapshot.memberSlotFrames);
+  if (!strictFrames) {
+    return null;
+  }
+
+  let best:
+    | {
+        frame: SlotFrame;
+        distanceSquared: number;
+      }
+    | null = null;
+  for (const frame of strictFrames) {
+    const dx = frame.ownerX - args.ownerX;
+    const dy = frame.ownerY - args.ownerY;
+    const distanceSquared = dx * dx + dy * dy;
+    if (!best || distanceSquared < best.distanceSquared) {
+      best = { frame, distanceSquared };
+    }
+  }
+
+  if (!best) {
+    return null;
+  }
+
+  const targetFrame = best.frame;
+  if (targetFrame.ownerId === args.ownerId) {
+    return {
+      assignment: {
+        ringIndex: targetFrame.ringIndex,
+        sectorIndex: targetFrame.sectorIndex,
+      },
+      previewOwnerX: targetFrame.ownerX,
+      previewOwnerY: targetFrame.ownerY,
+    };
+  }
+
+  return {
+    assignment: {
+      ringIndex: targetFrame.ringIndex,
+      sectorIndex: targetFrame.sectorIndex,
+    },
+    displacedOwnerId: targetFrame.ownerId,
+    displacedAssignment: {
+      ringIndex: args.currentFrame.ringIndex,
+      sectorIndex: args.currentFrame.sectorIndex,
+    },
+    previewOwnerX: targetFrame.ownerX,
+    previewOwnerY: targetFrame.ownerY,
+  };
+}
+
+function getStrictSmallTeamFrames(frames: readonly SlotFrame[]): readonly SlotFrame[] | null {
+  if (frames.length === 0 || frames.length > 4) {
+    return null;
+  }
+  const preset = SMALL_TEAM_CARDINAL_ASSIGNMENTS[frames.length];
+  if (!preset || preset.length !== frames.length) {
+    return null;
+  }
+
+  const actualAssignmentKeys = frames
+    .map((frame) => buildAssignmentKey({ ringIndex: frame.ringIndex, sectorIndex: frame.sectorIndex }))
+    .sort();
+  const presetAssignmentKeys = preset.map((assignment) => buildAssignmentKey(assignment)).sort();
+
+  for (let index = 0; index < presetAssignmentKeys.length; index += 1) {
+    if (actualAssignmentKeys[index] !== presetAssignmentKeys[index]) {
+      return null;
+    }
+  }
+
+  return frames;
 }
 
 export function validateStableSlotLayout(
@@ -386,11 +599,19 @@ function validateStaticSnapshotRects(
 ): StableSlotLayoutValidationResult | null {
   const staticRects: [string, StableRect][] = [
     ['leadCoreRect', snapshot.leadCoreRect],
+    ['leadSlotFrame.bounds', snapshot.leadSlotFrame.bounds],
+    ['leadSlotFrame.boardBandRect', snapshot.leadSlotFrame.boardBandRect],
+    ['leadSlotFrame.activityColumnRect', snapshot.leadSlotFrame.activityColumnRect],
+    ['leadSlotFrame.processBandRect', snapshot.leadSlotFrame.processBandRect],
+    ['leadSlotFrame.kanbanBandRect', snapshot.leadSlotFrame.kanbanBandRect],
     ['leadActivityRect', snapshot.leadActivityRect],
     ['launchHudRect', snapshot.launchHudRect],
     ['leadCentralReservedBlock', snapshot.leadCentralReservedBlock],
     ['runtimeCentralExclusion', snapshot.runtimeCentralExclusion],
     ['fitBounds', snapshot.fitBounds],
+    ...snapshot.centralCollisionRects.map(
+      (rect, index) => [`centralCollisionRects[${index}]`, rect] as [string, StableRect]
+    ),
   ];
 
   if (snapshot.unassignedTaskRect) {
@@ -413,23 +634,51 @@ function validateStaticSnapshotRects(
 function validateLeadSnapshotRects(
   snapshot: StableSlotLayoutSnapshot
 ): StableSlotLayoutValidationResult | null {
+  const leadFrameValidation = validateSlotFrameGeometry(
+    snapshot.leadSlotFrame,
+    snapshot.fitBounds,
+    `leadSlotFrame(${snapshot.leadSlotFrame.ownerId})`
+  );
+  if (leadFrameValidation) {
+    return leadFrameValidation;
+  }
   if (!rectContainsRect(snapshot.leadCentralReservedBlock, snapshot.leadCoreRect)) {
     return { valid: false, reason: 'leadCoreRect must fit inside leadCentralReservedBlock' };
   }
   if (!rectContainsRect(snapshot.leadCentralReservedBlock, snapshot.leadActivityRect)) {
     return { valid: false, reason: 'leadActivityRect must fit inside leadCentralReservedBlock' };
   }
-  if (!rectContainsRect(snapshot.leadCentralReservedBlock, snapshot.launchHudRect)) {
-    return { valid: false, reason: 'launchHudRect must fit inside leadCentralReservedBlock' };
+  if (snapshot.leadActivityRect.left !== snapshot.leadSlotFrame.activityColumnRect.left) {
+    return {
+      valid: false,
+      reason: 'leadActivityRect must mirror leadSlotFrame.activityColumnRect',
+    };
+  }
+  if (snapshot.leadActivityRect.top !== snapshot.leadSlotFrame.activityColumnRect.top) {
+    return {
+      valid: false,
+      reason: 'leadActivityRect must mirror leadSlotFrame.activityColumnRect',
+    };
+  }
+  if (!rectContainsRect(snapshot.leadCentralReservedBlock, snapshot.leadSlotFrame.bounds)) {
+    return { valid: false, reason: 'leadSlotFrame must fit inside leadCentralReservedBlock' };
   }
   if (!rectContainsRect(snapshot.runtimeCentralExclusion, snapshot.leadCentralReservedBlock)) {
     return { valid: false, reason: 'runtimeCentralExclusion must contain leadCentralReservedBlock' };
   }
+  const paddedCentralCollisionRects = padCentralCollisionRects(
+    snapshot.centralCollisionRects,
+    SLOT_GEOMETRY.centralPadding
+  );
   if (
-    snapshot.unassignedTaskRect &&
-    !rectContainsRect(snapshot.runtimeCentralExclusion, snapshot.unassignedTaskRect)
+    paddedCentralCollisionRects.some(
+      (rect) => !rectContainsRect(snapshot.runtimeCentralExclusion, rect)
+    )
   ) {
-    return { valid: false, reason: 'runtimeCentralExclusion must contain unassignedTaskRect' };
+    return {
+      valid: false,
+      reason: 'runtimeCentralExclusion must contain all centralCollisionRects',
+    };
   }
 
   return null;
@@ -441,11 +690,13 @@ function validateMemberSlotFrame(
   seenOwnerIds: Set<string>,
   seenAssignments: Set<string>
 ): StableSlotLayoutValidationResult | null {
-  if (!isFiniteRect(frame.bounds)) {
-    return { valid: false, reason: `slot frame for ${frame.ownerId} contains non-finite bounds` };
-  }
-  if (!Number.isFinite(frame.ownerX) || !Number.isFinite(frame.ownerY)) {
-    return { valid: false, reason: `slot frame for ${frame.ownerId} contains non-finite anchor` };
+  const geometryValidation = validateSlotFrameGeometry(
+    frame,
+    snapshot.fitBounds,
+    `slot frame for ${frame.ownerId}`
+  );
+  if (geometryValidation) {
+    return geometryValidation;
   }
   if (seenOwnerIds.has(frame.ownerId)) {
     return { valid: false, reason: `duplicate owner frame for ${frame.ownerId}` };
@@ -458,23 +709,61 @@ function validateMemberSlotFrame(
   }
   seenAssignments.add(assignmentKey);
 
-  if (rectsOverlap(frame.bounds, snapshot.runtimeCentralExclusion)) {
-    return { valid: false, reason: `slot frame for ${frame.ownerId} overlaps runtimeCentralExclusion` };
+  if (rectOverlapsAnyCentralRect(frame.bounds, snapshot.centralCollisionRects)) {
+    return {
+      valid: false,
+      reason: `slot frame for ${frame.ownerId} overlaps centralCollisionRects`,
+    };
   }
-  if (!rectContainsRect(frame.bounds, frame.activityRect)) {
-    return { valid: false, reason: `activityRect escapes slot bounds for ${frame.ownerId}` };
+  return null;
+}
+
+function validateSlotFrameGeometry(
+  frame: SlotFrame,
+  fitBounds: StableRect,
+  label: string
+): StableSlotLayoutValidationResult | null {
+  if (!isFiniteRect(frame.bounds)) {
+    return { valid: false, reason: `${label} contains non-finite bounds` };
+  }
+  if (!Number.isFinite(frame.ownerX) || !Number.isFinite(frame.ownerY)) {
+    return { valid: false, reason: `${label} contains non-finite anchor` };
+  }
+  if (!rectContainsRect(frame.bounds, frame.boardBandRect)) {
+    return { valid: false, reason: `boardBandRect escapes ${label}` };
+  }
+  if (!rectContainsRect(frame.bounds, frame.activityColumnRect)) {
+    return { valid: false, reason: `activityColumnRect escapes ${label}` };
   }
   if (!rectContainsRect(frame.bounds, frame.processBandRect)) {
-    return { valid: false, reason: `processBandRect escapes slot bounds for ${frame.ownerId}` };
+    return { valid: false, reason: `processBandRect escapes ${label}` };
   }
-  if (!rectContainsRect(frame.bounds, frame.taskBandRect)) {
-    return { valid: false, reason: `taskBandRect escapes slot bounds for ${frame.ownerId}` };
+  if (!rectContainsRect(frame.bounds, frame.kanbanBandRect)) {
+    return { valid: false, reason: `kanbanBandRect escapes ${label}` };
+  }
+  if (!rectContainsRect(frame.boardBandRect, frame.activityColumnRect)) {
+    return {
+      valid: false,
+      reason: `activityColumnRect escapes boardBandRect in ${label}`,
+    };
+  }
+  if (!rectContainsRect(frame.boardBandRect, frame.kanbanBandRect)) {
+    return {
+      valid: false,
+      reason: `kanbanBandRect escapes boardBandRect in ${label}`,
+    };
+  }
+  if (rectsOverlap(frame.activityColumnRect, frame.kanbanBandRect)) {
+    return {
+      valid: false,
+      reason: `activityColumnRect overlaps kanbanBandRect in ${label}`,
+    };
   }
   if (!pointInRect(frame.ownerX, frame.ownerY, frame.bounds)) {
-    return { valid: false, reason: `owner anchor escapes slot bounds for ${frame.ownerId}` };
+    return { valid: false, reason: `owner anchor escapes ${label}` };
   }
-  if (!rectContainsRect(snapshot.fitBounds, frame.bounds)) {
-    return { valid: false, reason: `slot frame for ${frame.ownerId} escapes fitBounds` };
+  if (!rectContainsRect(fitBounds, frame.bounds)) {
+    return { valid: false, reason: `${label} escapes fitBounds` };
   }
 
   return null;
@@ -502,9 +791,10 @@ export function translateSlotFrame(frame: SlotFrame, dx: number, dy: number): Sl
     bounds: translateRect(frame.bounds, dx, dy),
     ownerX: frame.ownerX + dx,
     ownerY: frame.ownerY + dy,
-    activityRect: translateRect(frame.activityRect, dx, dy),
+    boardBandRect: translateRect(frame.boardBandRect, dx, dy),
+    activityColumnRect: translateRect(frame.activityColumnRect, dx, dy),
     processBandRect: translateRect(frame.processBandRect, dx, dy),
-    taskBandRect: translateRect(frame.taskBandRect, dx, dy),
+    kanbanBandRect: translateRect(frame.kanbanBandRect, dx, dy),
   };
 }
 
@@ -554,7 +844,7 @@ function buildUnassignedTaskRect(
     columnCount <= 1
       ? TASK_PILL.width
       : TASK_PILL.width + (columnCount - 1) * KANBAN_ZONE.columnWidth;
-  const height = SLOT_GEOMETRY.taskBandHeight;
+  const height = SLOT_GEOMETRY.kanbanBandHeight;
   return createRect(
     -width / 2,
     leadCentralReservedBlock.bottom + SLOT_GEOMETRY.unassignedGap,
@@ -565,9 +855,22 @@ function buildUnassignedTaskRect(
 
 function planOwnerSlots(
   ownerFootprints: OwnerFootprint[],
-  centralExclusion: StableRect,
+  centralCollisionRects: readonly StableRect[],
+  runtimeCentralExclusion: StableRect,
   layout?: GraphLayoutPort
 ): SlotFrame[] {
+  const strictSmallTeamFrames = shouldUseStrictSmallTeamCardinalLayout(ownerFootprints, layout)
+    ? planStrictSmallTeamOwnerSlots(
+        ownerFootprints,
+        centralCollisionRects,
+        runtimeCentralExclusion,
+        layout
+      )
+    : null;
+  if (strictSmallTeamFrames) {
+    return strictSmallTeamFrames;
+  }
+
   const placedFrames: SlotFrame[] = [];
   const preferredAssignments = buildPreferredAssignmentsMap(layout?.slotAssignments);
   const usedSlotKeys = new Set<string>();
@@ -577,7 +880,8 @@ function planOwnerSlots(
   for (const footprint of ownerFootprints) {
     const resolvedFrame = resolveOwnerSlotFrame({
       footprint,
-      centralExclusion,
+      centralCollisionRects,
+      runtimeCentralExclusion,
       ringStates,
       preferredAssignment: preferredAssignments.get(footprint.ownerId),
       usedSlotKeys,
@@ -589,6 +893,105 @@ function planOwnerSlots(
   }
 
   return placedFrames;
+}
+
+function shouldUseStrictSmallTeamCardinalLayout(
+  ownerFootprints: readonly OwnerFootprint[],
+  layout?: GraphLayoutPort
+): boolean {
+  if (ownerFootprints.length === 0 || ownerFootprints.length > 4) {
+    return false;
+  }
+
+  const preset = SMALL_TEAM_CARDINAL_ASSIGNMENTS[ownerFootprints.length];
+  if (!preset || preset.length !== ownerFootprints.length) {
+    return false;
+  }
+
+  const actualAssignmentKeys = ownerFootprints
+    .map((footprint) => layout?.slotAssignments?.[footprint.ownerId])
+    .filter((assignment): assignment is GraphOwnerSlotAssignment => assignment != null)
+    .map((assignment) => buildAssignmentKey(assignment))
+    .sort();
+  const presetAssignmentKeys = preset.map((assignment) => buildAssignmentKey(assignment)).sort();
+
+  if (actualAssignmentKeys.length !== presetAssignmentKeys.length) {
+    return false;
+  }
+
+  for (let index = 0; index < presetAssignmentKeys.length; index += 1) {
+    if (actualAssignmentKeys[index] !== presetAssignmentKeys[index]) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function planStrictSmallTeamOwnerSlots(
+  ownerFootprints: readonly OwnerFootprint[],
+  centralCollisionRects: readonly StableRect[],
+  runtimeCentralExclusion: StableRect,
+  layout?: GraphLayoutPort
+): SlotFrame[] | null {
+  if (ownerFootprints.length === 0 || ownerFootprints.length > 4) {
+    return null;
+  }
+
+  const preset = SMALL_TEAM_CARDINAL_LAYOUTS[ownerFootprints.length];
+  if (!preset || preset.length !== ownerFootprints.length) {
+    return null;
+  }
+
+  const slotConfigs = ownerFootprints.map((footprint) => {
+    const assignment = layout?.slotAssignments?.[footprint.ownerId];
+    if (!assignment) {
+      return null;
+    }
+    const vector = SMALL_TEAM_CARDINAL_VECTOR_BY_ASSIGNMENT_KEY.get(buildAssignmentKey(assignment));
+    if (!vector) {
+      return null;
+    }
+    return {
+      footprint,
+      assignment,
+      vector,
+    };
+  });
+
+  if (slotConfigs.some((slot) => slot == null)) {
+    return null;
+  }
+
+  let radius = Math.max(
+    ...slotConfigs.map((slot) =>
+      resolveMinimumDirectionalRadiusForVector({
+        vector: slot!.vector,
+        footprint: slot!.footprint,
+        centralCollisionRects,
+        runtimeCentralExclusion,
+      })
+    )
+  );
+
+  for (let iteration = 0; iteration < 48; iteration += 1) {
+    const frames = slotConfigs.map((slot) =>
+      buildSlotFrameAtRadiusWithVector(slot!.footprint, slot!.assignment, radius, slot!.vector)
+    );
+    const allValid = frames.every((frame, frameIndex) =>
+      isSlotFramePlacementValid(
+        frame,
+        frames.filter((_, index) => index !== frameIndex),
+        centralCollisionRects
+      )
+    );
+    if (allValid) {
+      return frames;
+    }
+    radius += SMALL_TEAM_CARDINAL_RADIUS_STEP;
+  }
+
+  return null;
 }
 
 function buildPreferredAssignmentsMap(
@@ -618,7 +1021,8 @@ function buildPreferredAssignmentsMap(
 
 function resolveOwnerSlotFrame(args: {
   footprint: OwnerFootprint;
-  centralExclusion: StableRect;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
   preferredAssignment?: GraphOwnerSlotAssignment;
   usedSlotKeys: Set<string>;
@@ -627,7 +1031,8 @@ function resolveOwnerSlotFrame(args: {
 }): SlotFrame {
   const {
     footprint,
-    centralExclusion,
+    centralCollisionRects,
+    runtimeCentralExclusion,
     ringStates,
     preferredAssignment,
     usedSlotKeys,
@@ -641,7 +1046,8 @@ function resolveOwnerSlotFrame(args: {
   const directMatch = findFirstValidSlotFrame({
     candidateAssignments: candidates,
     footprint,
-    centralExclusion,
+    centralCollisionRects,
+    runtimeCentralExclusion,
     ringStates,
     usedSlotKeys,
     placedFrames,
@@ -657,7 +1063,8 @@ function resolveOwnerSlotFrame(args: {
   const spilloverMatch = findFirstValidSlotFrame({
     candidateAssignments: spilloverCandidates,
     footprint,
-    centralExclusion,
+    centralCollisionRects,
+    runtimeCentralExclusion,
     ringStates,
     usedSlotKeys,
     placedFrames,
@@ -668,7 +1075,8 @@ function resolveOwnerSlotFrame(args: {
 
   return buildEmergencyFallbackSlotFrame({
     footprint,
-    centralExclusion,
+    centralCollisionRects,
+    runtimeCentralExclusion,
     ringStates,
     usedSlotKeys,
     placedOwnerCount: placedFrames.length,
@@ -679,48 +1087,71 @@ function resolveOwnerSlotFrame(args: {
 function buildSlotFrame(
   footprint: OwnerFootprint,
   assignment: GraphOwnerSlotAssignment,
-  centralExclusion: StableRect,
+  centralCollisionRects: readonly StableRect[],
+  runtimeCentralExclusion: StableRect,
   options: { ringStates: RingLayoutStateMap }
 ): SlotFrame | null {
-  const vector = SECTOR_VECTORS[assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0];
   const radius = resolveRingRadiusForAssignment({
     assignment,
     footprint,
-    centralExclusion,
+    centralCollisionRects,
+    runtimeCentralExclusion,
     ringStates: options.ringStates,
   });
   if (radius == null) {
     return null;
   }
+  return buildSlotFrameAtRadius(footprint, assignment, radius);
+}
+
+function buildSlotFrameAtRadius(
+  footprint: OwnerFootprint,
+  assignment: GraphOwnerSlotAssignment,
+  radius: number
+): SlotFrame {
+  const vector = SECTOR_VECTORS[assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0];
+  return buildSlotFrameAtRadiusWithVector(footprint, assignment, radius, vector);
+}
+
+function buildSlotFrameAtRadiusWithVector(
+  footprint: OwnerFootprint,
+  assignment: GraphOwnerSlotAssignment,
+  radius: number,
+  vector: { x: number; y: number }
+): SlotFrame {
   const ownerX = vector.x * radius;
   const ownerY = vector.y * radius;
   const slotTop =
-    ownerY -
-    (SLOT_GEOMETRY.memberSlotInnerPadding +
-      SLOT_GEOMETRY.activityHeight +
-      SLOT_GEOMETRY.activityToOwnerGap +
-      SLOT_GEOMETRY.ownerBandHeight / 2);
-  const bounds = createRect(ownerX - footprint.slotWidth / 2, slotTop, footprint.slotWidth, footprint.slotHeight);
-  const activityRect = createRect(
-    bounds.left + (bounds.width - footprint.activityWidth) / 2,
-    bounds.top + SLOT_GEOMETRY.memberSlotInnerPadding,
-    footprint.activityWidth,
-    footprint.activityHeight
+    ownerY - (SLOT_GEOMETRY.memberSlotInnerPadding + SLOT_GEOMETRY.ownerBandHeight / 2);
+  const bounds = createRect(
+    ownerX - footprint.slotWidth / 2,
+    slotTop,
+    footprint.slotWidth,
+    footprint.slotHeight
   );
   const processBandRect = createRect(
-    bounds.left + (bounds.width - footprint.processRailWidth) / 2,
-    activityRect.bottom +
-      SLOT_GEOMETRY.activityToOwnerGap +
-      SLOT_GEOMETRY.ownerBandHeight +
-      SLOT_GEOMETRY.ownerToProcessGap,
-    footprint.processRailWidth,
+    bounds.left + (bounds.width - footprint.processBandWidth) / 2,
+    ownerY + SLOT_GEOMETRY.ownerBandHeight / 2 + SLOT_GEOMETRY.ownerToProcessGap,
+    footprint.processBandWidth,
     SLOT_GEOMETRY.processBandHeight
   );
-  const taskBandRect = createRect(
-    bounds.left + (bounds.width - footprint.taskBandWidth) / 2,
-    processBandRect.bottom + SLOT_GEOMETRY.processToTaskGap,
-    footprint.taskBandWidth,
-    footprint.taskBandHeight
+  const boardBandRect = createRect(
+    bounds.left + (bounds.width - footprint.boardBandWidth) / 2,
+    processBandRect.bottom + SLOT_GEOMETRY.processToBoardGap,
+    footprint.boardBandWidth,
+    footprint.boardBandHeight
+  );
+  const activityColumnRect = createRect(
+    boardBandRect.left,
+    boardBandRect.top,
+    footprint.activityColumnWidth,
+    footprint.activityColumnHeight
+  );
+  const kanbanBandRect = createRect(
+    activityColumnRect.right + SLOT_GEOMETRY.boardColumnGap,
+    boardBandRect.top,
+    footprint.kanbanBandWidth,
+    footprint.kanbanBandHeight
   );
 
   return {
@@ -731,9 +1162,10 @@ function buildSlotFrame(
     bounds,
     ownerX,
     ownerY,
-    activityRect,
+    boardBandRect,
+    activityColumnRect,
     processBandRect,
-    taskBandRect,
+    kanbanBandRect,
     taskColumnCount: footprint.taskColumnCount,
   };
 }
@@ -790,7 +1222,8 @@ function ownerFootprintsSpillBudget(placedOwnerCount: number): number {
 
 function buildEmergencyFallbackSlotFrame(args: {
   footprint: OwnerFootprint;
-  centralExclusion: StableRect;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
   usedSlotKeys: Set<string>;
   placedOwnerCount: number;
@@ -801,9 +1234,15 @@ function buildEmergencyFallbackSlotFrame(args: {
     sectorIndex: 0,
   };
   args.usedSlotKeys.add(buildAssignmentKey(assignment));
-  const frame = buildSlotFrame(args.footprint, assignment, args.centralExclusion, {
-    ringStates: args.ringStates,
-  });
+  const frame = buildSlotFrame(
+    args.footprint,
+    assignment,
+    args.centralCollisionRects,
+    args.runtimeCentralExclusion,
+    {
+      ringStates: args.ringStates,
+    }
+  );
   if (!frame) {
     throw new Error(`failed to build emergency fallback slot frame for ${args.footprint.ownerId}`);
   }
@@ -817,6 +1256,7 @@ function rankNearestSlotAssignmentResult(args: {
   footprintByOwnerId: ReadonlyMap<string, OwnerFootprint>;
   currentFrame: SlotFrame;
   existingFrames: readonly SlotFrame[];
+  centralCollisionRects: readonly StableRect[];
   runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
   pointerX: number;
@@ -829,14 +1269,21 @@ function rankNearestSlotAssignmentResult(args: {
     footprintByOwnerId,
     currentFrame,
     existingFrames,
+    centralCollisionRects,
     runtimeCentralExclusion,
     ringStates,
     pointerX,
     pointerY,
   } = args;
-  const frame = buildSlotFrame(footprint, assignment, runtimeCentralExclusion, {
-    ringStates,
-  });
+  const frame = buildSlotFrame(
+    footprint,
+    assignment,
+    centralCollisionRects,
+    runtimeCentralExclusion,
+    {
+      ringStates,
+    }
+  );
   if (!frame) {
     return null;
   }
@@ -846,6 +1293,7 @@ function rankNearestSlotAssignmentResult(args: {
       occupiedFrame,
       footprintByOwnerId,
       currentFrame,
+      centralCollisionRects,
       runtimeCentralExclusion,
       ringStates,
     });
@@ -854,8 +1302,8 @@ function rankNearestSlotAssignmentResult(args: {
     }
     const otherFrames = existingFrames.filter((existing) => existing.ownerId !== occupiedFrame.ownerId);
     if (
-      !isSlotFramePlacementValid(frame, otherFrames, runtimeCentralExclusion) ||
-      !isSlotFramePlacementValid(displacedFrame, otherFrames, runtimeCentralExclusion) ||
+      !isSlotFramePlacementValid(frame, otherFrames, centralCollisionRects) ||
+      !isSlotFramePlacementValid(displacedFrame, otherFrames, centralCollisionRects) ||
       rectsOverlapWithGap(frame.bounds, displacedFrame.bounds, SLOT_GEOMETRY.ringPadding)
     ) {
       return null;
@@ -873,7 +1321,7 @@ function rankNearestSlotAssignmentResult(args: {
     });
   }
 
-  if (!isSlotFramePlacementValid(frame, existingFrames, runtimeCentralExclusion)) {
+  if (!isSlotFramePlacementValid(frame, existingFrames, centralCollisionRects)) {
     return null;
   }
 
@@ -889,6 +1337,7 @@ function buildDisplacedFrameForNearestAssignment(args: {
   occupiedFrame: SlotFrame;
   footprintByOwnerId: ReadonlyMap<string, OwnerFootprint>;
   currentFrame: SlotFrame;
+  centralCollisionRects: readonly StableRect[];
   runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
 }): SlotFrame | null {
@@ -902,6 +1351,7 @@ function buildDisplacedFrameForNearestAssignment(args: {
       ringIndex: args.currentFrame.ringIndex,
       sectorIndex: args.currentFrame.sectorIndex,
     },
+    args.centralCollisionRects,
     args.runtimeCentralExclusion,
     { ringStates: args.ringStates }
   );
@@ -921,6 +1371,8 @@ function buildRankedNearestSlotAssignmentResult(args: {
     assignment: args.assignment,
     displacedOwnerId: args.displacedOwnerId,
     displacedAssignment: args.displacedAssignment,
+    previewOwnerX: args.frame.ownerX,
+    previewOwnerY: args.frame.ownerY,
     distanceSquared: dx * dx + dy * dy,
   };
 }
@@ -928,7 +1380,8 @@ function buildRankedNearestSlotAssignmentResult(args: {
 function findFirstValidSlotFrame(args: {
   candidateAssignments: readonly GraphOwnerSlotAssignment[];
   footprint: OwnerFootprint;
-  centralExclusion: StableRect;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
   usedSlotKeys: Set<string>;
   placedFrames: readonly SlotFrame[];
@@ -946,7 +1399,8 @@ function findFirstValidSlotFrame(args: {
 function tryBuildValidSlotFrame(
   args: {
     footprint: OwnerFootprint;
-    centralExclusion: StableRect;
+    centralCollisionRects: readonly StableRect[];
+    runtimeCentralExclusion: StableRect;
     ringStates: RingLayoutStateMap;
     usedSlotKeys: Set<string>;
     placedFrames: readonly SlotFrame[];
@@ -958,17 +1412,19 @@ function tryBuildValidSlotFrame(
   if (args.usedSlotKeys.has(slotKey) && !isSameAssignment(args.preferredAssignment, assignment)) {
     return null;
   }
-  const frame = buildSlotFrame(args.footprint, assignment, args.centralExclusion, {
-    ringStates: args.ringStates,
-  });
+  const frame = buildSlotFrame(
+    args.footprint,
+    assignment,
+    args.centralCollisionRects,
+    args.runtimeCentralExclusion,
+    {
+      ringStates: args.ringStates,
+    }
+  );
   if (!frame) {
     return null;
   }
-  if (
-    args.placedFrames.some((existing) =>
-      rectsOverlapWithGap(existing.bounds, frame.bounds, SLOT_GEOMETRY.ringPadding)
-    )
-  ) {
+  if (!isSlotFramePlacementValid(frame, args.placedFrames, args.centralCollisionRects)) {
     return null;
   }
   args.usedSlotKeys.add(slotKey);
@@ -1079,11 +1535,7 @@ function computeSlotDirectionalDepths(
   footprint: OwnerFootprint,
   vector: { x: number; y: number }
 ): { outwardDepth: number; inwardDepth: number } {
-  const ownerLocalY =
-    SLOT_GEOMETRY.memberSlotInnerPadding +
-    SLOT_GEOMETRY.activityHeight +
-    SLOT_GEOMETRY.activityToOwnerGap +
-    SLOT_GEOMETRY.ownerBandHeight / 2;
+  const ownerLocalY = SLOT_GEOMETRY.memberSlotInnerPadding + SLOT_GEOMETRY.ownerBandHeight / 2;
   const topOffset = -ownerLocalY;
   const bottomOffset = footprint.slotHeight - ownerLocalY;
   const halfWidth = footprint.slotWidth / 2;
@@ -1106,12 +1558,18 @@ function computeSlotDirectionalDepths(
 function resolveRingRadiusForAssignment(args: {
   assignment: GraphOwnerSlotAssignment;
   footprint: OwnerFootprint;
-  centralExclusion: StableRect;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
   ringStates: RingLayoutStateMap;
 }): number | null {
   const vector =
     SECTOR_VECTORS[args.assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0];
-  const minRadius = computeMinimumRingRadius(vector, args.footprint, args.centralExclusion);
+  const minRadius = resolveMinimumDirectionalRadius({
+    assignment: args.assignment,
+    footprint: args.footprint,
+    centralCollisionRects: args.centralCollisionRects,
+    runtimeCentralExclusion: args.runtimeCentralExclusion,
+  });
   const directionalDepths = computeSlotDirectionalDepths(args.footprint, vector);
   const ringState = resolveVirtualRingState(
     args.assignment.sectorIndex,
@@ -1165,7 +1623,67 @@ function buildSectorRingStateKey(sectorIndex: number, ringIndex: number): string
   return `${sectorIndex}:${ringIndex}`;
 }
 
-function computeMinimumRingRadius(
+function resolveMinimumDirectionalRadius(args: {
+  assignment: GraphOwnerSlotAssignment;
+  footprint: OwnerFootprint;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
+}): number {
+  return resolveMinimumDirectionalRadiusForVector({
+    vector: SECTOR_VECTORS[args.assignment.sectorIndex % SECTOR_VECTORS.length] ?? SECTOR_VECTORS[0],
+    footprint: args.footprint,
+    centralCollisionRects: args.centralCollisionRects,
+    runtimeCentralExclusion: args.runtimeCentralExclusion,
+  });
+}
+
+function resolveMinimumDirectionalRadiusForVector(args: {
+  vector: { x: number; y: number };
+  footprint: OwnerFootprint;
+  centralCollisionRects: readonly StableRect[];
+  runtimeCentralExclusion: StableRect;
+}): number {
+  const legacyRadiusHint = computeLegacyMinimumRingRadius(
+    args.vector,
+    args.footprint,
+    args.runtimeCentralExclusion
+  );
+  const overlapsCentralCollision = (radius: number): boolean => {
+    const frame = buildSlotFrameAtRadiusWithVector(
+      args.footprint,
+      { ringIndex: 0, sectorIndex: 0 },
+      radius,
+      args.vector
+    );
+    return rectOverlapsAnyCentralRect(frame.bounds, args.centralCollisionRects);
+  };
+
+  if (!overlapsCentralCollision(0)) {
+    return 0;
+  }
+
+  let low = 0;
+  let high = Math.max(legacyRadiusHint, SLOT_GEOMETRY.ringGap);
+  let expansionCount = 0;
+  while (overlapsCentralCollision(high) && expansionCount < 24) {
+    low = high;
+    high = Math.max(high * 2, high + SLOT_GEOMETRY.ringGap);
+    expansionCount += 1;
+  }
+
+  for (let iteration = 0; iteration < 24; iteration += 1) {
+    const mid = (low + high) / 2;
+    if (overlapsCentralCollision(mid)) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  return Math.ceil(high);
+}
+
+function computeLegacyMinimumRingRadius(
   vector: { x: number; y: number },
   footprint: OwnerFootprint,
   centralExclusion: StableRect
@@ -1207,15 +1725,20 @@ function rectsOverlap(a: StableRect, b: StableRect): boolean {
 
 function rectContainsRect(outer: StableRect, inner: StableRect): boolean {
   return (
-    inner.left >= outer.left &&
-    inner.right <= outer.right &&
-    inner.top >= outer.top &&
-    inner.bottom <= outer.bottom
+    inner.left >= outer.left - GEOMETRY_EPSILON &&
+    inner.right <= outer.right + GEOMETRY_EPSILON &&
+    inner.top >= outer.top - GEOMETRY_EPSILON &&
+    inner.bottom <= outer.bottom + GEOMETRY_EPSILON
   );
 }
 
 function pointInRect(x: number, y: number, rect: StableRect): boolean {
-  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  return (
+    x >= rect.left - GEOMETRY_EPSILON &&
+    x <= rect.right + GEOMETRY_EPSILON &&
+    y >= rect.top - GEOMETRY_EPSILON &&
+    y <= rect.bottom + GEOMETRY_EPSILON
+  );
 }
 
 function isFiniteRect(rect: StableRect): boolean {
@@ -1232,12 +1755,12 @@ function isFiniteRect(rect: StableRect): boolean {
 function isSlotFramePlacementValid(
   frame: SlotFrame,
   existingFrames: readonly SlotFrame[],
-  runtimeCentralExclusion: StableRect
+  centralCollisionRects: readonly StableRect[]
 ): boolean {
   if (!isFiniteRect(frame.bounds)) {
     return false;
   }
-  if (rectsOverlap(frame.bounds, runtimeCentralExclusion)) {
+  if (rectOverlapsAnyCentralRect(frame.bounds, centralCollisionRects)) {
     return false;
   }
   return !existingFrames.some((existing) =>
