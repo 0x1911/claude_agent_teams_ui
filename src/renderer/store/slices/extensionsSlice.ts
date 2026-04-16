@@ -145,6 +145,36 @@ function getPluginCatalogKey(projectPath?: string): string {
   return projectPath ?? '__user__';
 }
 
+function buildPluginIdSet(catalog: EnrichedPlugin[]): Set<string> {
+  return new Set(catalog.map((plugin) => plugin.pluginId));
+}
+
+function clearPluginOperationState(
+  pluginIds: Set<string>,
+  pluginInstallProgress: Record<string, ExtensionOperationState>,
+  installErrors: Record<string, string>
+): {
+  pluginInstallProgress: Record<string, ExtensionOperationState>;
+  installErrors: Record<string, string>;
+} {
+  if (pluginIds.size === 0) {
+    return { pluginInstallProgress, installErrors };
+  }
+
+  const nextPluginInstallProgress = { ...pluginInstallProgress };
+  const nextInstallErrors = { ...installErrors };
+
+  for (const pluginId of pluginIds) {
+    delete nextPluginInstallProgress[pluginId];
+    delete nextInstallErrors[pluginId];
+  }
+
+  return {
+    pluginInstallProgress: nextPluginInstallProgress,
+    installErrors: nextInstallErrors,
+  };
+}
+
 function getSkillsCatalogKey(projectPath?: string): string {
   return projectPath ?? USER_SKILLS_CATALOG_KEY;
 }
@@ -224,16 +254,29 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
     const promise = (async () => {
       try {
         const result = await api.plugins!.getAll(projectPath, forceRefresh);
-        set(() => {
+        set((prev) => {
           if (requestSeq !== pluginCatalogRequestSeq) {
             return {};
           }
+
+          const nextProjectPath = projectPath ?? null;
+          const isSameProjectContext = prev.pluginCatalogProjectPath === nextProjectPath;
+          const pluginIdsToClear = isSameProjectContext
+            ? new Set<string>()
+            : new Set([...buildPluginIdSet(prev.pluginCatalog), ...buildPluginIdSet(result)]);
+          const nextOperationState = clearPluginOperationState(
+            pluginIdsToClear,
+            prev.pluginInstallProgress,
+            prev.installErrors
+          );
 
           return {
             pluginCatalog: result,
             pluginCatalogLoading: false,
             pluginCatalogError: null,
-            pluginCatalogProjectPath: projectPath ?? null,
+            pluginCatalogProjectPath: nextProjectPath,
+            pluginInstallProgress: nextOperationState.pluginInstallProgress,
+            installErrors: nextOperationState.installErrors,
           };
         });
       } catch (err) {
@@ -244,12 +287,19 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
 
           const nextProjectPath = projectPath ?? null;
           const isSameProjectContext = prev.pluginCatalogProjectPath === nextProjectPath;
+          const nextOperationState = clearPluginOperationState(
+            isSameProjectContext ? new Set<string>() : buildPluginIdSet(prev.pluginCatalog),
+            prev.pluginInstallProgress,
+            prev.installErrors
+          );
 
           return {
             pluginCatalog: isSameProjectContext ? prev.pluginCatalog : [],
             pluginCatalogLoading: false,
             pluginCatalogError: err instanceof Error ? err.message : 'Failed to load plugins',
             pluginCatalogProjectPath: nextProjectPath,
+            pluginInstallProgress: nextOperationState.pluginInstallProgress,
+            installErrors: nextOperationState.installErrors,
           };
         });
       } finally {

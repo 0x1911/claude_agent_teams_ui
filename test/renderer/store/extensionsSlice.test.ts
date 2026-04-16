@@ -181,6 +181,30 @@ describe('extensionsSlice', () => {
       expect(store.getState().pluginCatalogError).toBe('boom');
     });
 
+    it('clears plugin operation state when switching project context', async () => {
+      store.setState({
+        pluginCatalog: [makePlugin({ pluginId: 'project-a@m' })],
+        pluginCatalogProjectPath: '/tmp/project-a',
+        pluginInstallProgress: {
+          'project-a@m': 'error',
+        },
+        installErrors: {
+          'project-a@m': 'Install failed',
+          'mcp-server': 'Keep me',
+        },
+      });
+      (api.plugins!.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([
+        makePlugin({ pluginId: 'project-b@m' }),
+      ]);
+
+      await store.getState().fetchPluginCatalog('/tmp/project-b');
+
+      expect(store.getState().pluginCatalogProjectPath).toBe('/tmp/project-b');
+      expect(store.getState().pluginInstallProgress['project-a@m']).toBeUndefined();
+      expect(store.getState().installErrors['project-a@m']).toBeUndefined();
+      expect(store.getState().installErrors['mcp-server']).toBe('Keep me');
+    });
+
     it('dedups concurrent requests for the same project key', async () => {
       let resolveFetch!: (plugins: EnrichedPlugin[]) => void;
       const inFlight = new Promise<EnrichedPlugin[]>((resolve) => {
@@ -234,6 +258,28 @@ describe('extensionsSlice', () => {
       expect(store.getState().pluginCatalog.map((plugin) => plugin.pluginId)).toEqual([
         'project-b@m',
       ]);
+    });
+
+    it('clears plugin operation state when a different project fetch fails', async () => {
+      store.setState({
+        pluginCatalog: [makePlugin({ pluginId: 'project-a@m' })],
+        pluginCatalogProjectPath: '/tmp/project-a',
+        pluginInstallProgress: {
+          'project-a@m': 'error',
+        },
+        installErrors: {
+          'project-a@m': 'Install failed',
+          'mcp-server': 'Keep me',
+        },
+      });
+      (api.plugins!.getAll as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('boom'));
+
+      await store.getState().fetchPluginCatalog('/tmp/project-b');
+
+      expect(store.getState().pluginCatalog).toEqual([]);
+      expect(store.getState().pluginInstallProgress['project-a@m']).toBeUndefined();
+      expect(store.getState().installErrors['project-a@m']).toBeUndefined();
+      expect(store.getState().installErrors['mcp-server']).toBe('Keep me');
     });
   });
 
