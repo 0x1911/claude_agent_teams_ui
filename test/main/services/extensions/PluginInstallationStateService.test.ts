@@ -1,11 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 
 import { PluginInstallationStateService } from '@main/services/extensions/state/PluginInstallationStateService';
 
+const TEST_ROOT = path.parse(process.cwd()).root || path.sep;
+const MOCK_CLAUDE_BASE_PATH = path.join(TEST_ROOT, 'tmp', 'mock-claude');
+const PROJECT_A_PATH = path.join(TEST_ROOT, 'tmp', 'project-a');
+const PROJECT_B_PATH = path.join(TEST_ROOT, 'tmp', 'project-b');
+
+function normalizeMockPath(filePath: string | URL): string {
+  return String(filePath).replaceAll('\\', '/');
+}
+
 // Mock pathDecoder to control ~/.claude path
 vi.mock('@main/utils/pathDecoder', () => ({
-  getClaudeBasePath: () => '/tmp/mock-claude',
+  getClaudeBasePath: () => MOCK_CLAUDE_BASE_PATH,
 }));
 
 // Mock filesystem
@@ -27,7 +37,7 @@ describe('PluginInstallationStateService', () => {
   describe('getInstalledPlugins', () => {
     it('returns user-scoped plugins enabled in user settings', async () => {
       mockedFs.readFile.mockImplementation(async (filePath) => {
-        const normalizedPath = String(filePath);
+        const normalizedPath = normalizeMockPath(filePath);
         if (normalizedPath.endsWith('/plugins/installed_plugins.json')) {
           return JSON.stringify({
             version: 2,
@@ -52,7 +62,7 @@ describe('PluginInstallationStateService', () => {
           });
         }
 
-        if (normalizedPath === '/tmp/mock-claude/settings.json') {
+        if (normalizedPath === normalizeMockPath(path.join(MOCK_CLAUDE_BASE_PATH, 'settings.json'))) {
           return JSON.stringify({
             enabledPlugins: {
               'context7@claude-plugins-official': true,
@@ -75,7 +85,7 @@ describe('PluginInstallationStateService', () => {
 
     it('includes project and local scopes only for the active project', async () => {
       mockedFs.readFile.mockImplementation(async (filePath) => {
-        const normalizedPath = String(filePath);
+        const normalizedPath = normalizeMockPath(filePath);
         if (normalizedPath.endsWith('/plugins/installed_plugins.json')) {
           return JSON.stringify({
             version: 2,
@@ -105,7 +115,7 @@ describe('PluginInstallationStateService', () => {
           });
         }
 
-        if (normalizedPath === '/tmp/mock-claude/settings.json') {
+        if (normalizedPath === normalizeMockPath(path.join(MOCK_CLAUDE_BASE_PATH, 'settings.json'))) {
           return JSON.stringify({
             enabledPlugins: {
               'context7@claude-plugins-official': true,
@@ -113,7 +123,7 @@ describe('PluginInstallationStateService', () => {
           });
         }
 
-        if (normalizedPath === '/tmp/project-a/.claude/settings.json') {
+        if (normalizedPath === normalizeMockPath(path.join(PROJECT_A_PATH, '.claude', 'settings.json'))) {
           return JSON.stringify({
             enabledPlugins: {
               'typescript-lsp@claude-plugins-official': true,
@@ -121,7 +131,10 @@ describe('PluginInstallationStateService', () => {
           });
         }
 
-        if (normalizedPath === '/tmp/project-a/.claude/settings.local.json') {
+        if (
+          normalizedPath ===
+          normalizeMockPath(path.join(PROJECT_A_PATH, '.claude', 'settings.local.json'))
+        ) {
           return JSON.stringify({
             enabledPlugins: {
               'formatter@claude-plugins-official': true,
@@ -132,7 +145,7 @@ describe('PluginInstallationStateService', () => {
         throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
       });
 
-      const entries = await service.getInstalledPlugins('/tmp/project-a');
+      const entries = await service.getInstalledPlugins(PROJECT_A_PATH);
 
       expect(entries.map((entry) => [entry.pluginId, entry.scope])).toEqual([
         ['context7@claude-plugins-official', 'user'],
@@ -143,7 +156,7 @@ describe('PluginInstallationStateService', () => {
 
     it('does not leak another project scope into the current project', async () => {
       mockedFs.readFile.mockImplementation(async (filePath) => {
-        const normalizedPath = String(filePath);
+        const normalizedPath = normalizeMockPath(filePath);
         if (normalizedPath.endsWith('/plugins/installed_plugins.json')) {
           return JSON.stringify({
             version: 2,
@@ -166,7 +179,7 @@ describe('PluginInstallationStateService', () => {
         throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
       });
 
-      const entries = await service.getInstalledPlugins('/tmp/project-b');
+      const entries = await service.getInstalledPlugins(PROJECT_B_PATH);
 
       expect(entries).toEqual([]);
     });
@@ -182,7 +195,7 @@ describe('PluginInstallationStateService', () => {
 
     it('returns empty array for unexpected version', async () => {
       mockedFs.readFile.mockImplementation(async (filePath) => {
-        const normalizedPath = String(filePath);
+        const normalizedPath = normalizeMockPath(filePath);
         if (normalizedPath.endsWith('/plugins/installed_plugins.json')) {
           return JSON.stringify({ version: 1, plugins: {} });
         }
@@ -198,7 +211,7 @@ describe('PluginInstallationStateService', () => {
 
     it('caches within TTL', async () => {
       mockedFs.readFile.mockImplementation(async (filePath) => {
-        const normalizedPath = String(filePath);
+        const normalizedPath = normalizeMockPath(filePath);
         if (normalizedPath.endsWith('/plugins/installed_plugins.json')) {
           return JSON.stringify({ version: 2, plugins: {} });
         }
@@ -216,7 +229,7 @@ describe('PluginInstallationStateService', () => {
 
     it('caches results independently per project path', async () => {
       mockedFs.readFile.mockImplementation(async (filePath) => {
-        const normalizedPath = String(filePath);
+        const normalizedPath = normalizeMockPath(filePath);
         if (normalizedPath.endsWith('/plugins/installed_plugins.json')) {
           return JSON.stringify({ version: 2, plugins: {} });
         }
@@ -226,8 +239,8 @@ describe('PluginInstallationStateService', () => {
         throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
       });
 
-      await service.getInstalledPlugins('/tmp/project-a');
-      await service.getInstalledPlugins('/tmp/project-b');
+      await service.getInstalledPlugins(PROJECT_A_PATH);
+      await service.getInstalledPlugins(PROJECT_B_PATH);
 
       expect(mockedFs.readFile).toHaveBeenCalledTimes(8);
     });
