@@ -54,7 +54,9 @@ import { AlertTriangle, CheckCircle2, Info, Loader2, X } from 'lucide-react';
 import { AdvancedCliSection } from './AdvancedCliSection';
 import { OptionalSettingsSection } from './OptionalSettingsSection';
 import { ProjectPathSelector } from './ProjectPathSelector';
+import { buildProviderPrepareModelCacheKey } from './providerPrepareCacheKey';
 import {
+  buildReusableProviderPrepareModelResults,
   getProviderPrepareCachedSnapshot,
   type ProviderPrepareDiagnosticsModelResult,
   runProviderPrepareDiagnostics,
@@ -123,14 +125,6 @@ function isEphemeralRenderedProjectPath(projectPath: string | null | undefined):
 
 function getProviderLabel(providerId: TeamProviderId): string {
   return getCatalogTeamProviderLabel(providerId) ?? 'Anthropic';
-}
-
-function buildPrepareModelCacheKey(
-  cwd: string,
-  providerId: TeamProviderId,
-  backendSummary: string | null | undefined
-): string {
-  return `${cwd}::${providerId}::${backendSummary ?? ''}`;
 }
 
 function alignProvisioningChecks(
@@ -644,7 +638,12 @@ export const CreateTeamDialog = ({
             return Array.from(next);
           })();
           const backendSummary = runtimeBackendSummaryByProviderRef.current.get(providerId) ?? null;
-          const cacheKey = buildPrepareModelCacheKey(effectiveCwd, providerId, backendSummary);
+          const cacheKey = buildProviderPrepareModelCacheKey({
+            cwd: effectiveCwd,
+            providerId,
+            backendSummary,
+            limitContext,
+          });
           const cachedModelResultsById = prepareModelResultsCacheRef.current.get(cacheKey) ?? {};
           const cachedSnapshot = getProviderPrepareCachedSnapshot({
             providerId,
@@ -714,7 +713,7 @@ export const CreateTeamDialog = ({
             }
             prepareModelResultsCacheRef.current.set(
               plan.cacheKey,
-              plan.prepResult.modelResultsById
+              buildReusableProviderPrepareModelResults(plan.prepResult.modelResultsById)
             );
             checks = updateProviderCheck(checks, plan.providerId, {
               status: plan.prepResult.status,

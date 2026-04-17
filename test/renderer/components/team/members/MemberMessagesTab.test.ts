@@ -194,7 +194,7 @@ describe('MemberMessagesTab', () => {
     });
   });
 
-  it('hides load older messages when the member has no visible activity', async () => {
+  it('shows load older messages when older pages may still contain this member activity', async () => {
     getMessagesPage.mockResolvedValue({
       messages: [
         {
@@ -282,8 +282,8 @@ describe('MemberMessagesTab', () => {
     });
 
     expect(getMessagesPage).not.toHaveBeenCalled();
-    expect(host.textContent).toContain('No activity with this member');
-    expect(host.textContent).not.toContain('Load older messages');
+    expect(host.textContent).toContain('No loaded activity for this member yet');
+    expect(host.textContent).toContain('Load older messages');
 
     await act(async () => {
       root.unmount();

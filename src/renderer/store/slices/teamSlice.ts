@@ -79,7 +79,7 @@ const TEAM_REFRESH_BURST_WARN_COUNT = 5;
 const TEAM_REFRESH_WARN_THROTTLE_MS = 2_000;
 const MEMBER_SPAWN_UI_EQUAL_WARN_THROTTLE_MS = 2_000;
 const inFlightTeamDataRequests = new Map<string, Promise<TeamViewSnapshot>>();
-const inFlightRefreshTeamDataCalls = new Set<string>();
+const inFlightRefreshTeamDataCalls = new Map<string, Set<symbol>>();
 const pendingFreshTeamDataRefreshes = new Set<string>();
 const inFlightTeamMessagesHeadRequests = new Map<string, Promise<RefreshTeamMessagesHeadResult>>();
 const inFlightTeamMessagesOlderRequests = new Map<string, Promise<void>>();
@@ -91,8 +91,9 @@ const pendingFreshTeamMessagesHeadRefreshes = new Set<string>();
 const inFlightTeamMemberActivityMetaRequests = new Map<string, Promise<void>>();
 const pendingFreshTeamMemberActivityMetaRefreshes = new Set<string>();
 const pendingTeamPendingReplyRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const activeTeamPendingReplyWaits = new Set<string>();
+const activeTeamPendingReplyWaitSourceIdsByTeam = new Map<string, Set<string>>();
 const lastResolvedTeamDataRefreshAtByTeam = new Map<string, number>();
+const teamLocalStateEpochByTeam = new Map<string, number>();
 let inFlightGlobalTasksRefresh: Promise<void> | null = null;
 let pendingFreshGlobalTasksRefresh = false;
 const memberSpawnStatusesIpcBackoffUntilByTeam = new Map<string, number>();
@@ -119,7 +120,7 @@ interface TeamGraphLayoutSessionState {
 export function isTeamDataRefreshPending(teamName: string): boolean {
   return (
     inFlightTeamDataRequests.has(teamName) ||
-    inFlightRefreshTeamDataCalls.has(teamName) ||
+    (inFlightRefreshTeamDataCalls.get(teamName)?.size ?? 0) > 0 ||
     pendingFreshTeamDataRefreshes.has(teamName)
   );
 }
@@ -129,11 +130,15 @@ export function getLastResolvedTeamDataRefreshAt(teamName: string): number | und
 }
 
 export function hasActiveTeamPendingReplyWait(teamName: string): boolean {
-  return activeTeamPendingReplyWaits.has(teamName);
+  return (activeTeamPendingReplyWaitSourceIdsByTeam.get(teamName)?.size ?? 0) > 0;
 }
 
 export function getActiveTeamPendingReplyWaits(): Set<string> {
-  return new Set(activeTeamPendingReplyWaits);
+  return new Set(
+    Array.from(activeTeamPendingReplyWaitSourceIdsByTeam.entries())
+      .filter(([, sourceIds]) => sourceIds.size > 0)
+      .map(([teamName]) => teamName)
+  );
 }
 
 export function __resetTeamSliceModuleStateForTests(): void {
@@ -150,8 +155,9 @@ export function __resetTeamSliceModuleStateForTests(): void {
     clearTimeout(timer);
   }
   pendingTeamPendingReplyRefreshTimers.clear();
-  activeTeamPendingReplyWaits.clear();
+  activeTeamPendingReplyWaitSourceIdsByTeam.clear();
   lastResolvedTeamDataRefreshAtByTeam.clear();
+  teamLocalStateEpochByTeam.clear();
   memberSpawnStatusesIpcBackoffUntilByTeam.clear();
   teamRefreshBurstDiagnostics.clear();
   memberSpawnUiEqualLastWarnAtByTeam.clear();
@@ -159,6 +165,274 @@ export function __resetTeamSliceModuleStateForTests(): void {
   resolvedMemberSelectorCache.clear();
   mergedMessagesSelectorCache.clear();
   memberMessagesSelectorCache.clear();
+}
+
+function clearTeamScopedSelectorCaches(teamName: string): void {
+  resolvedMembersSelectorCache.delete(teamName);
+  mergedMessagesSelectorCache.delete(teamName);
+
+  const teamScopedPrefix = `${teamName}:`;
+  for (const key of resolvedMemberSelectorCache.keys()) {
+    if (key.startsWith(teamScopedPrefix)) {
+      resolvedMemberSelectorCache.delete(key);
+    }
+  }
+  for (const key of memberMessagesSelectorCache.keys()) {
+    if (key.startsWith(teamScopedPrefix)) {
+      memberMessagesSelectorCache.delete(key);
+    }
+  }
+}
+
+function clearTeamScopedTransientState(teamName: string): void {
+  inFlightTeamDataRequests.delete(teamName);
+  inFlightRefreshTeamDataCalls.delete(teamName);
+  pendingFreshTeamDataRefreshes.delete(teamName);
+  inFlightTeamMessagesHeadRequests.delete(teamName);
+  inFlightTeamMessagesOlderRequests.delete(teamName);
+  queuedTeamMessagesHeadRefreshesAfterOlder.delete(teamName);
+  pendingFreshTeamMessagesHeadRefreshes.delete(teamName);
+  inFlightTeamMemberActivityMetaRequests.delete(teamName);
+  pendingFreshTeamMemberActivityMetaRefreshes.delete(teamName);
+  lastResolvedTeamDataRefreshAtByTeam.delete(teamName);
+  memberSpawnStatusesIpcBackoffUntilByTeam.delete(teamName);
+  teamRefreshBurstDiagnostics.delete(teamName);
+  memberSpawnUiEqualLastWarnAtByTeam.delete(teamName);
+  clearTeamScopedSelectorCaches(teamName);
+}
+
+function collectTeamScopedVisibleLoadingResets(
+  state: Pick<
+    TeamSlice,
+    'teamMessagesByName' | 'selectedTeamName' | 'selectedTeamLoading' | 'selectedTeamError'
+  >,
+  teamName: string
+): Partial<TeamSlice> {
+  const nextTeamMessagesEntry = state.teamMessagesByName[teamName];
+  const nextTeamMessagesByName =
+    nextTeamMessagesEntry &&
+    (nextTeamMessagesEntry.loadingHead || nextTeamMessagesEntry.loadingOlder)
+      ? {
+          ...state.teamMessagesByName,
+          [teamName]: {
+            ...nextTeamMessagesEntry,
+            loadingHead: false,
+            loadingOlder: false,
+          },
+        }
+      : null;
+
+  const shouldResetSelectedSurface =
+    state.selectedTeamName === teamName &&
+    (state.selectedTeamLoading || state.selectedTeamError != null);
+
+  return {
+    ...(nextTeamMessagesByName ? { teamMessagesByName: nextTeamMessagesByName } : {}),
+    ...(shouldResetSelectedSurface
+      ? {
+          selectedTeamLoading: false,
+          selectedTeamError: null,
+        }
+      : {}),
+  };
+}
+
+function omitTeamKey<T>(record: Record<string, T>, teamName: string): Record<string, T> | null {
+  if (!(teamName in record)) {
+    return null;
+  }
+  const next = { ...record };
+  delete next[teamName];
+  return next;
+}
+
+function collectTeamScopedStateRemovals(
+  state: Pick<
+    TeamSlice,
+    | 'provisioningRuns'
+    | 'teamDataCacheByName'
+    | 'teamMessagesByName'
+    | 'memberActivityMetaByTeam'
+    | 'provisioningSnapshotByTeam'
+    | 'currentProvisioningRunIdByTeam'
+    | 'currentRuntimeRunIdByTeam'
+    | 'provisioningStartedAtFloorByTeam'
+    | 'leadActivityByTeam'
+    | 'leadContextByTeam'
+    | 'activeToolsByTeam'
+    | 'finishedVisibleByTeam'
+    | 'toolHistoryByTeam'
+    | 'memberSpawnStatusesByTeam'
+    | 'memberSpawnSnapshotsByTeam'
+    | 'provisioningErrorByTeam'
+  >,
+  teamName: string
+): Partial<TeamSlice> {
+  const nextProvisioningRuns = Object.fromEntries(
+    Object.entries(state.provisioningRuns).filter(([, run]) => run.teamName !== teamName)
+  ) as Record<string, TeamProvisioningProgress>;
+  const nextTeamDataCache = omitTeamKey(state.teamDataCacheByName, teamName);
+  const nextTeamMessages = omitTeamKey(state.teamMessagesByName, teamName);
+  const nextMemberActivityMeta = omitTeamKey(state.memberActivityMetaByTeam, teamName);
+  const nextProvisioningSnapshot = omitTeamKey(state.provisioningSnapshotByTeam, teamName);
+  const nextCurrentProvisioningRunId = omitTeamKey(state.currentProvisioningRunIdByTeam, teamName);
+  const nextCurrentRuntimeRunId = omitTeamKey(state.currentRuntimeRunIdByTeam, teamName);
+  const nextProvisioningStartedAtFloor = omitTeamKey(
+    state.provisioningStartedAtFloorByTeam,
+    teamName
+  );
+  const nextLeadActivity = omitTeamKey(state.leadActivityByTeam, teamName);
+  const nextLeadContext = omitTeamKey(state.leadContextByTeam, teamName);
+  const nextActiveTools = omitTeamKey(state.activeToolsByTeam, teamName);
+  const nextFinishedVisible = omitTeamKey(state.finishedVisibleByTeam, teamName);
+  const nextToolHistory = omitTeamKey(state.toolHistoryByTeam, teamName);
+  const nextMemberSpawnStatuses = omitTeamKey(state.memberSpawnStatusesByTeam, teamName);
+  const nextMemberSpawnSnapshots = omitTeamKey(state.memberSpawnSnapshotsByTeam, teamName);
+  const nextProvisioningErrors = omitTeamKey(state.provisioningErrorByTeam, teamName);
+
+  return {
+    ...(Object.keys(nextProvisioningRuns).length !== Object.keys(state.provisioningRuns).length
+      ? { provisioningRuns: nextProvisioningRuns }
+      : {}),
+    ...(nextTeamDataCache ? { teamDataCacheByName: nextTeamDataCache } : {}),
+    ...(nextTeamMessages ? { teamMessagesByName: nextTeamMessages } : {}),
+    ...(nextMemberActivityMeta ? { memberActivityMetaByTeam: nextMemberActivityMeta } : {}),
+    ...(nextProvisioningSnapshot ? { provisioningSnapshotByTeam: nextProvisioningSnapshot } : {}),
+    ...(nextCurrentProvisioningRunId
+      ? { currentProvisioningRunIdByTeam: nextCurrentProvisioningRunId }
+      : {}),
+    ...(nextCurrentRuntimeRunId ? { currentRuntimeRunIdByTeam: nextCurrentRuntimeRunId } : {}),
+    ...(nextProvisioningStartedAtFloor
+      ? { provisioningStartedAtFloorByTeam: nextProvisioningStartedAtFloor }
+      : {}),
+    ...(nextLeadActivity ? { leadActivityByTeam: nextLeadActivity } : {}),
+    ...(nextLeadContext ? { leadContextByTeam: nextLeadContext } : {}),
+    ...(nextActiveTools ? { activeToolsByTeam: nextActiveTools } : {}),
+    ...(nextFinishedVisible ? { finishedVisibleByTeam: nextFinishedVisible } : {}),
+    ...(nextToolHistory ? { toolHistoryByTeam: nextToolHistory } : {}),
+    ...(nextMemberSpawnStatuses ? { memberSpawnStatusesByTeam: nextMemberSpawnStatuses } : {}),
+    ...(nextMemberSpawnSnapshots ? { memberSpawnSnapshotsByTeam: nextMemberSpawnSnapshots } : {}),
+    ...(nextProvisioningErrors ? { provisioningErrorByTeam: nextProvisioningErrors } : {}),
+  };
+}
+
+function buildTeamScopedProgressTombstones(
+  state: Pick<
+    TeamSlice,
+    | 'currentProvisioningRunIdByTeam'
+    | 'currentRuntimeRunIdByTeam'
+    | 'ignoredProvisioningRunIds'
+    | 'ignoredRuntimeRunIds'
+    | 'provisioningStartedAtFloorByTeam'
+  >,
+  teamName: string,
+  floor: string
+): Pick<
+  TeamSlice,
+  'ignoredProvisioningRunIds' | 'ignoredRuntimeRunIds' | 'provisioningStartedAtFloorByTeam'
+> {
+  const nextIgnoredProvisioningRunIds = { ...state.ignoredProvisioningRunIds };
+  const nextIgnoredRuntimeRunIds = { ...state.ignoredRuntimeRunIds };
+
+  const currentProvisioningRunId = state.currentProvisioningRunIdByTeam[teamName];
+  const currentRuntimeRunId = state.currentRuntimeRunIdByTeam[teamName];
+  if (currentProvisioningRunId) {
+    nextIgnoredProvisioningRunIds[currentProvisioningRunId] = teamName;
+  }
+  if (currentRuntimeRunId) {
+    nextIgnoredRuntimeRunIds[currentRuntimeRunId] = teamName;
+  }
+
+  return {
+    ignoredProvisioningRunIds: nextIgnoredProvisioningRunIds,
+    ignoredRuntimeRunIds: nextIgnoredRuntimeRunIds,
+    provisioningStartedAtFloorByTeam: {
+      ...state.provisioningStartedAtFloorByTeam,
+      [teamName]: floor,
+    },
+  };
+}
+
+function captureTeamLocalStateEpoch(teamName: string): number {
+  return teamLocalStateEpochByTeam.get(teamName) ?? 0;
+}
+
+function isTeamLocalStateEpochCurrent(teamName: string, epoch: number): boolean {
+  return captureTeamLocalStateEpoch(teamName) === epoch;
+}
+
+function invalidateTeamLocalStateEpoch(teamName: string): void {
+  teamLocalStateEpochByTeam.set(teamName, captureTeamLocalStateEpoch(teamName) + 1);
+}
+
+function beginInFlightTeamDataRefresh(teamName: string): symbol {
+  const token = Symbol(teamName);
+  const existing = inFlightRefreshTeamDataCalls.get(teamName);
+  if (existing) {
+    existing.add(token);
+    return token;
+  }
+  inFlightRefreshTeamDataCalls.set(teamName, new Set([token]));
+  return token;
+}
+
+function endInFlightTeamDataRefresh(teamName: string, token: symbol): void {
+  const existing = inFlightRefreshTeamDataCalls.get(teamName);
+  if (!existing) {
+    return;
+  }
+  existing.delete(token);
+  if (existing.size === 0) {
+    inFlightRefreshTeamDataCalls.delete(teamName);
+  }
+}
+
+export function __getTeamScopedTransientStateForTests(teamName: string): {
+  hasResolvedMembersSelector: boolean;
+  resolvedMemberSelectorCount: number;
+  hasMergedMessagesSelector: boolean;
+  memberMessagesSelectorCount: number;
+  hasPendingFreshTeamDataRefresh: boolean;
+  hasQueuedHeadRefreshAfterOlder: boolean;
+  hasPendingFreshMessagesHeadRefresh: boolean;
+  hasPendingFreshMemberActivityMetaRefresh: boolean;
+  hasLastResolvedTeamDataRefresh: boolean;
+  hasCurrentLocalStateEpoch: boolean;
+  hasMemberSpawnStatusesIpcBackoff: boolean;
+  hasTeamRefreshBurstDiagnostics: boolean;
+  hasMemberSpawnUiEqualLastWarn: boolean;
+} {
+  const teamScopedPrefix = `${teamName}:`;
+  let resolvedMemberSelectorCount = 0;
+  let memberMessagesSelectorCount = 0;
+
+  for (const key of resolvedMemberSelectorCache.keys()) {
+    if (key.startsWith(teamScopedPrefix)) {
+      resolvedMemberSelectorCount += 1;
+    }
+  }
+  for (const key of memberMessagesSelectorCache.keys()) {
+    if (key.startsWith(teamScopedPrefix)) {
+      memberMessagesSelectorCount += 1;
+    }
+  }
+
+  return {
+    hasResolvedMembersSelector: resolvedMembersSelectorCache.has(teamName),
+    resolvedMemberSelectorCount,
+    hasMergedMessagesSelector: mergedMessagesSelectorCache.has(teamName),
+    memberMessagesSelectorCount,
+    hasPendingFreshTeamDataRefresh: pendingFreshTeamDataRefreshes.has(teamName),
+    hasQueuedHeadRefreshAfterOlder: queuedTeamMessagesHeadRefreshesAfterOlder.has(teamName),
+    hasPendingFreshMessagesHeadRefresh: pendingFreshTeamMessagesHeadRefreshes.has(teamName),
+    hasPendingFreshMemberActivityMetaRefresh:
+      pendingFreshTeamMemberActivityMetaRefreshes.has(teamName),
+    hasLastResolvedTeamDataRefresh: lastResolvedTeamDataRefreshAtByTeam.has(teamName),
+    hasCurrentLocalStateEpoch: teamLocalStateEpochByTeam.has(teamName),
+    hasMemberSpawnStatusesIpcBackoff: memberSpawnStatusesIpcBackoffUntilByTeam.has(teamName),
+    hasTeamRefreshBurstDiagnostics: teamRefreshBurstDiagnostics.has(teamName),
+    hasMemberSpawnUiEqualLastWarn: memberSpawnUiEqualLastWarnAtByTeam.has(teamName),
+  };
 }
 
 function nowIso(): string {
@@ -665,12 +939,32 @@ function clearPendingReplyRefreshTimer(teamName: string): void {
   pendingTeamPendingReplyRefreshTimers.delete(teamName);
 }
 
-function setPendingReplyRefreshEnabled(teamName: string, enabled: boolean): void {
+function clearPendingReplyRefreshWaits(teamName: string): void {
+  activeTeamPendingReplyWaitSourceIdsByTeam.delete(teamName);
+}
+
+function setPendingReplyRefreshEnabled(
+  teamName: string,
+  sourceId: string,
+  enabled: boolean
+): boolean {
   if (enabled) {
-    activeTeamPendingReplyWaits.add(teamName);
-    return;
+    const existing = activeTeamPendingReplyWaitSourceIdsByTeam.get(teamName) ?? new Set<string>();
+    existing.add(sourceId);
+    activeTeamPendingReplyWaitSourceIdsByTeam.set(teamName, existing);
+    return true;
   }
-  activeTeamPendingReplyWaits.delete(teamName);
+
+  const existing = activeTeamPendingReplyWaitSourceIdsByTeam.get(teamName);
+  if (!existing) {
+    return false;
+  }
+  existing.delete(sourceId);
+  if (existing.size === 0) {
+    activeTeamPendingReplyWaitSourceIdsByTeam.delete(teamName);
+    return false;
+  }
+  return true;
 }
 
 function getCanonicalHeadSlice(
@@ -1738,7 +2032,12 @@ export interface TeamSlice {
   refreshTeamMessagesHead: (teamName: string) => Promise<RefreshTeamMessagesHeadResult>;
   loadOlderTeamMessages: (teamName: string) => Promise<void>;
   refreshMemberActivityMeta: (teamName: string) => Promise<void>;
-  syncTeamPendingReplyRefresh: (teamName: string, enabled: boolean, delayMs?: number) => void;
+  syncTeamPendingReplyRefresh: (
+    teamName: string,
+    sourceId: string,
+    enabled: boolean,
+    delayMs?: number
+  ) => void;
   sendTeamMessage: (teamName: string, request: SendMessageRequest) => Promise<void>;
   crossTeamTargets: {
     teamName: string;
@@ -2059,17 +2358,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
                 ...prev.currentRuntimeRunIdByTeam,
                 [teamName]: snapshot.runId,
               };
-        const hasIgnoredRuntimeEntriesForTeam = Object.values(prev.ignoredRuntimeRunIds).some(
-          (ignoredTeamName) => ignoredTeamName === teamName
-        );
-        const nextIgnoredRuntimeRunIds =
-          snapshot.runId == null || !hasIgnoredRuntimeEntriesForTeam
-            ? prev.ignoredRuntimeRunIds
-            : Object.fromEntries(
-                Object.entries(prev.ignoredRuntimeRunIds).filter(
-                  ([, ignoredTeamName]) => ignoredTeamName !== teamName
-                )
-              );
+        // Keep same-team ignored runtime tombstones intact here.
+        // Member-spawn snapshots do not carry a run start time, so clearing older
+        // ignored ids can reopen stale zombie snapshots during create/launch churn.
         const previousSnapshot = prev.memberSpawnSnapshotsByTeam[teamName];
         const snapshotChanged = !areMemberSpawnSnapshotsSemanticallyEqual(
           previousSnapshot,
@@ -2078,22 +2369,17 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
         if (!snapshotChanged) {
           maybeLogMemberSpawnUiEqualSuppressed(teamName, snapshot.runId);
-          if (
-            nextCurrentRuntimeRunIdByTeam === prev.currentRuntimeRunIdByTeam &&
-            nextIgnoredRuntimeRunIds === prev.ignoredRuntimeRunIds
-          ) {
+          if (nextCurrentRuntimeRunIdByTeam === prev.currentRuntimeRunIdByTeam) {
             return {};
           }
 
           return {
             currentRuntimeRunIdByTeam: nextCurrentRuntimeRunIdByTeam,
-            ignoredRuntimeRunIds: nextIgnoredRuntimeRunIds,
           };
         }
 
         return {
           currentRuntimeRunIdByTeam: nextCurrentRuntimeRunIdByTeam,
-          ignoredRuntimeRunIds: nextIgnoredRuntimeRunIds,
           memberSpawnStatusesByTeam: {
             ...prev.memberSpawnStatusesByTeam,
             [teamName]: snapshot.statuses,
@@ -2837,6 +3123,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
   selectTeam: async (teamName: string, opts) => {
     const startedAt = performance.now();
+    const teamStateEpoch = captureTeamLocalStateEpoch(teamName);
     const allowReloadWhileProvisioning = opts?.allowReloadWhileProvisioning === true;
     // Guard: prevent duplicate in-flight fetches for the same team.
     // GlobalTaskDetailDialog + tab navigation can call selectTeam() in quick succession.
@@ -2865,6 +3152,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
     try {
       const data = await fetchTeamDataDeduped(teamName);
+      if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+        return;
+      }
       const ipcMs = performance.now() - startedAt;
       // Stale check: user may have switched to another team during the async call
       if (get().selectedTeamName !== teamName || get().selectedTeamLoadNonce !== requestNonce) {
@@ -2993,6 +3283,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         }
       }
     } catch (error) {
+      if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+        return;
+      }
       // If provisioning is in progress for this team, stay in loading state;
       // file watcher / progress callback will refresh once config is written.
       const currentState = get();
@@ -3041,7 +3334,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
   refreshTeamData: async (teamName: string, opts?: RefreshTeamDataOptions) => {
     const startedAt = performance.now();
-    inFlightRefreshTeamDataCalls.add(teamName);
+    const teamStateEpoch = captureTeamLocalStateEpoch(teamName);
+    const refreshToken = beginInFlightTeamDataRefresh(teamName);
     // Silent refresh — update data without showing loading skeleton.
     // Only selectTeam() sets loading: true (for initial load).
     const reusedInFlightRequest =
@@ -3058,6 +3352,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const data = opts?.withDedup
         ? await fetchTeamDataDeduped(teamName)
         : await fetchTeamDataFresh(teamName);
+      if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+        return;
+      }
       const ipcMs = performance.now() - startedAt;
       const projectedTeamData = previousData
         ? {
@@ -3124,6 +3421,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         burstCount,
       });
     } catch (error) {
+      if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+        return;
+      }
       const msg =
         error instanceof IpcError
           ? error.message
@@ -3182,7 +3482,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       }
       set({ selectedTeamError: msg });
     } finally {
-      inFlightRefreshTeamDataCalls.delete(teamName);
+      endInFlightTeamDataRefresh(teamName, refreshToken);
       if (reusedInFlightRequest && pendingFreshTeamDataRefreshes.delete(teamName)) {
         void get().refreshTeamData(teamName);
       }
@@ -3202,10 +3502,24 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
     const existingOlderRequest = inFlightTeamMessagesOlderRequests.get(teamName);
     if (existingOlderRequest) {
+      const queuedEpoch = captureTeamLocalStateEpoch(teamName);
       const queuedRequest: Promise<RefreshTeamMessagesHeadResult> = existingOlderRequest
         .then(() => {
+          if (!isTeamLocalStateEpochCurrent(teamName, queuedEpoch)) {
+            return {
+              feedChanged: false,
+              headChanged: false,
+              feedRevision: null,
+            };
+          }
           if (queuedTeamMessagesHeadRefreshesAfterOlder.get(teamName) === queuedRequest) {
             queuedTeamMessagesHeadRefreshesAfterOlder.delete(teamName);
+          } else {
+            return {
+              feedChanged: false,
+              headChanged: false,
+              feedRevision: null,
+            };
           }
           return get().refreshTeamMessagesHead(teamName);
         })
@@ -3218,7 +3532,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       return queuedRequest;
     }
 
-    const request = (async (): Promise<RefreshTeamMessagesHeadResult> => {
+    let request!: Promise<RefreshTeamMessagesHeadResult>;
+    request = (async (): Promise<RefreshTeamMessagesHeadResult> => {
+      const teamStateEpoch = captureTeamLocalStateEpoch(teamName);
       set((state) => ({
         teamMessagesByName: {
           ...state.teamMessagesByName,
@@ -3233,6 +3549,13 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         const page = await unwrapIpc('team:getMessagesPage', () =>
           api.teams.getMessagesPage(teamName, { limit: 50 })
         );
+        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+          return {
+            feedChanged: false,
+            headChanged: false,
+            feedRevision: null,
+          };
+        }
 
         const previousEntry = getTeamMessagesCacheEntry(get(), teamName);
         const feedChanged =
@@ -3282,6 +3605,13 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           feedRevision: page.feedRevision,
         };
       } catch (error) {
+        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+          return {
+            feedChanged: false,
+            headChanged: false,
+            feedRevision: null,
+          };
+        }
         set((state) => ({
           teamMessagesByName: {
             ...state.teamMessagesByName,
@@ -3293,9 +3623,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         }));
         throw error;
       } finally {
-        inFlightTeamMessagesHeadRequests.delete(teamName);
-        if (pendingFreshTeamMessagesHeadRefreshes.delete(teamName)) {
-          void get().refreshTeamMessagesHead(teamName);
+        if (inFlightTeamMessagesHeadRequests.get(teamName) === request) {
+          inFlightTeamMessagesHeadRequests.delete(teamName);
+          if (pendingFreshTeamMessagesHeadRefreshes.delete(teamName)) {
+            void get().refreshTeamMessagesHead(teamName);
+          }
         }
       }
     })();
@@ -3305,6 +3637,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   },
 
   loadOlderTeamMessages: async (teamName: string) => {
+    const requestedEpoch = captureTeamLocalStateEpoch(teamName);
     const existingRequest = inFlightTeamMessagesOlderRequests.get(teamName);
     if (existingRequest) {
       return existingRequest;
@@ -3313,11 +3646,17 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     const existingHeadRequest = inFlightTeamMessagesHeadRequests.get(teamName);
     if (existingHeadRequest) {
       await existingHeadRequest;
+      if (!isTeamLocalStateEpochCurrent(teamName, requestedEpoch)) {
+        return;
+      }
     }
 
     let entry = getTeamMessagesCacheEntry(get(), teamName);
     if (!entry.headHydrated) {
       await get().refreshTeamMessagesHead(teamName);
+      if (!isTeamLocalStateEpochCurrent(teamName, requestedEpoch)) {
+        return;
+      }
       entry = getTeamMessagesCacheEntry(get(), teamName);
     }
 
@@ -3325,7 +3664,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       return;
     }
 
-    const request = (async (): Promise<void> => {
+    let request!: Promise<void>;
+    request = (async (): Promise<void> => {
+      const teamStateEpoch = captureTeamLocalStateEpoch(teamName);
       set((state) => ({
         teamMessagesByName: {
           ...state.teamMessagesByName,
@@ -3344,6 +3685,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
             limit: 50,
           })
         );
+        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+          return;
+        }
 
         const current = getTeamMessagesCacheEntry(get(), teamName);
         if (current.feedRevision !== baseFeedRevision) {
@@ -3392,6 +3736,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           };
         });
       } catch {
+        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+          return;
+        }
         set((state) => ({
           teamMessagesByName: {
             ...state.teamMessagesByName,
@@ -3402,7 +3749,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           },
         }));
       } finally {
-        inFlightTeamMessagesOlderRequests.delete(teamName);
+        if (inFlightTeamMessagesOlderRequests.get(teamName) === request) {
+          inFlightTeamMessagesOlderRequests.delete(teamName);
+        }
       }
     })();
 
@@ -3422,11 +3771,16 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       return existingRequest;
     }
 
-    const request = (async (): Promise<void> => {
+    let request!: Promise<void>;
+    request = (async (): Promise<void> => {
+      const teamStateEpoch = captureTeamLocalStateEpoch(teamName);
       try {
         const meta = await unwrapIpc('team:getMemberActivityMeta', () =>
           api.teams.getMemberActivityMeta(teamName)
         );
+        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+          return;
+        }
 
         set((state) => {
           const currentFeedRevision = getTeamMessagesCacheEntry(state, teamName).feedRevision;
@@ -3458,10 +3812,17 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
             },
           };
         });
+      } catch (error) {
+        if (!isTeamLocalStateEpochCurrent(teamName, teamStateEpoch)) {
+          return;
+        }
+        throw error;
       } finally {
-        inFlightTeamMemberActivityMetaRequests.delete(teamName);
-        if (pendingFreshTeamMemberActivityMetaRefreshes.delete(teamName)) {
-          void get().refreshMemberActivityMeta(teamName);
+        if (inFlightTeamMemberActivityMetaRequests.get(teamName) === request) {
+          inFlightTeamMemberActivityMetaRequests.delete(teamName);
+          if (pendingFreshTeamMemberActivityMetaRefreshes.delete(teamName)) {
+            void get().refreshMemberActivityMeta(teamName);
+          }
         }
       }
     })();
@@ -3470,10 +3831,15 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     return request;
   },
 
-  syncTeamPendingReplyRefresh: (teamName: string, enabled: boolean, delayMs = 10_000) => {
+  syncTeamPendingReplyRefresh: (
+    teamName: string,
+    sourceId: string,
+    enabled: boolean,
+    delayMs = 10_000
+  ) => {
     clearPendingReplyRefreshTimer(teamName);
-    setPendingReplyRefreshEnabled(teamName, enabled);
-    if (!enabled) {
+    const shouldKeepRefreshActive = setPendingReplyRefreshEnabled(teamName, sourceId, enabled);
+    if (!shouldKeepRefreshActive) {
       return;
     }
 
@@ -3770,42 +4136,26 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
   deleteTeam: async (teamName: string) => {
     await unwrapIpc('team:deleteTeam', () => api.teams.deleteTeam(teamName));
+    invalidateTeamLocalStateEpoch(teamName);
     clearPendingReplyRefreshTimer(teamName);
-    setPendingReplyRefreshEnabled(teamName, false);
+    clearPendingReplyRefreshWaits(teamName);
+    clearTeamScopedTransientState(teamName);
     set((state) => {
-      const nextCache = state.teamDataCacheByName[teamName]
-        ? { ...state.teamDataCacheByName }
-        : null;
-      const nextMessageCache = state.teamMessagesByName[teamName]
-        ? { ...state.teamMessagesByName }
-        : null;
-      const nextActivityMeta = state.memberActivityMetaByTeam[teamName]
-        ? { ...state.memberActivityMetaByTeam }
-        : null;
-      if (nextCache) {
-        delete nextCache[teamName];
-      }
-      if (nextMessageCache) {
-        delete nextMessageCache[teamName];
-      }
-      if (nextActivityMeta) {
-        delete nextActivityMeta[teamName];
-      }
+      const clearedState = collectTeamScopedStateRemovals(state, teamName);
+      const tombstones = buildTeamScopedProgressTombstones(state, teamName, nowIso());
       if (state.selectedTeamName === teamName) {
         return {
           selectedTeamName: null,
           selectedTeamData: null,
           selectedTeamLoading: false,
           selectedTeamError: null,
-          ...(nextCache ? { teamDataCacheByName: nextCache } : {}),
-          ...(nextMessageCache ? { teamMessagesByName: nextMessageCache } : {}),
-          ...(nextActivityMeta ? { memberActivityMetaByTeam: nextActivityMeta } : {}),
+          ...clearedState,
+          ...tombstones,
         };
       }
       return {
-        ...(nextCache ? { teamDataCacheByName: nextCache } : {}),
-        ...(nextMessageCache ? { teamMessagesByName: nextMessageCache } : {}),
-        ...(nextActivityMeta ? { memberActivityMetaByTeam: nextActivityMeta } : {}),
+        ...clearedState,
+        ...tombstones,
       };
     });
     await get().fetchTeams();
@@ -3814,32 +4164,20 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
   restoreTeam: async (teamName: string) => {
     await unwrapIpc('team:restoreTeam', () => api.teams.restoreTeam(teamName));
+    invalidateTeamLocalStateEpoch(teamName);
     clearPendingReplyRefreshTimer(teamName);
-    setPendingReplyRefreshEnabled(teamName, false);
+    clearPendingReplyRefreshWaits(teamName);
+    clearTeamScopedTransientState(teamName);
     set((state) => {
-      const hasSnapshot = Boolean(state.teamDataCacheByName[teamName]);
-      const hasMessages = Boolean(state.teamMessagesByName[teamName]);
-      const hasMeta = Boolean(state.memberActivityMetaByTeam[teamName]);
-      if (!hasSnapshot && !hasMessages && !hasMeta) {
-        return {};
+      const clearedState = collectTeamScopedStateRemovals(state, teamName);
+      const tombstones = buildTeamScopedProgressTombstones(state, teamName, nowIso());
+      if (Object.keys(clearedState).length === 0) {
+        return tombstones;
       }
-      const nextState: Partial<TeamSlice> = {};
-      if (hasSnapshot) {
-        const nextCache = { ...state.teamDataCacheByName };
-        delete nextCache[teamName];
-        nextState.teamDataCacheByName = nextCache;
-      }
-      if (hasMessages) {
-        const nextMessages = { ...state.teamMessagesByName };
-        delete nextMessages[teamName];
-        nextState.teamMessagesByName = nextMessages;
-      }
-      if (hasMeta) {
-        const nextMeta = { ...state.memberActivityMetaByTeam };
-        delete nextMeta[teamName];
-        nextState.memberActivityMetaByTeam = nextMeta;
-      }
-      return nextState;
+      return {
+        ...clearedState,
+        ...tombstones,
+      };
     });
     await get().fetchTeams();
     await get().fetchAllTasks();
@@ -3847,35 +4185,28 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
   permanentlyDeleteTeam: async (teamName: string) => {
     await unwrapIpc('team:permanentlyDeleteTeam', () => api.teams.permanentlyDeleteTeam(teamName));
+    invalidateTeamLocalStateEpoch(teamName);
     clearPendingReplyRefreshTimer(teamName);
-    setPendingReplyRefreshEnabled(teamName, false);
+    clearPendingReplyRefreshWaits(teamName);
+    clearTeamScopedTransientState(teamName);
     const state = get();
-    const nextCache = { ...state.teamDataCacheByName };
-    const nextMessages = { ...state.teamMessagesByName };
-    const nextMeta = { ...state.memberActivityMetaByTeam };
-    delete nextCache[teamName];
-    delete nextMessages[teamName];
-    delete nextMeta[teamName];
+    const clearedState = collectTeamScopedStateRemovals(state, teamName);
+    const tombstones = buildTeamScopedProgressTombstones(state, teamName, nowIso());
     if (state.selectedTeamName === teamName) {
       set({
         selectedTeamName: null,
         selectedTeamData: null,
         selectedTeamError: null,
-        teamDataCacheByName: nextCache,
-        teamMessagesByName: nextMessages,
-        memberActivityMetaByTeam: nextMeta,
+        ...clearedState,
+        ...tombstones,
       });
-    } else if (state.teamDataCacheByName[teamName]) {
+    } else if (Object.keys(clearedState).length > 0) {
       set({
-        teamDataCacheByName: nextCache,
-        teamMessagesByName: nextMessages,
-        memberActivityMetaByTeam: nextMeta,
+        ...clearedState,
+        ...tombstones,
       });
-    } else if (state.teamMessagesByName[teamName] || state.memberActivityMetaByTeam[teamName]) {
-      set({
-        teamMessagesByName: nextMessages,
-        memberActivityMetaByTeam: nextMeta,
-      });
+    } else {
+      set(tombstones);
     }
     await get().fetchTeams();
     await get().fetchAllTasks();
@@ -3884,6 +4215,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   createTeam: async (request: TeamCreateRequest) => {
     // Ensure provisioning progress subscription is active (defensive).
     get().subscribeProvisioningProgress();
+    invalidateTeamLocalStateEpoch(request.teamName);
+    clearPendingReplyRefreshTimer(request.teamName);
+    clearPendingReplyRefreshWaits(request.teamName);
+    clearTeamScopedTransientState(request.teamName);
 
     // Establish a per-team floor so late events from a previous run can't override UI.
     const floor = nowIso();
@@ -3917,25 +4252,13 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const nextRuntimeRunIdByTeam = { ...state.currentRuntimeRunIdByTeam };
       const previousRuntimeRunId = nextRuntimeRunIdByTeam[request.teamName];
       delete nextRuntimeRunIdByTeam[request.teamName];
-      const nextIgnoredRunIds = Object.fromEntries(
-        Object.entries(state.ignoredProvisioningRunIds).filter(
-          ([, teamName]) => teamName !== request.teamName
-        )
-      );
       const nextIgnoredRuntimeRunIds = previousRuntimeRunId
         ? {
-            ...Object.fromEntries(
-              Object.entries(state.ignoredRuntimeRunIds).filter(
-                ([, teamName]) => teamName !== request.teamName
-              )
-            ),
+            ...state.ignoredRuntimeRunIds,
             [previousRuntimeRunId]: request.teamName,
           }
-        : Object.fromEntries(
-            Object.entries(state.ignoredRuntimeRunIds).filter(
-              ([, teamName]) => teamName !== request.teamName
-            )
-          );
+        : state.ignoredRuntimeRunIds;
+      const visibleLoadingResets = collectTeamScopedVisibleLoadingResets(state, request.teamName);
       return {
         provisioningRuns: cleaned,
         provisioningErrorByTeam: nextErrors,
@@ -3945,8 +4268,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         finishedVisibleByTeam: nextFinishedVisible,
         toolHistoryByTeam: nextToolHistory,
         currentRuntimeRunIdByTeam: nextRuntimeRunIdByTeam,
-        ignoredProvisioningRunIds: nextIgnoredRunIds,
+        ignoredProvisioningRunIds: state.ignoredProvisioningRunIds,
         ignoredRuntimeRunIds: nextIgnoredRuntimeRunIds,
+        ...visibleLoadingResets,
       };
     });
 
@@ -4038,11 +4362,6 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
             ...state.currentRuntimeRunIdByTeam,
             [request.teamName]: response.runId,
           },
-          ignoredRuntimeRunIds: Object.fromEntries(
-            Object.entries(state.ignoredRuntimeRunIds).filter(
-              ([, teamName]) => teamName !== request.teamName
-            )
-          ),
         };
       });
       try {
@@ -4082,6 +4401,10 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   launchTeam: async (request: TeamLaunchRequest) => {
     // Ensure provisioning progress subscription is active (defensive).
     get().subscribeProvisioningProgress();
+    invalidateTeamLocalStateEpoch(request.teamName);
+    clearPendingReplyRefreshTimer(request.teamName);
+    clearPendingReplyRefreshWaits(request.teamName);
+    clearTeamScopedTransientState(request.teamName);
 
     // Establish a per-team floor so late events from a previous run can't override UI.
     const floor = nowIso();
@@ -4115,25 +4438,13 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       const nextRuntimeRunIdByTeam = { ...state.currentRuntimeRunIdByTeam };
       const previousRuntimeRunId = nextRuntimeRunIdByTeam[request.teamName];
       delete nextRuntimeRunIdByTeam[request.teamName];
-      const nextIgnoredRunIds = Object.fromEntries(
-        Object.entries(state.ignoredProvisioningRunIds).filter(
-          ([, teamName]) => teamName !== request.teamName
-        )
-      );
       const nextIgnoredRuntimeRunIds = previousRuntimeRunId
         ? {
-            ...Object.fromEntries(
-              Object.entries(state.ignoredRuntimeRunIds).filter(
-                ([, teamName]) => teamName !== request.teamName
-              )
-            ),
+            ...state.ignoredRuntimeRunIds,
             [previousRuntimeRunId]: request.teamName,
           }
-        : Object.fromEntries(
-            Object.entries(state.ignoredRuntimeRunIds).filter(
-              ([, teamName]) => teamName !== request.teamName
-            )
-          );
+        : state.ignoredRuntimeRunIds;
+      const visibleLoadingResets = collectTeamScopedVisibleLoadingResets(state, request.teamName);
       return {
         provisioningRuns: cleaned,
         provisioningErrorByTeam: nextErrors,
@@ -4143,8 +4454,9 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         finishedVisibleByTeam: nextFinishedVisible,
         toolHistoryByTeam: nextToolHistory,
         currentRuntimeRunIdByTeam: nextRuntimeRunIdByTeam,
-        ignoredProvisioningRunIds: nextIgnoredRunIds,
+        ignoredProvisioningRunIds: state.ignoredProvisioningRunIds,
         ignoredRuntimeRunIds: nextIgnoredRuntimeRunIds,
+        ...visibleLoadingResets,
       };
     });
 
@@ -4218,11 +4530,6 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
             ...state.currentRuntimeRunIdByTeam,
             [request.teamName]: response.runId,
           },
-          ignoredRuntimeRunIds: Object.fromEntries(
-            Object.entries(state.ignoredRuntimeRunIds).filter(
-              ([, teamName]) => teamName !== request.teamName
-            )
-          ),
         };
       });
       try {
@@ -4418,11 +4725,6 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           ...state.currentRuntimeRunIdByTeam,
           [progress.teamName]: progress.runId,
         },
-        ignoredRuntimeRunIds: Object.fromEntries(
-          Object.entries(state.ignoredRuntimeRunIds).filter(
-            ([, teamName]) => teamName !== progress.teamName
-          )
-        ),
         provisioningErrorByTeam: nextErrors,
         provisioningSnapshotByTeam: nextSnapshots,
       };

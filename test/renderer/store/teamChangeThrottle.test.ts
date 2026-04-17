@@ -219,7 +219,7 @@ describe('team change throttling', () => {
   });
 
   it('lead-message refreshes hidden teams with an active pending-reply wait state', async () => {
-    useStore.getState().syncTeamPendingReplyRefresh('other-team', true, 60_000);
+    useStore.getState().syncTeamPendingReplyRefresh('other-team', 'tab-hidden', true, 60_000);
     useStore.setState({
       paneLayout: {
         focusedPaneId: 'p1',
@@ -304,7 +304,7 @@ describe('team change throttling', () => {
   });
 
   it('fallback polling refreshes hidden teams with an active pending-reply wait state', async () => {
-    useStore.getState().syncTeamPendingReplyRefresh('other-team', true, 60_000);
+    useStore.getState().syncTeamPendingReplyRefresh('other-team', 'tab-hidden', true, 60_000);
     const refreshTeamMessagesHeadSpy = vi.spyOn(useStore.getState(), 'refreshTeamMessagesHead');
     const refreshMemberActivityMetaSpy = vi.spyOn(useStore.getState(), 'refreshMemberActivityMeta');
 

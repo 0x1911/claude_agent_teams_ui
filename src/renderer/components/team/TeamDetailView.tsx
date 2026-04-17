@@ -1,4 +1,14 @@
-import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import { api } from '@renderer/api';
 import { SessionContextPanel } from '@renderer/components/chat/SessionContextPanel/index';
@@ -1308,6 +1318,7 @@ export const TeamDetailView = ({
   );
 
   const leadSessionId = data?.config.leadSessionId ?? null;
+  const pendingReplyRefreshSourceId = useId();
   const sessionHistoryKey = useMemo(
     () => (data?.config.sessionHistory ?? []).join('|'),
     [data?.config.sessionHistory]
@@ -1320,14 +1331,21 @@ export const TeamDetailView = ({
     const hasPendingReplies = Object.keys(pendingRepliesByMember).length > 0;
     syncTeamPendingReplyRefresh(
       teamName,
+      pendingReplyRefreshSourceId,
       Boolean(data?.isAlive) && hasPendingReplies,
       TEAM_PENDING_REPLY_REFRESH_DELAY_MS
     );
 
     return () => {
-      syncTeamPendingReplyRefresh(teamName, false);
+      syncTeamPendingReplyRefresh(teamName, pendingReplyRefreshSourceId, false);
     };
-  }, [data?.isAlive, pendingRepliesByMember, syncTeamPendingReplyRefresh, teamName]);
+  }, [
+    data?.isAlive,
+    pendingRepliesByMember,
+    pendingReplyRefreshSourceId,
+    syncTeamPendingReplyRefresh,
+    teamName,
+  ]);
 
   useEffect(() => {
     if (!projectId) return;

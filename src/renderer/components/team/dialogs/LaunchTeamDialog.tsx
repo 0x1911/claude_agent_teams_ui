@@ -72,8 +72,10 @@ import { AdvancedCliSection } from './AdvancedCliSection';
 import { EffortLevelSelector } from './EffortLevelSelector';
 import { resolveLaunchDialogPrefill } from './launchDialogPrefill';
 import { OptionalSettingsSection } from './OptionalSettingsSection';
+import { buildProviderPrepareModelCacheKey } from './providerPrepareCacheKey';
 import { ProjectPathSelector } from './ProjectPathSelector';
 import {
+  buildReusableProviderPrepareModelResults,
   getProviderPrepareCachedSnapshot,
   type ProviderPrepareDiagnosticsModelResult,
   runProviderPrepareDiagnostics,
@@ -109,14 +111,6 @@ import type {
   TeamProviderId,
   UpdateSchedulePatch,
 } from '@shared/types';
-
-function buildPrepareModelCacheKey(
-  cwd: string,
-  providerId: TeamProviderId,
-  backendSummary: string | null | undefined
-): string {
-  return `${cwd}::${providerId}::${backendSummary ?? ''}`;
-}
 
 function alignProvisioningChecks(
   existingChecks: ProvisioningProviderCheck[],
@@ -933,7 +927,12 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
       const providerPlans = selectedMemberProviders.map((providerId) => {
         const selectedModelChecks = selectedModelChecksByProvider.get(providerId) ?? [];
         const backendSummary = runtimeBackendSummaryByProviderRef.current.get(providerId) ?? null;
-        const cacheKey = buildPrepareModelCacheKey(effectiveCwd, providerId, backendSummary);
+        const cacheKey = buildProviderPrepareModelCacheKey({
+          cwd: effectiveCwd,
+          providerId,
+          backendSummary,
+          limitContext,
+        });
         const cachedModelResultsById = prepareModelResultsCacheRef.current.get(cacheKey) ?? {};
         const cachedSnapshot = getProviderPrepareCachedSnapshot({
           providerId,
@@ -1001,7 +1000,10 @@ export const LaunchTeamDialog = (props: LaunchTeamDialogProps): React.JSX.Elemen
           } else if (plan.prepResult.status === 'notes') {
             anyNotes = true;
           }
-          prepareModelResultsCacheRef.current.set(plan.cacheKey, plan.prepResult.modelResultsById);
+          prepareModelResultsCacheRef.current.set(
+            plan.cacheKey,
+            buildReusableProviderPrepareModelResults(plan.prepResult.modelResultsById)
+          );
           checks = updateProviderCheck(checks, plan.providerId, {
             status: plan.prepResult.status,
             backendSummary: plan.backendSummary,

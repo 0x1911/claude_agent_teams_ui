@@ -4,10 +4,13 @@ import { Button } from '@renderer/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from '@renderer/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@renderer/components/ui/tabs';
 import { useMemberStats } from '@renderer/hooks/useMemberStats';
+import { useStore } from '@renderer/store';
+import { selectMemberMessagesForTeamMember } from '@renderer/store/slices/teamSlice';
 import { isLeadMember } from '@shared/utils/leadDetection';
 import { BarChart3, FileText, ListPlus, MessageSquare, UserMinus } from 'lucide-react';
 
 import { MemberDetailHeader } from './MemberDetailHeader';
+import { buildMemberActivityEntries } from './memberActivityEntries';
 import { MemberDetailStats } from './MemberDetailStats';
 import { type MemberActivityFilter, type MemberDetailTab } from './memberDetailTypes';
 import { MemberLogsTab } from './MemberLogsTab';
@@ -71,7 +74,21 @@ export const MemberDetailDialog = ({
     () => (member ? tasks.filter((t) => t.owner === member.name) : []),
     [tasks, member]
   );
-  const memberActivityCount = member?.messageCount ?? 0;
+  const memberMessages = useStore((state) =>
+    selectMemberMessagesForTeamMember(state, teamName, member?.name ?? null)
+  );
+  const memberActivityCount = useMemo(() => {
+    if (!member) {
+      return 0;
+    }
+    return buildMemberActivityEntries({
+      teamName,
+      memberName: member.name,
+      members,
+      tasks,
+      messages: memberMessages,
+    }).length;
+  }, [member, memberMessages, members, tasks, teamName]);
 
   const inProgressTasks = useMemo(
     () => memberTasks.filter((t) => t.status === 'in_progress').length,

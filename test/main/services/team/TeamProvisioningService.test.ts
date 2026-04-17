@@ -169,7 +169,6 @@ function createMemberSpawnRun(params?: {
   expectedMembers?: string[];
   memberSpawnStatuses?: Map<string, Record<string, unknown>>;
   memberSpawnLeadInboxCursorByMember?: Map<string, { timestamp: string; messageId: string }>;
-  memberSpawnProcessedLeadInboxMessageIdsByMember?: Map<string, Set<string>>;
 }) {
   const teamName = params?.teamName ?? 'member-spawn-team';
   const expectedMembers = params?.expectedMembers ?? ['alice'];
@@ -196,8 +195,6 @@ function createMemberSpawnRun(params?: {
     memberSpawnToolUseIds: new Map(),
     memberSpawnLeadInboxCursorByMember:
       params?.memberSpawnLeadInboxCursorByMember ?? new Map(),
-    memberSpawnProcessedLeadInboxMessageIdsByMember:
-      params?.memberSpawnProcessedLeadInboxMessageIdsByMember ?? new Map(),
     provisioningOutputParts: [],
     activeToolCalls: new Map(),
     isLaunch: false,
@@ -986,9 +983,6 @@ describe('TeamProvisioningService', () => {
     const svc = new TeamProvisioningService();
     const run = createMemberSpawnRun({
       startedAt: '2026-04-16T09:00:00.000Z',
-      memberSpawnProcessedLeadInboxMessageIdsByMember: new Map([
-        ['alice', new Set(['msg-1', 'msg-2'])],
-      ]),
       memberSpawnLeadInboxCursorByMember: new Map([
         [
           'alice',
@@ -1053,9 +1047,6 @@ describe('TeamProvisioningService', () => {
       timestamp: '2026-04-16T10:00:00.000Z',
       messageId: 'msg-1',
     });
-    expect(run.memberSpawnProcessedLeadInboxMessageIdsByMember.get('alice')).toEqual(
-      new Set(['msg-1'])
-    );
   });
 
   it('ignores teammate lead inbox signals that predate the current run', async () => {
@@ -1080,7 +1071,6 @@ describe('TeamProvisioningService', () => {
 
     expect(applySignalSpy).not.toHaveBeenCalled();
     expect(run.memberSpawnLeadInboxCursorByMember.size).toBe(0);
-    expect(run.memberSpawnProcessedLeadInboxMessageIdsByMember.size).toBe(0);
     expect(run.memberSpawnStatuses.get('alice')).toMatchObject({
       status: 'waiting',
       launchState: 'runtime_pending_bootstrap',
@@ -1088,7 +1078,7 @@ describe('TeamProvisioningService', () => {
     });
   });
 
-  it('marks an unseen older lead inbox signal as processed without replaying older state', async () => {
+  it('ignores an unseen older lead inbox signal without replaying older state', async () => {
     const latestHeartbeatAt = '2026-04-16T10:05:00.000Z';
     const existingEntry = createMemberSpawnStatusEntry({
       status: 'online',
@@ -1101,9 +1091,6 @@ describe('TeamProvisioningService', () => {
     const run = createMemberSpawnRun({
       startedAt: '2026-04-16T09:00:00.000Z',
       memberSpawnStatuses: new Map([['alice', existingEntry]]),
-      memberSpawnProcessedLeadInboxMessageIdsByMember: new Map([
-        ['alice', new Set(['msg-3'])],
-      ]),
       memberSpawnLeadInboxCursorByMember: new Map([
         [
           'alice',
@@ -1139,9 +1126,6 @@ describe('TeamProvisioningService', () => {
 
     expect(applySignalSpy).not.toHaveBeenCalled();
     expect(run.memberSpawnStatuses.get('alice')).toBe(existingEntry);
-    expect(
-      run.memberSpawnProcessedLeadInboxMessageIdsByMember.get('alice')?.has('msg-2b')
-    ).toBe(true);
     expect(run.memberSpawnLeadInboxCursorByMember.get('alice')).toEqual({
       timestamp: latestHeartbeatAt,
       messageId: 'msg-3',
@@ -1164,9 +1148,6 @@ describe('TeamProvisioningService', () => {
             lastHeartbeatAt: latestHeartbeatAt,
           }),
         ],
-      ]),
-      memberSpawnProcessedLeadInboxMessageIdsByMember: new Map([
-        ['alice', new Set(['msg-1'])],
       ]),
       memberSpawnLeadInboxCursorByMember: new Map([
         [
@@ -1202,17 +1183,11 @@ describe('TeamProvisioningService', () => {
       timestamp: '2026-04-16T10:01:00.000Z',
       messageId: 'msg-2',
     });
-    expect(run.memberSpawnProcessedLeadInboxMessageIdsByMember.get('alice')).toEqual(
-      new Set(['msg-1', 'msg-2'])
-    );
   });
 
   it('applies an unseen same-timestamp signal with a greater messageId and advances the cursor', async () => {
     const run = createMemberSpawnRun({
       startedAt: '2026-04-16T09:00:00.000Z',
-      memberSpawnProcessedLeadInboxMessageIdsByMember: new Map([
-        ['alice', new Set(['msg-2'])],
-      ]),
       memberSpawnLeadInboxCursorByMember: new Map([
         [
           'alice',
@@ -1256,9 +1231,6 @@ describe('TeamProvisioningService', () => {
       timestamp: '2026-04-16T10:00:00.000Z',
       messageId: 'msg-3',
     });
-    expect(
-      run.memberSpawnProcessedLeadInboxMessageIdsByMember.get('alice')
-    ).toEqual(new Set(['msg-2', 'msg-3']));
   });
 
   it('does not bump lastHeartbeatAt for an equal heartbeat timestamp', () => {

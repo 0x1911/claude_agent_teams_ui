@@ -702,11 +702,6 @@ interface ProvisioningRun {
   memberSpawnToolUseIds: Map<string, string>;
   /** Per-member latest processed lead-inbox bootstrap signal cursor for the current live run. */
   memberSpawnLeadInboxCursorByMember: Map<string, MemberSpawnInboxCursor>;
-  /**
-   * Per-member exact processed lead-inbox messageIds for the current live run.
-   * This owns live-path correctness and protects against out-of-order inserts.
-   */
-  memberSpawnProcessedLeadInboxMessageIdsByMember: Map<string, Set<string>>;
   /** Highest accepted deterministic bootstrap event sequence for this run. */
   lastDeterministicBootstrapSeq: number;
   /** Throttles config/inbox audit work triggered by frequent status polling. */
@@ -840,19 +835,6 @@ function maxMemberSpawnInboxCursor(
     return right;
   }
   return compareMemberSpawnInboxCursor(left, right) >= 0 ? left : right;
-}
-
-function getOrCreateMemberSpawnProcessedMessageIds(
-  run: ProvisioningRun,
-  memberName: string
-): Set<string> {
-  const existing = run.memberSpawnProcessedLeadInboxMessageIdsByMember.get(memberName);
-  if (existing) {
-    return existing;
-  }
-  const created = new Set<string>();
-  run.memberSpawnProcessedLeadInboxMessageIdsByMember.set(memberName, created);
-  return created;
 }
 
 function isMemberSpawnHeartbeatTimestampNewer(
@@ -2965,42 +2947,28 @@ export class TeamProvisioningService {
     }
 
     for (const [memberName, messages] of messagesByMember.entries()) {
-      const processedMessageIds = getOrCreateMemberSpawnProcessedMessageIds(run, memberName);
       const currentCursor = run.memberSpawnLeadInboxCursorByMember.get(memberName);
-      const newlyProcessedMessageIds: string[] = [];
       let nextCursor = currentCursor;
 
       for (const message of messages) {
-        if (processedMessageIds.has(message.messageId)) {
-          continue;
-        }
-
         const messageCursor = toMemberSpawnInboxCursor(message);
-        const shouldApplySignal =
-          messageCursor == null ||
-          currentCursor == null ||
-          compareMemberSpawnInboxCursor(messageCursor, currentCursor) > 0;
-
-        if (shouldApplySignal) {
-          this.applyLeadInboxSpawnSignal(run, memberName, message);
-          if (messageCursor) {
-            nextCursor = maxMemberSpawnInboxCursor(nextCursor, messageCursor);
+        const effectiveCursor = nextCursor ?? currentCursor;
+        if (messageCursor && effectiveCursor) {
+          if (compareMemberSpawnInboxCursor(messageCursor, effectiveCursor) <= 0) {
+            continue;
           }
         }
 
-        // Mark late out-of-order signals as seen so they cannot replay forever, but only
-        // let strictly newer cursors mutate the already-advanced live member state.
-        newlyProcessedMessageIds.push(message.messageId);
+        this.applyLeadInboxSpawnSignal(run, memberName, message);
+        if (messageCursor) {
+          nextCursor = maxMemberSpawnInboxCursor(nextCursor, messageCursor);
+        }
       }
 
-      if (newlyProcessedMessageIds.length === 0) {
-        continue;
-      }
-
-      for (const messageId of newlyProcessedMessageIds) {
-        processedMessageIds.add(messageId);
-      }
-      if (nextCursor) {
+      if (
+        nextCursor &&
+        (currentCursor == null || compareMemberSpawnInboxCursor(nextCursor, currentCursor) > 0)
+      ) {
         run.memberSpawnLeadInboxCursorByMember.set(memberName, nextCursor);
       }
     }
@@ -5127,7 +5095,6 @@ export class TeamProvisioningService {
         ),
         memberSpawnToolUseIds: new Map(),
         memberSpawnLeadInboxCursorByMember: new Map(),
-        memberSpawnProcessedLeadInboxMessageIdsByMember: new Map(),
         lastDeterministicBootstrapSeq: 0,
         lastMemberSpawnAuditAt: 0,
         lastMemberSpawnAuditConfigReadWarningAt: 0,
@@ -5708,7 +5675,6 @@ export class TeamProvisioningService {
         ),
         memberSpawnToolUseIds: new Map(),
         memberSpawnLeadInboxCursorByMember: new Map(),
-        memberSpawnProcessedLeadInboxMessageIdsByMember: new Map(),
         lastDeterministicBootstrapSeq: 0,
         lastMemberSpawnAuditAt: 0,
         lastMemberSpawnAuditConfigReadWarningAt: 0,

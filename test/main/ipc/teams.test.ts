@@ -809,17 +809,20 @@ describe('ipc teams handlers', () => {
     expect(service.getMessageFeed).not.toHaveBeenCalled();
   });
 
-  it('rejects TEAM_GET_DATA fallback in packaged runtime when worker is unavailable', async () => {
+  it('falls back TEAM_GET_DATA to the main thread in packaged runtime when worker is unavailable', async () => {
     const electron = await import('electron');
     mockTeamDataWorkerClient.isAvailable.mockReturnValue(false);
     (electron.app as { isPackaged: boolean }).isPackaged = true;
 
     const handler = handlers.get(TEAM_GET_DATA)!;
-    const result = (await handler({} as never, 'my-team')) as { success: boolean; error?: string };
+    const result = (await handler({} as never, 'my-team')) as {
+      success: boolean;
+      data?: { teamName: string };
+    };
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('TEAM_DATA_WORKER_UNAVAILABLE');
-    expect(service.getTeamData).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(result.data?.teamName).toBe('my-team');
+    expect(service.getTeamData).toHaveBeenCalledWith('my-team');
     vi.mocked(console.error).mockClear();
 
     (electron.app as { isPackaged: boolean }).isPackaged = false;
@@ -894,7 +897,7 @@ describe('ipc teams handlers', () => {
     expect(service.getMessageFeed).not.toHaveBeenCalled();
   });
 
-  it('rejects heavy TEAM_GET_MESSAGES_PAGE fallback in packaged runtime when worker is unavailable', async () => {
+  it('falls back TEAM_GET_MESSAGES_PAGE to the main thread in packaged runtime when worker is unavailable', async () => {
     const electron = await import('electron');
     mockTeamDataWorkerClient.isAvailable.mockReturnValue(false);
     (electron.app as { isPackaged: boolean }).isPackaged = true;
@@ -902,11 +905,14 @@ describe('ipc teams handlers', () => {
     const handler = handlers.get(TEAM_GET_MESSAGES_PAGE)!;
     const result = (await handler({} as never, 'my-team', {
       limit: 50,
-    })) as { success: boolean; error?: string };
+    })) as { success: boolean; data?: { feedRevision: string } };
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('TEAM_DATA_WORKER_UNAVAILABLE');
-    expect(service.getMessagesPage).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(result.data?.feedRevision).toBe('rev-1');
+    expect(service.getMessagesPage).toHaveBeenCalledWith('my-team', {
+      cursor: undefined,
+      limit: 50,
+    });
     vi.mocked(console.error).mockClear();
 
     (electron.app as { isPackaged: boolean }).isPackaged = false;
@@ -940,17 +946,20 @@ describe('ipc teams handlers', () => {
     expect(service.getMemberActivityMeta).not.toHaveBeenCalled();
   });
 
-  it('rejects heavy TEAM_GET_MEMBER_ACTIVITY_META fallback in packaged runtime when worker is unavailable', async () => {
+  it('falls back TEAM_GET_MEMBER_ACTIVITY_META to the main thread in packaged runtime when worker is unavailable', async () => {
     const electron = await import('electron');
     mockTeamDataWorkerClient.isAvailable.mockReturnValue(false);
     (electron.app as { isPackaged: boolean }).isPackaged = true;
 
     const handler = handlers.get(TEAM_GET_MEMBER_ACTIVITY_META)!;
-    const result = (await handler({} as never, 'my-team')) as { success: boolean; error?: string };
+    const result = (await handler({} as never, 'my-team')) as {
+      success: boolean;
+      data?: { feedRevision: string };
+    };
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('TEAM_DATA_WORKER_UNAVAILABLE');
-    expect(service.getMemberActivityMeta).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(result.data?.feedRevision).toBe('rev-1');
+    expect(service.getMemberActivityMeta).toHaveBeenCalledWith('my-team');
     vi.mocked(console.error).mockClear();
 
     (electron.app as { isPackaged: boolean }).isPackaged = false;

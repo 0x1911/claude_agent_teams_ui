@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { runProviderPrepareDiagnostics } from '@renderer/components/team/dialogs/providerPrepareDiagnostics';
+import {
+  buildReusableProviderPrepareModelResults,
+  runProviderPrepareDiagnostics,
+} from '@renderer/components/team/dialogs/providerPrepareDiagnostics';
 import { DEFAULT_PROVIDER_MODEL_SELECTION } from '@shared/utils/providerModelSelection';
 
 import type { TeamProvisioningPrepareResult } from '@shared/types';
@@ -17,6 +20,39 @@ function createDeferred<T>(): {
 }
 
 describe('runProviderPrepareDiagnostics', () => {
+  it('does not keep transient note results in the reusable cache', () => {
+    expect(
+      buildReusableProviderPrepareModelResults({
+        'gpt-5.4': {
+          status: 'ready',
+          line: '5.4 - verified',
+          warningLine: null,
+        },
+        'gpt-5.3-codex': {
+          status: 'notes',
+          line: '5.3 Codex - check failed - Model verification timed out',
+          warningLine: '5.3 Codex - check failed - Model verification timed out',
+        },
+        'gpt-5.2-codex': {
+          status: 'failed',
+          line: '5.2 Codex - unavailable - Not available with Codex ChatGPT subscription',
+          warningLine: null,
+        },
+      })
+    ).toEqual({
+      'gpt-5.4': {
+        status: 'ready',
+        line: '5.4 - verified',
+        warningLine: null,
+      },
+      'gpt-5.2-codex': {
+        status: 'failed',
+        line: '5.2 Codex - unavailable - Not available with Codex ChatGPT subscription',
+        warningLine: null,
+      },
+    });
+  });
+
   it('returns a failed provider result immediately when runtime preflight fails', async () => {
     const prepareProvisioning = vi.fn<
       (
@@ -42,9 +78,8 @@ describe('runProviderPrepareDiagnostics', () => {
     expect(prepareProvisioning).toHaveBeenCalledTimes(1);
   });
 
-  it('emits per-model progress updates and keeps failures scoped to the affected model', async () => {
-    const deferred54 = createDeferred<TeamProvisioningPrepareResult>();
-    const deferred52 = createDeferred<TeamProvisioningPrepareResult>();
+  it('batches uncached model probes per provider and keeps failures scoped to the affected model', async () => {
+    const deferredBatch = createDeferred<TeamProvisioningPrepareResult>();
     const progressUpdates: Array<{ details: string[]; completedCount: number; totalCount: number }> =
       [];
 
@@ -62,10 +97,8 @@ describe('runProviderPrepareDiagnostics', () => {
           message: 'CLI is warmed up and ready to launch',
         });
       }
-      if (selectedModels[0] === 'gpt-5.4') {
-        return deferred54.promise;
-      }
-      return deferred52.promise;
+      expect(selectedModels).toEqual(['gpt-5.4', 'gpt-5.2-codex']);
+      return deferredBatch.promise;
     });
 
     const resultPromise = runProviderPrepareDiagnostics({
@@ -83,24 +116,13 @@ describe('runProviderPrepareDiagnostics', () => {
       details: ['5.4 - checking...', '5.2 Codex - checking...'],
     });
 
-    deferred54.resolve({
-      ready: true,
-      message: 'CLI is warmed up and ready to launch',
-      details: ['Selected model gpt-5.4 verified for launch.'],
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(progressUpdates.at(-1)).toEqual({
-      completedCount: 1,
-      totalCount: 2,
-      details: ['5.4 - verified', '5.2 Codex - checking...'],
-    });
-
-    deferred52.resolve({
+    deferredBatch.resolve({
       ready: false,
-      message:
+      message: 'Some provider runtimes are not ready',
+      details: ['Selected model gpt-5.4 verified for launch.'],
+      warnings: [
         "Selected model gpt-5.2-codex is unavailable. The 'gpt-5.2-codex' model is not supported when using Codex with a ChatGPT account.",
+      ],
     });
     const result = await resultPromise;
 
@@ -117,6 +139,7 @@ describe('runProviderPrepareDiagnostics', () => {
         '5.2 Codex - unavailable - Not available with Codex ChatGPT subscription',
       ],
     });
+    expect(prepareProvisioning).toHaveBeenCalledTimes(2);
   });
 
   it('normalizes raw Codex API error envelopes into a clean model reason', async () => {

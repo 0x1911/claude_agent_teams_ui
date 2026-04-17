@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { buildInlineActivityEntries } from '@features/agent-graph/renderer';
 import { ActivityItem } from '@renderer/components/team/activity/ActivityItem';
 import {
   buildMessageContext,
@@ -11,10 +10,10 @@ import { Button } from '@renderer/components/ui/button';
 import { useTeamMessagesRead } from '@renderer/hooks/useTeamMessagesRead';
 import { useStore } from '@renderer/store';
 import { selectMemberMessagesForTeamMember } from '@renderer/store/slices/teamSlice';
-import { filterTeamMessages } from '@renderer/utils/teamMessageFiltering';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
-import { isLeadMember } from '@shared/utils/leadDetection';
 import { useShallow } from 'zustand/react/shallow';
+
+import { buildMemberActivityEntries } from './memberActivityEntries';
 
 import type { MemberActivityFilter } from './memberDetailTypes';
 import type { TimelineItem } from '@renderer/components/team/activity/LeadThoughtsGroup';
@@ -56,13 +55,6 @@ export const MemberMessagesTab = ({
     }))
   );
   const { readSet } = useTeamMessagesRead(teamName);
-  const leadId = `lead:${teamName}`;
-  const leadName = useMemo(
-    () => members.find((candidate) => isLeadMember(candidate))?.name ?? `${teamName}-lead`,
-    [members, teamName]
-  );
-  const ownerNodeId = memberName === leadName ? leadId : `member:${teamName}:${memberName}`;
-  const ownerNodeIds = useMemo(() => new Set([leadId, ownerNodeId]), [leadId, ownerNodeId]);
   const taskMap = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
   const messageContext = useMemo(() => buildMessageContext(members), [members]);
 
@@ -80,45 +72,34 @@ export const MemberMessagesTab = ({
   const loading = (messagesState?.loadingHead ?? false) || (messagesState?.loadingOlder ?? false);
   const hasMore = messagesState?.hasMore ?? false;
 
-  const filteredMessages = useMemo(
-    () =>
-      filterTeamMessages(messages, {
-        timeWindow: null,
-        filter: { from: new Set(), to: new Set(), showNoise: true },
-        searchQuery: '',
-      }),
-    [messages]
-  );
-
   const activityEntries = useMemo(() => {
-    const entriesByOwner = buildInlineActivityEntries({
-      data: {
-        members,
-        tasks,
-        messages: filteredMessages,
-      },
+    return buildMemberActivityEntries({
       teamName,
-      leadId,
-      leadName,
-      ownerNodeIds,
+      memberName,
+      members,
+      tasks,
+      messages,
     });
-    return (entriesByOwner.get(ownerNodeId) ?? []).slice(0, MAX_MESSAGES);
-  }, [filteredMessages, leadId, leadName, members, ownerNodeId, ownerNodeIds, tasks, teamName]);
+  }, [memberName, members, messages, tasks, teamName]);
+  const visibleActivityEntries = useMemo(
+    () => activityEntries.slice(0, MAX_MESSAGES),
+    [activityEntries]
+  );
 
   const displayEntries = useMemo(() => {
     switch (activityFilter) {
       case 'messages':
-        return activityEntries.filter(
+        return visibleActivityEntries.filter(
           (entry) => entry.message.messageKind !== 'task_comment_notification'
         );
       case 'comments':
-        return activityEntries.filter(
+        return visibleActivityEntries.filter(
           (entry) => entry.message.messageKind === 'task_comment_notification'
         );
       default:
-        return activityEntries;
+        return visibleActivityEntries;
     }
-  }, [activityEntries, activityFilter]);
+  }, [activityFilter, visibleActivityEntries]);
 
   const expandedItemsByKey = useMemo(() => {
     const items = new Map<string, TimelineItem>();
@@ -156,9 +137,10 @@ export const MemberMessagesTab = ({
         ? hasMore
           ? 'No loaded messages for this member yet'
           : 'No messages with this member'
-        : 'No activity with this member';
-  const canLoadOlderMessages =
-    hasMore && activityFilter !== 'comments' && displayEntries.length > 0;
+        : hasMore
+          ? 'No loaded activity for this member yet'
+          : 'No activity with this member';
+  const canLoadOlderMessages = hasMore && activityFilter !== 'comments';
 
   return (
     <div className="space-y-3">

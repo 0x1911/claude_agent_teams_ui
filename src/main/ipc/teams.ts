@@ -198,15 +198,14 @@ const logger = createLogger('IPC:teams');
 const seenRateLimitKeys = new Set<string>();
 const SEEN_RATE_LIMIT_KEYS_MAX = 500;
 
-function ensureHeavyTeamDataWorkerFallbackAllowed(operation: string): void {
+function noteHeavyTeamDataWorkerFallback(operation: string): void {
   if (!app.isPackaged) {
     return;
   }
 
   logger.error(
-    `[${operation}] team-data-worker unavailable in packaged runtime; refusing main-thread fallback for heavy message/activity path`
+    `[${operation}] team-data-worker unavailable in packaged runtime; falling back to main-thread execution for heavy message/activity path`
   );
-  throw new Error('TEAM_DATA_WORKER_UNAVAILABLE');
 }
 
 async function getDurableLeadTeammateRoster(
@@ -749,11 +748,11 @@ async function handleGetData(
         logger.warn(
           `[teams:getData] worker failed, falling back: ${workerErr instanceof Error ? workerErr.message : workerErr}`
         );
-        ensureHeavyTeamDataWorkerFallbackAllowed('teams:getData');
+        noteHeavyTeamDataWorkerFallback('teams:getData');
         data = await getTeamDataService().getTeamData(tn);
       }
     } else {
-      ensureHeavyTeamDataWorkerFallbackAllowed('teams:getData');
+      noteHeavyTeamDataWorkerFallback('teams:getData');
       data = await getTeamDataService().getTeamData(tn);
     }
   } catch (error) {
@@ -1700,7 +1699,7 @@ async function handleGetMessagesPage(
         );
       }
     }
-    ensureHeavyTeamDataWorkerFallbackAllowed('teams:getMessagesPage');
+    noteHeavyTeamDataWorkerFallback('teams:getMessagesPage');
     page = await getTeamDataService().getMessagesPage(vTeam.value!, { cursor, limit });
     scanTeamMessageNotifications(
       page.messages,
@@ -1734,7 +1733,7 @@ async function handleGetMemberActivityMeta(
         );
       }
     }
-    ensureHeavyTeamDataWorkerFallbackAllowed('teams:getMemberActivityMeta');
+    noteHeavyTeamDataWorkerFallback('teams:getMemberActivityMeta');
     return getTeamDataService().getMemberActivityMeta(vTeam.value!);
   });
 }
