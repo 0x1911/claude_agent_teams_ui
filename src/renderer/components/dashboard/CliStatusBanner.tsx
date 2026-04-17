@@ -387,6 +387,7 @@ const InstalledBanner = ({
     () => filterMainScreenCliProviders(cliStatus.providers),
     [cliStatus.providers]
   );
+  const canOpenExtensions = cliStatus.installed;
   const runtimeLabel = formatRuntimeLabel(cliStatus);
   const runtimeAuthSummary = formatRuntimeAuthSummary(cliStatus, visibleProviders);
 
@@ -471,8 +472,8 @@ const InstalledBanner = ({
               disabled={isBusy || cliStatusLoading || multimodelBusy}
             />
           </div>
-          {/* Extensions button — only when installed + authenticated */}
-          {cliStatus.authLoggedIn && (
+          {/* Extensions button — available whenever the runtime is installed */}
+          {canOpenExtensions && (
             <button
               onClick={openExtensionsTab}
               className="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"
