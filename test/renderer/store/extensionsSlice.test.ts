@@ -55,6 +55,7 @@ vi.mock('../../../src/renderer/api', () => ({
 
 import { api } from '../../../src/renderer/api';
 import {
+  getMcpDiagnosticKey,
   getMcpOperationKey,
   getPluginOperationKey,
 } from '../../../src/shared/utils/extensionNormalizers';
@@ -832,6 +833,40 @@ describe('extensionsSlice', () => {
 
       expect(api.cliInstaller!.getStatus).toHaveBeenCalled();
       expect(store.getState().apiKeys).toEqual([]);
+    });
+
+    it('keys MCP diagnostics by scope when the same server exists in multiple scopes', async () => {
+      (api.mcpRegistry!.diagnose as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          name: 'context7',
+          scope: 'global',
+          target: 'npx -y @upstash/context7-mcp',
+          status: 'connected',
+          statusLabel: 'Connected',
+          rawLine: 'context7: npx -y @upstash/context7-mcp - Connected',
+          checkedAt: 1,
+        },
+        {
+          name: 'context7',
+          scope: 'project',
+          target: 'uvx context7-project',
+          status: 'failed',
+          statusLabel: 'Failed to connect',
+          rawLine: 'context7: uvx context7-project - Failed to connect',
+          checkedAt: 1,
+        },
+      ]);
+
+      await store.getState().runMcpDiagnostics('/tmp/project-a');
+
+      expect(store.getState().mcpDiagnostics).toMatchObject({
+        [getMcpDiagnosticKey('context7', 'global')]: expect.objectContaining({
+          target: 'npx -y @upstash/context7-mcp',
+        }),
+        [getMcpDiagnosticKey('context7', 'project')]: expect.objectContaining({
+          target: 'uvx context7-project',
+        }),
+      });
     });
   });
 

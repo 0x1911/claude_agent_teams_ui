@@ -17,6 +17,7 @@ import { useStore } from '@renderer/store';
 import { formatRelativeTime } from '@renderer/utils/formatters';
 import { CLI_NOT_FOUND_MARKER } from '@shared/constants/cli';
 import {
+  getMcpDiagnosticKey,
   getPreferredMcpInstallationEntry,
   sanitizeMcpServerName,
 } from '@shared/utils/extensionNormalizers';
@@ -164,7 +165,12 @@ export const McpServersPanel = ({
 
   const getDiagnostic = (server: McpCatalogItem): McpServerDiagnostic | null => {
     const installedEntry = getInstalledEntry(server);
-    return installedEntry ? (mcpDiagnostics[installedEntry.name] ?? null) : null;
+    return installedEntry
+      ? (mcpDiagnostics[getMcpDiagnosticKey(installedEntry.name, installedEntry.scope)] ??
+          mcpDiagnostics[getMcpDiagnosticKey(installedEntry.name)] ??
+          mcpDiagnostics[installedEntry.name] ??
+          null)
+      : null;
   };
 
   const allDiagnostics = useMemo(
@@ -250,11 +256,18 @@ export const McpServersPanel = ({
               <div className="mcp-diagnostics-list max-h-[18.5rem] space-y-2 overflow-y-auto pr-1">
                 {allDiagnostics.map((diagnostic) => (
                   <div
-                    key={diagnostic.name}
+                    key={getMcpDiagnosticKey(diagnostic.name, diagnostic.scope)}
                     className="flex items-start justify-between gap-3 rounded-md border border-black/10 px-3 py-2 dark:border-white/10"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-text">{diagnostic.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-text">{diagnostic.name}</p>
+                        {diagnostic.scope && (
+                          <span className="rounded-full border border-border bg-surface-raised px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-text-muted">
+                            {diagnostic.scope}
+                          </span>
+                        )}
+                      </div>
                       <p
                         className="truncate font-mono text-[11px] text-text-muted"
                         title={diagnostic.target}
@@ -269,7 +282,9 @@ export const McpServersPanel = ({
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-text-muted">Waiting for `claude mcp list` results...</p>
+              <p className="text-xs text-text-muted">
+                Waiting for <code>{diagnosticsCommand}</code> results...
+              </p>
             )}
           </div>
         )}

@@ -3,6 +3,8 @@ import type { McpServerDiagnostic, McpServerHealthStatus } from '@shared/types/e
 interface McpDiagnoseJsonEntry {
   name?: string;
   target?: string;
+  scope?: 'local' | 'user' | 'project' | 'global' | 'dynamic' | 'managed';
+  transport?: string;
   status?: 'connected' | 'needs-authentication' | 'failed' | 'timeout';
   statusLabel?: string;
 }
@@ -11,6 +13,10 @@ interface McpDiagnoseJsonPayload {
   checkedAt?: string;
   diagnostics?: McpDiagnoseJsonEntry[];
 }
+
+const EMBEDDED_HTTP_URL_PATTERN = /https?:\/\/[^\s"'`]+/gi;
+const SENSITIVE_FLAG_VALUE_PATTERN =
+  /(--(?:api[-_]?key|access[-_]?token|auth[-_]?token|token|secret|password|client[-_]?secret))(?:=([^\s]+)|\s+([^\s]+))/gi;
 
 function extractJsonObject<T>(raw: string): T {
   const trimmed = raw.trim();
@@ -45,6 +51,42 @@ function parseStatusChunk(statusChunk: string): {
   }
 }
 
+function redactHttpUrl(urlString: string): string {
+  try {
+    const parsed = new URL(urlString);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return urlString;
+    }
+
+    if (!parsed.username && !parsed.password && !parsed.search && !parsed.hash) {
+      return urlString;
+    }
+
+    if (parsed.username) parsed.username = '***';
+    if (parsed.password) parsed.password = '***';
+
+    for (const key of new Set(parsed.searchParams.keys())) {
+      parsed.searchParams.set(key, 'REDACTED');
+    }
+
+    if (parsed.hash) {
+      parsed.hash = 'REDACTED';
+    }
+
+    return parsed.toString();
+  } catch {
+    return urlString;
+  }
+}
+
+function redactDiagnosticTarget(target: string): string {
+  return target
+    .replace(EMBEDDED_HTTP_URL_PATTERN, (match) => redactHttpUrl(match))
+    .replace(SENSITIVE_FLAG_VALUE_PATTERN, (_match, flag: string, inlineValue?: string) =>
+      inlineValue ? `${flag}=REDACTED` : `${flag} REDACTED`
+    );
+}
+
 function parseDiagnosticLine(line: string, checkedAt: number): McpServerDiagnostic | null {
   const statusSeparatorIdx = line.lastIndexOf(' - ');
   if (statusSeparatorIdx === -1) {
@@ -60,7 +102,7 @@ function parseDiagnosticLine(line: string, checkedAt: number): McpServerDiagnost
   }
 
   const name = descriptor.slice(0, nameSeparatorIdx).trim();
-  const target = descriptor.slice(nameSeparatorIdx + 2).trim();
+  const target = redactDiagnosticTarget(descriptor.slice(nameSeparatorIdx + 2).trim());
   if (!name || !target) {
     return null;
   }
@@ -102,6 +144,7 @@ export function parseMcpDiagnosticsJsonOutput(output: string): McpServerDiagnost
       return [];
     }
 
+    const redactedTarget = redactDiagnosticTarget(entry.target);
     const normalizedStatus: McpServerHealthStatus =
       entry.status === 'connected'
         ? 'connected'
@@ -111,11 +154,13 @@ export function parseMcpDiagnosticsJsonOutput(output: string): McpServerDiagnost
             ? 'failed'
             : 'unknown';
 
-    const rawLine = `${entry.name}: ${entry.target} - ${entry.statusLabel}`;
+    const rawLine = `${entry.name}: ${redactedTarget} - ${entry.statusLabel}`;
     return [
       {
         name: entry.name,
-        target: entry.target,
+        target: redactedTarget,
+        scope: entry.scope,
+        transport: entry.transport,
         status: normalizedStatus,
         statusLabel: entry.statusLabel,
         rawLine,

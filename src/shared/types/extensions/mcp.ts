@@ -92,6 +92,8 @@ export type McpServerHealthStatus = 'connected' | 'needs-authentication' | 'fail
 export interface McpServerDiagnostic {
   name: string;
   target: string;
+  scope?: 'local' | 'user' | 'project' | 'global' | 'dynamic' | 'managed';
+  transport?: string;
   status: McpServerHealthStatus;
   statusLabel: string;
   rawLine: string;

@@ -121,6 +121,14 @@ export function getMcpOperationKey(registryId: string, scope: InstallScope): str
 }
 
 /**
+ * Namespaced lookup key for MCP diagnostics. Scope is included when available
+ * so the same server name can coexist across global/project/local installs.
+ */
+export function getMcpDiagnosticKey(name: string, scope?: string | null): string {
+  return scope ? `mcp-diagnostic:${scope}:${name}` : `mcp-diagnostic:${name}`;
+}
+
+/**
  * Check whether a plugin has an installation for the selected scope.
  */
 export function hasInstallationInScope(

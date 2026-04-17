@@ -25,7 +25,7 @@ alpic: https://mcp.alpic.ai (HTTP) - ! Needs authentication`);
     });
     expect(diagnostics[3]).toMatchObject({
       name: 'tavily-remote-mcp',
-      target: 'npx -y mcp-remote https://mcp.tavily.com/mcp/?tavilyApiKey=test',
+      target: 'npx -y mcp-remote https://mcp.tavily.com/mcp/?tavilyApiKey=REDACTED',
       status: 'failed',
       statusLabel: 'Failed to connect',
     });
@@ -58,7 +58,9 @@ another log line`);
           },
           {
             name: 'tavily',
-            target: 'https://mcp.tavily.com/mcp',
+            target: 'https://mcp.tavily.com/mcp?token=secret',
+            scope: 'global',
+            transport: 'http',
             status: 'timeout',
             statusLabel: 'Timed out',
           },
@@ -74,6 +76,9 @@ another log line`);
       }),
       expect.objectContaining({
         name: 'tavily',
+        target: 'https://mcp.tavily.com/mcp?token=REDACTED',
+        scope: 'global',
+        transport: 'http',
         status: 'failed',
         statusLabel: 'Timed out',
       }),

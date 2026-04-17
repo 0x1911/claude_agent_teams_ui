@@ -6,7 +6,11 @@
 import { api } from '@renderer/api';
 import { CLI_NOT_FOUND_MESSAGE } from '@shared/constants/cli';
 import { isProjectScopedMcpScope } from '@shared/utils/mcpScopes';
-import { getMcpOperationKey, getPluginOperationKey } from '@shared/utils/extensionNormalizers';
+import {
+  getMcpDiagnosticKey,
+  getMcpOperationKey,
+  getPluginOperationKey,
+} from '@shared/utils/extensionNormalizers';
 
 import { findPaneByTabId, updatePane } from '../utils/paneHelpers';
 
@@ -555,7 +559,9 @@ export const createExtensionsSlice: StateCreator<AppState, [], [], ExtensionsSli
         const diagnostics = await mcpRegistry.diagnose(projectPath);
         set({
           mcpDiagnostics: Object.fromEntries(
-            diagnostics.map((entry) => [entry.name, entry] as const)
+            diagnostics.map(
+              (entry) => [getMcpDiagnosticKey(entry.name, entry.scope), entry] as const
+            )
           ),
           mcpDiagnosticsLoading: false,
           mcpDiagnosticsLastCheckedAt: Date.now(),

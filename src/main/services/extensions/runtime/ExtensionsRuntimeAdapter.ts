@@ -12,7 +12,7 @@ import type { CliFlavor } from '@shared/types';
 import type { InstalledMcpEntry, McpServerDiagnostic } from '@shared/types/extensions';
 
 const MCP_LIST_TIMEOUT_MS = 15_000;
-const MCP_DIAGNOSE_TIMEOUT_MS = 30_000;
+const MCP_DIAGNOSE_TIMEOUT_MS = 60_000;
 
 export interface ExtensionsRuntimeAdapter {
   readonly flavor: CliFlavor;
