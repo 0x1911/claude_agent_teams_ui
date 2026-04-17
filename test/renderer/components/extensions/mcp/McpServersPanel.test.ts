@@ -2,6 +2,8 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { CLI_NOT_FOUND_MARKER } from '@shared/constants/cli';
+
 interface StoreState {
   mcpBrowseCatalog: Array<{
     id: string;
@@ -32,6 +34,9 @@ interface StoreState {
   mcpDiagnosticsLastCheckedAt: number | null;
   mcpDiagnosticsLastCheckedAtByProjectPath?: Record<string, number | null>;
   runMcpDiagnostics: ReturnType<typeof vi.fn>;
+  cliStatus?: {
+    flavor?: 'claude' | 'agent_teams_orchestrator';
+  };
 }
 
 const storeState = {} as StoreState;
@@ -139,6 +144,7 @@ describe('McpServersPanel initial browse loading', () => {
     storeState.mcpDiagnosticsLastCheckedAt = null;
     storeState.mcpDiagnosticsLastCheckedAtByProjectPath = undefined;
     storeState.runMcpDiagnostics = vi.fn();
+    storeState.cliStatus = undefined;
   });
 
   afterEach(() => {
@@ -261,6 +267,42 @@ describe('McpServersPanel initial browse loading', () => {
     expect(host.textContent).toContain('Run diagnostics from this page');
     expect(host.textContent).not.toContain('claude-multimodel mcp diagnose');
     expect(host.textContent).not.toContain('claude mcp list');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('uses runtime-aware missing-runtime copy for multimodel diagnostics failures', async () => {
+    storeState.mcpDiagnosticsError = `${CLI_NOT_FOUND_MARKER}: missing runtime`;
+    storeState.cliStatus = {
+      flavor: 'agent_teams_orchestrator',
+    };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServersPanel, {
+          projectPath: null,
+          mcpSearchQuery: '',
+          mcpSearch: vi.fn(),
+          mcpSearchResults: [],
+          mcpSearchLoading: false,
+          mcpSearchWarnings: [],
+          selectedMcpServerId: null,
+          setSelectedMcpServerId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Configured runtime not available');
+    expect(host.textContent).toContain('MCP health checks require the configured runtime');
+    expect(host.textContent).not.toContain('Claude CLI not installed');
 
     await act(async () => {
       root.unmount();

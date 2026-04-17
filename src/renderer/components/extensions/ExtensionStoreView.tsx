@@ -100,21 +100,21 @@ export const ExtensionStoreView = (): React.JSX.Element => {
         label: 'Plugins',
         icon: Puzzle,
         description:
-          'Small add-ons for Claude. They give the app extra features and integrations you can install when you need them.',
+          'Small add-ons for the runtime. In multimodel mode they currently apply to Anthropic sessions when supported.',
       },
       {
         value: 'mcp-servers' as const,
         label: 'MCP Servers',
         icon: Server,
         description:
-          'Connections to outside tools and apps. They let Claude read data or do actions beyond this app.',
+          'Connections to outside tools and apps. They let the runtime read data or do actions beyond this app.',
       },
       {
         value: 'skills' as const,
         label: 'Skills',
         icon: BookOpen,
         description:
-          'Ready-made instructions for common jobs. They help Claude do specific tasks better and more consistently.',
+          'Ready-made instructions for common jobs. They help the runtime handle repeatable tasks more consistently.',
       },
       {
         value: 'api-keys' as const,

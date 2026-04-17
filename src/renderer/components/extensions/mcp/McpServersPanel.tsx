@@ -385,10 +385,15 @@ export const McpServersPanel = ({
           <div className="flex items-start gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
             <div>
-              <p className="text-sm font-medium text-amber-300">Claude CLI not installed</p>
+              <p className="text-sm font-medium text-amber-300">
+                {cliStatus?.flavor === 'agent_teams_orchestrator'
+                  ? 'Configured runtime not available'
+                  : 'Claude CLI not installed'}
+              </p>
               <p className="mt-0.5 text-xs text-text-muted">
-                MCP health checks require Claude CLI. Go to the Dashboard to install it
-                automatically.
+                {cliStatus?.flavor === 'agent_teams_orchestrator'
+                  ? 'MCP health checks require the configured runtime. Go to the Dashboard to install or repair it.'
+                  : 'MCP health checks require Claude CLI. Go to the Dashboard to install or repair it.'}
               </p>
             </div>
           </div>

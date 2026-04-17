@@ -261,11 +261,11 @@ export const SkillsPanel = ({
           <div className="min-w-0 flex-1 space-y-1 xl:max-w-2xl">
             <div className="flex items-center gap-2">
               <BookOpen className="size-4 text-text-muted" />
-              <h2 className="text-sm font-semibold text-text">Teach Claude repeatable work</h2>
+              <h2 className="text-sm font-semibold text-text">Teach repeatable work</h2>
             </div>
             <p className="max-w-2xl text-sm leading-5 text-text-muted">
-              Skills are reusable instructions that help Claude handle the same kind of task more
-              consistently.{' '}
+              Skills are reusable instructions that help the runtime handle the same kind of task
+              more consistently.{' '}
               {projectPath
                 ? `You are seeing skills for ${projectLabel ?? projectPath} plus your personal skills.`
                 : 'You are seeing only your personal skills right now.'}
@@ -428,7 +428,7 @@ export const SkillsPanel = ({
           <p className="text-xs text-text-muted">
             {skillsSearchQuery
               ? 'Try a different search term or switch filters.'
-              : 'Create your first skill to teach Claude a repeatable workflow, or import one you already use.'}
+              : 'Create your first skill to teach a repeatable workflow, or import one you already use.'}
           </p>
         </div>
       )}
@@ -527,7 +527,7 @@ export const SkillsPanel = ({
                 <div>
                   <h3 className="text-sm font-semibold text-text">Personal skills</h3>
                   <p className="text-xs text-text-muted">
-                    Habits and instructions you want Claude to remember everywhere.
+                    Habits and instructions you want available everywhere.
                   </p>
                 </div>
                 <Badge variant="secondary" className="font-normal">
