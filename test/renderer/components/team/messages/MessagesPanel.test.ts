@@ -184,7 +184,6 @@ describe('MessagesPanel idle summary invariants', () => {
           tasks: [],
           messages,
           timeWindow: null,
-          teamSessionIds: new Set<string>(),
           pendingRepliesByMember: {},
           onPendingReplyChange: vi.fn(),
         })
@@ -235,7 +234,6 @@ describe('MessagesPanel idle summary invariants', () => {
           tasks: [],
           messages,
           timeWindow: null,
-          teamSessionIds: new Set<string>(),
           pendingRepliesByMember: { alice: pendingSentAtMs },
           onPendingReplyChange,
         })
@@ -280,7 +278,6 @@ describe('MessagesPanel idle summary invariants', () => {
           tasks: [],
           messages,
           timeWindow: null,
-          teamSessionIds: new Set<string>(),
           pendingRepliesByMember: { alice: pendingSentAtMs },
           onPendingReplyChange,
         })
@@ -319,7 +316,6 @@ describe('MessagesPanel idle summary invariants', () => {
           tasks: [],
           messages: [makeMessage()],
           timeWindow: null,
-          teamSessionIds: new Set<string>(),
           pendingRepliesByMember: {},
           onPendingReplyChange: vi.fn(),
         })
