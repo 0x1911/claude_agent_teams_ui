@@ -38,6 +38,8 @@ import type {
   LeadActivityState,
   LeadContextUsage,
   MemberActivityMetaEntry,
+  TeamAgentRuntimeEntry,
+  TeamAgentRuntimeSnapshot,
   MemberSpawnStatusEntry,
   MemberSpawnStatusesSnapshot,
   PersistedTeamLaunchSummary,
@@ -251,6 +253,7 @@ function collectTeamScopedStateRemovals(
     TeamSlice,
     | 'provisioningRuns'
     | 'teamDataCacheByName'
+    | 'teamAgentRuntimeByTeam'
     | 'teamMessagesByName'
     | 'memberActivityMetaByTeam'
     | 'provisioningSnapshotByTeam'
@@ -272,6 +275,7 @@ function collectTeamScopedStateRemovals(
     Object.entries(state.provisioningRuns).filter(([, run]) => run.teamName !== teamName)
   ) as Record<string, TeamProvisioningProgress>;
   const nextTeamDataCache = omitTeamKey(state.teamDataCacheByName, teamName);
+  const nextTeamAgentRuntime = omitTeamKey(state.teamAgentRuntimeByTeam, teamName);
   const nextTeamMessages = omitTeamKey(state.teamMessagesByName, teamName);
   const nextMemberActivityMeta = omitTeamKey(state.memberActivityMetaByTeam, teamName);
   const nextProvisioningSnapshot = omitTeamKey(state.provisioningSnapshotByTeam, teamName);
@@ -295,6 +299,7 @@ function collectTeamScopedStateRemovals(
       ? { provisioningRuns: nextProvisioningRuns }
       : {}),
     ...(nextTeamDataCache ? { teamDataCacheByName: nextTeamDataCache } : {}),
+    ...(nextTeamAgentRuntime ? { teamAgentRuntimeByTeam: nextTeamAgentRuntime } : {}),
     ...(nextTeamMessages ? { teamMessagesByName: nextTeamMessages } : {}),
     ...(nextMemberActivityMeta ? { memberActivityMetaByTeam: nextMemberActivityMeta } : {}),
     ...(nextProvisioningSnapshot ? { provisioningSnapshotByTeam: nextProvisioningSnapshot } : {}),
@@ -784,6 +789,47 @@ function maybeLogMemberSpawnUiEqualSuppressed(
   logger.debug(
     `[perf] member-spawn snapshot suppressed team=${teamName} runId=${runId ?? 'none'} reason=member-spawn-ui-equal`
   );
+}
+
+function areTeamAgentRuntimeEntriesEqual(
+  left: TeamAgentRuntimeEntry | undefined,
+  right: TeamAgentRuntimeEntry | undefined
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return left === right;
+  return (
+    left.memberName === right.memberName &&
+    left.alive === right.alive &&
+    left.restartable === right.restartable &&
+    left.backendType === right.backendType &&
+    left.pid === right.pid &&
+    left.runtimeModel === right.runtimeModel &&
+    left.rssBytes === right.rssBytes
+  );
+}
+
+function areTeamAgentRuntimeSnapshotsEqual(
+  left: TeamAgentRuntimeSnapshot | undefined,
+  right: TeamAgentRuntimeSnapshot
+): boolean {
+  if (!left) return false;
+  if (left.teamName !== right.teamName || left.runId !== right.runId) {
+    return false;
+  }
+  const leftKeys = Object.keys(left.members);
+  const rightKeys = Object.keys(right.members);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  for (const key of leftKeys) {
+    if (!(key in right.members)) {
+      return false;
+    }
+    if (!areTeamAgentRuntimeEntriesEqual(left.members[key], right.members[key])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function compareInboxMessagesByTimestamp(a: InboxMessage, b: InboxMessage): number {
@@ -1979,7 +2025,9 @@ export interface TeamSlice {
   /** Per-team per-member spawn statuses during team provisioning/launch. */
   memberSpawnStatusesByTeam: Record<string, Record<string, MemberSpawnStatusEntry>>;
   memberSpawnSnapshotsByTeam: Record<string, MemberSpawnStatusesSnapshot>;
+  teamAgentRuntimeByTeam: Record<string, TeamAgentRuntimeSnapshot>;
   fetchMemberSpawnStatuses: (teamName: string) => Promise<void>;
+  fetchTeamAgentRuntime: (teamName: string) => Promise<void>;
   provisioningErrorByTeam: Record<string, string | null>;
   clearProvisioningError: (teamName?: string) => void;
   /** Per-team launch parameters (model, effort, extended context) — persisted in localStorage. */
@@ -2074,6 +2122,7 @@ export interface TeamSlice {
     request: AddTaskCommentRequest
   ) => Promise<TaskComment>;
   addMember: (teamName: string, request: AddMemberRequest) => Promise<void>;
+  restartMember: (teamName: string, memberName: string) => Promise<void>;
   removeMember: (teamName: string, memberName: string) => Promise<void>;
   updateMemberRole: (
     teamName: string,
@@ -2303,6 +2352,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
   toolHistoryByTeam: {},
   memberSpawnStatusesByTeam: {},
   memberSpawnSnapshotsByTeam: {},
+  teamAgentRuntimeByTeam: {},
   provisioningErrorByTeam: {},
   clearProvisioningError: (teamName?: string) =>
     set((state) => {
@@ -2397,6 +2447,36 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         );
       }
       // ignore — spawn statuses are best-effort
+    }
+  },
+  fetchTeamAgentRuntime: async (teamName: string) => {
+    if (!api.teams?.getTeamAgentRuntime) return;
+    try {
+      const snapshot = await api.teams.getTeamAgentRuntime(teamName);
+      set((prev) => {
+        if (snapshot.runId != null && prev.ignoredRuntimeRunIds[snapshot.runId] === teamName) {
+          return {};
+        }
+        if (
+          snapshot.runId != null &&
+          prev.currentRuntimeRunIdByTeam[teamName] != null &&
+          prev.currentRuntimeRunIdByTeam[teamName] !== snapshot.runId
+        ) {
+          return {};
+        }
+        const previousSnapshot = prev.teamAgentRuntimeByTeam[teamName];
+        if (areTeamAgentRuntimeSnapshotsEqual(previousSnapshot, snapshot)) {
+          return {};
+        }
+        return {
+          teamAgentRuntimeByTeam: {
+            ...prev.teamAgentRuntimeByTeam,
+            [teamName]: snapshot,
+          },
+        };
+      });
+    } catch {
+      // ignore — runtime snapshots are best-effort
     }
   },
   kanbanFilterQuery: null,
@@ -4098,6 +4178,14 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
     await get().refreshTeamData(teamName);
   },
 
+  restartMember: async (teamName: string, memberName: string) => {
+    await unwrapIpc('team:restartMember', () => api.teams.restartMember(teamName, memberName));
+    await Promise.all([
+      get().fetchMemberSpawnStatuses(teamName),
+      get().fetchTeamAgentRuntime(teamName),
+    ]);
+  },
+
   removeMember: async (teamName: string, memberName: string) => {
     await unwrapIpc('team:removeMember', () => api.teams.removeMember(teamName, memberName));
     await get().refreshTeamData(teamName);
@@ -4244,6 +4332,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       delete nextSpawnStatuses[request.teamName];
       const nextSpawnSnapshots = { ...state.memberSpawnSnapshotsByTeam };
       delete nextSpawnSnapshots[request.teamName];
+      const nextRuntime = { ...state.teamAgentRuntimeByTeam };
+      delete nextRuntime[request.teamName];
       const nextActiveTools = { ...state.activeToolsByTeam };
       delete nextActiveTools[request.teamName];
       const nextFinishedVisible = { ...state.finishedVisibleByTeam };
@@ -4265,6 +4355,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         provisioningErrorByTeam: nextErrors,
         memberSpawnStatusesByTeam: nextSpawnStatuses,
         memberSpawnSnapshotsByTeam: nextSpawnSnapshots,
+        teamAgentRuntimeByTeam: nextRuntime,
         activeToolsByTeam: nextActiveTools,
         finishedVisibleByTeam: nextFinishedVisible,
         toolHistoryByTeam: nextToolHistory,
@@ -4430,6 +4521,8 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       delete nextSpawnStatuses[request.teamName];
       const nextSpawnSnapshots = { ...state.memberSpawnSnapshotsByTeam };
       delete nextSpawnSnapshots[request.teamName];
+      const nextRuntime = { ...state.teamAgentRuntimeByTeam };
+      delete nextRuntime[request.teamName];
       const nextActiveTools = { ...state.activeToolsByTeam };
       delete nextActiveTools[request.teamName];
       const nextFinishedVisible = { ...state.finishedVisibleByTeam };
@@ -4451,6 +4544,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         provisioningErrorByTeam: nextErrors,
         memberSpawnStatusesByTeam: nextSpawnStatuses,
         memberSpawnSnapshotsByTeam: nextSpawnSnapshots,
+        teamAgentRuntimeByTeam: nextRuntime,
         activeToolsByTeam: nextActiveTools,
         finishedVisibleByTeam: nextFinishedVisible,
         toolHistoryByTeam: nextToolHistory,
@@ -4608,9 +4702,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
 
       const nextSpawnStatuses = { ...state.memberSpawnStatusesByTeam };
       const nextSpawnSnapshots = { ...state.memberSpawnSnapshotsByTeam };
+      const nextRuntime = { ...state.teamAgentRuntimeByTeam };
       if (isCanonicalRun) {
         delete nextSpawnStatuses[existing.teamName];
         delete nextSpawnSnapshots[existing.teamName];
+        delete nextRuntime[existing.teamName];
       }
       const nextActiveTools = { ...state.activeToolsByTeam };
       const nextFinishedVisible = { ...state.finishedVisibleByTeam };
@@ -4627,6 +4723,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
         currentRuntimeRunIdByTeam: nextRuntimeRunIdByTeam,
         memberSpawnStatusesByTeam: nextSpawnStatuses,
         memberSpawnSnapshotsByTeam: nextSpawnSnapshots,
+        teamAgentRuntimeByTeam: nextRuntime,
         activeToolsByTeam: nextActiveTools,
         finishedVisibleByTeam: nextFinishedVisible,
         toolHistoryByTeam: nextToolHistory,
@@ -4751,11 +4848,16 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
       set((prev) => {
         const next = { ...prev.memberSpawnStatusesByTeam };
         const nextSnapshots = { ...prev.memberSpawnSnapshotsByTeam };
+        const nextRuntime = { ...prev.teamAgentRuntimeByTeam };
         const currentStatuses = next[progress.teamName];
         if (!currentStatuses) {
+          if (progress.state !== 'ready') {
+            delete nextRuntime[progress.teamName];
+          }
           return {
             memberSpawnStatusesByTeam: next,
             memberSpawnSnapshotsByTeam: nextSnapshots,
+            teamAgentRuntimeByTeam: nextRuntime,
           };
         }
         if (progress.state === 'ready') {
@@ -4763,6 +4865,7 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           return {
             memberSpawnStatusesByTeam: next,
             memberSpawnSnapshotsByTeam: nextSnapshots,
+            teamAgentRuntimeByTeam: nextRuntime,
           };
         }
         const retainedStatuses = Object.fromEntries(
@@ -4774,9 +4877,11 @@ export const createTeamSlice: StateCreator<AppState, [], [], TeamSlice> = (set, 
           delete next[progress.teamName];
           delete nextSnapshots[progress.teamName];
         }
+        delete nextRuntime[progress.teamName];
         return {
           memberSpawnStatusesByTeam: next,
           memberSpawnSnapshotsByTeam: nextSnapshots,
+          teamAgentRuntimeByTeam: nextRuntime,
         };
       });
     }
