@@ -12,7 +12,7 @@ const contextStats: ContextStats = {
     {
       id: 'claude-md-1',
       category: 'claude-md',
-      path: '/tmp/CLAUDE.md',
+      path: '/workspace/CLAUDE.md',
       source: 'project-local',
       displayName: 'CLAUDE.md',
       isGlobal: false,
@@ -22,7 +22,7 @@ const contextStats: ContextStats = {
     {
       id: 'mentioned-file-1',
       category: 'mentioned-file',
-      path: '/tmp/file.ts',
+      path: '/workspace/file.ts',
       displayName: 'file.ts',
       estimatedTokens: 300,
       firstSeenTurnIndex: 0,

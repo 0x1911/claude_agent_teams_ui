@@ -108,7 +108,6 @@ import type { KanbanSortState } from './kanban/KanbanSortPopover';
 import type { ContextInjection } from '@renderer/types/contextInjection';
 import type { Session } from '@renderer/types/data';
 import type { InlineChip } from '@renderer/types/inlineChip';
-import type { ContextUsageLike } from '@shared/utils/contextMetrics';
 import type {
   MemberSpawnStatusEntry,
   ResolvedTeamMember,
@@ -116,6 +115,7 @@ import type {
   TeamTaskWithKanban,
 } from '@shared/types';
 import type { EditorSelectionAction } from '@shared/types/editor';
+import type { ContextUsageLike } from '@shared/utils/contextMetrics';
 
 interface TeamDetailViewProps {
   teamName: string;

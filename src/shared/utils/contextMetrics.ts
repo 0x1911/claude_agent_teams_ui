@@ -1,6 +1,6 @@
-import type { TeamProviderId } from '@shared/types/team';
-
 import { inferTeamProviderIdFromModel } from './teamProvider';
+
+import type { TeamProviderId } from '@shared/types/team';
 
 const ANTHROPIC_DEFAULT_CONTEXT_WINDOW = 200_000;
 const ANTHROPIC_EXTENDED_CONTEXT_WINDOW = 1_000_000;
