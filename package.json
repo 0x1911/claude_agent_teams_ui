@@ -303,7 +303,8 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
-      "node-pty"
+      "node-pty",
+      "cpu-features"
     ]
   },
   "knip": {
