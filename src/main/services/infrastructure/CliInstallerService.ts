@@ -30,6 +30,7 @@ import {
 } from '@main/utils/shellEnv';
 import { getErrorMessage } from '@shared/utils/errorHandling';
 import { createLogger } from '@shared/utils/logger';
+import { createDefaultCliExtensionCapabilities } from '@shared/utils/providerExtensionCapabilities';
 import { createHash } from 'crypto';
 import { createWriteStream, existsSync, promises as fsp } from 'fs';
 import http from 'http';
@@ -145,7 +146,13 @@ function cloneCliInstallationStatus(status: CliInstallationStatus): CliInstallat
       ...provider,
       modelVerificationState: provider.modelVerificationState ?? 'idle',
       modelAvailability: provider.modelAvailability?.map((item) => ({ ...item })) ?? [],
-      capabilities: { ...provider.capabilities },
+      capabilities: {
+        ...provider.capabilities,
+        extensions: {
+          ...createDefaultCliExtensionCapabilities(),
+          ...provider.capabilities.extensions,
+        },
+      },
       selectedBackendId: provider.selectedBackendId ?? null,
       resolvedBackendId: provider.resolvedBackendId ?? null,
       availableBackends: provider.availableBackends?.map((backend) => ({ ...backend })) ?? [],
@@ -467,6 +474,7 @@ export class CliInstallerService {
             capabilities: {
               teamLaunch: false,
               oneShot: false,
+              extensions: createDefaultCliExtensionCapabilities(),
             },
             backend: null,
           }))
@@ -528,7 +536,13 @@ export class CliInstallerService {
         authMethod: provider.authMethod,
         selectedBackendId: provider.selectedBackendId ?? null,
         resolvedBackendId: provider.resolvedBackendId ?? null,
-        capabilities: { ...provider.capabilities },
+        capabilities: {
+          ...provider.capabilities,
+          extensions: {
+            ...createDefaultCliExtensionCapabilities(),
+            ...provider.capabilities.extensions,
+          },
+        },
         backend: provider.backend ? { ...provider.backend } : null,
       },
     };

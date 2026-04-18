@@ -151,12 +151,26 @@ function seedMemberInbox(teamName: string, memberName: string, messages: unknown
   hoisted.files.set(`/mock/teams/${teamName}/inboxes/${memberName}.json`, JSON.stringify(messages));
 }
 
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 function attachAliveRun(
   service: TeamProvisioningService,
   teamName: string,
-  opts?: { writable?: boolean }
-): { writeSpy: ReturnType<typeof vi.fn> } {
-  const runId = 'run-1';
+  opts?: { writable?: boolean; runId?: string; provisioningComplete?: boolean }
+): { writeSpy: ReturnType<typeof vi.fn>; runId: string } {
+  const runId = opts?.runId ?? 'run-1';
   const writeSpy = vi.fn((_data: unknown, cb?: (err?: Error | null) => void) => {
     if (typeof cb === 'function') cb(null);
     return true;
@@ -174,6 +188,7 @@ function attachAliveRun(
       teamName,
       members: [{ name: 'team-lead', role: 'team-lead' }],
     },
+    startedAt: '2026-02-23T09:59:00.000Z',
     leadMsgSeq: 0,
     pendingToolCalls: [],
     activeToolCalls: new Map(),
@@ -181,6 +196,8 @@ function attachAliveRun(
     lastLeadTextEmitMs: 0,
     activeCrossTeamReplyHints: [],
     pendingInboxRelayCandidates: [],
+    pendingApprovals: new Map(),
+    processedPermissionRequestIds: new Set(),
     silentUserDmForward: null,
     silentUserDmForwardClearHandle: null,
     child: {
@@ -191,11 +208,11 @@ function attachAliveRun(
     },
     processKilled: false,
     cancelRequested: false,
-    provisioningComplete: true,
+    provisioningComplete: opts?.provisioningComplete ?? true,
     leadRelayCapture: null,
   });
 
-  return { writeSpy };
+  return { writeSpy, runId };
 }
 
 async function waitForCapture(service: TeamProvisioningService): Promise<any> {
@@ -433,6 +450,111 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     const second = await secondPromise;
     expect(second).toBe(1);
     expect(writeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not let stale lead inbox relay work write into a newer run', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    const inboxMessages = [
+      {
+        from: 'bob',
+        text: 'Please pick this up.',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: false,
+        messageId: 'm-stale-lead-1',
+      },
+    ];
+    seedConfig(teamName);
+    seedLeadInbox(teamName, inboxMessages);
+
+    const { writeSpy: oldWriteSpy, runId: oldRunId } = attachAliveRun(service, teamName, {
+      runId: 'run-old',
+    });
+    const inboxDeferred = createDeferred<typeof inboxMessages>();
+    const inboxReader = (service as unknown as {
+      inboxReader: { getMessagesFor: (team: string, member: string) => Promise<typeof inboxMessages> };
+    }).inboxReader;
+    const inboxSpy = vi
+      .spyOn(inboxReader, 'getMessagesFor')
+      .mockImplementationOnce(async () => await inboxDeferred.promise)
+      .mockImplementation(async () => inboxMessages);
+
+    const relayPromise = service.relayLeadInboxMessages(teamName);
+    await Promise.resolve();
+
+    const oldRun = (service as unknown as { runs: Map<string, any> }).runs.get(oldRunId);
+    oldRun.processKilled = true;
+    oldRun.cancelRequested = true;
+    oldRun.child.stdin.writable = false;
+
+    const { writeSpy: newWriteSpy } = attachAliveRun(service, teamName, { runId: 'run-new' });
+    inboxDeferred.resolve(inboxMessages);
+
+    await expect(relayPromise).resolves.toBe(0);
+    expect(oldWriteSpy).not.toHaveBeenCalled();
+    expect(newWriteSpy).not.toHaveBeenCalled();
+    inboxSpy.mockRestore();
+  });
+
+  it('does not let stale lead relay consume a newer run permission_request', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    const permissionMessage = {
+      from: 'alice',
+      text: JSON.stringify({
+        type: 'permission_request',
+        request_id: 'perm-new-run-1',
+        agent_id: 'alice',
+        tool_name: 'Bash',
+        input: { command: 'git status' },
+      }),
+      timestamp: '2026-02-23T10:00:30.000Z',
+      read: false,
+      messageId: 'perm-inbox-1',
+    };
+    seedConfig(teamName);
+    seedLeadInbox(teamName, [permissionMessage]);
+
+    const { runId: oldRunId } = attachAliveRun(service, teamName, { runId: 'run-old' });
+    const inboxDeferred = createDeferred<[typeof permissionMessage]>();
+    const inboxReader = (service as unknown as {
+      inboxReader: {
+        getMessagesFor: (
+          team: string,
+          member: string
+        ) => Promise<[typeof permissionMessage]>;
+      };
+    }).inboxReader;
+    const inboxSpy = vi
+      .spyOn(inboxReader, 'getMessagesFor')
+      .mockImplementationOnce(async () => await inboxDeferred.promise)
+      .mockImplementation(async () => [permissionMessage]);
+
+    const relayPromise = service.relayLeadInboxMessages(teamName);
+    await Promise.resolve();
+
+    const oldRun = (service as unknown as { runs: Map<string, any> }).runs.get(oldRunId);
+    oldRun.processKilled = true;
+    oldRun.cancelRequested = true;
+    oldRun.child.stdin.writable = false;
+
+    attachAliveRun(service, teamName, { runId: 'run-new' });
+    inboxDeferred.resolve([permissionMessage]);
+
+    await expect(relayPromise).resolves.toBe(0);
+
+    const inbox = JSON.parse(
+      hoisted.files.get(`/mock/teams/${teamName}/inboxes/team-lead.json`) ?? '[]'
+    ) as Array<{ messageId?: string; read?: boolean }>;
+    expect(inbox).toEqual([
+      expect.objectContaining({
+        messageId: 'perm-inbox-1',
+        read: false,
+      }),
+    ]);
+    expect(oldRun.pendingApprovals.size).toBe(0);
+    expect(oldRun.processedPermissionRequestIds.size).toBe(0);
+    inboxSpy.mockRestore();
   });
 
   it('relays legacy lead inbox rows with generated messageId', async () => {
@@ -908,6 +1030,50 @@ describe('TeamProvisioningService relayLeadInboxMessages', () => {
     const payload = String(writeSpy.mock.calls[0]?.[0] ?? '');
     expect(payload).toContain('MessageId: msg-member-relay-001');
     expect(payload).toContain('Please review my changes');
+  });
+
+  it('does not let stale member inbox relay work write into a newer run', async () => {
+    const service = new TeamProvisioningService();
+    const teamName = 'my-team';
+    const inboxMessages = [
+      {
+        from: 'user',
+        text: 'Please sync with Alice.',
+        timestamp: '2026-02-23T10:00:00.000Z',
+        read: false,
+        messageId: 'm-stale-member-1',
+      },
+    ];
+    seedConfig(teamName);
+    seedMemberInbox(teamName, 'alice', inboxMessages);
+
+    const { writeSpy: oldWriteSpy, runId: oldRunId } = attachAliveRun(service, teamName, {
+      runId: 'run-old',
+    });
+    const inboxDeferred = createDeferred<typeof inboxMessages>();
+    const inboxReader = (service as unknown as {
+      inboxReader: { getMessagesFor: (team: string, member: string) => Promise<typeof inboxMessages> };
+    }).inboxReader;
+    const inboxSpy = vi
+      .spyOn(inboxReader, 'getMessagesFor')
+      .mockImplementationOnce(async () => await inboxDeferred.promise)
+      .mockImplementation(async () => inboxMessages);
+
+    const relayPromise = service.relayMemberInboxMessages(teamName, 'alice');
+    await Promise.resolve();
+
+    const oldRun = (service as unknown as { runs: Map<string, any> }).runs.get(oldRunId);
+    oldRun.processKilled = true;
+    oldRun.cancelRequested = true;
+    oldRun.child.stdin.writable = false;
+
+    const { writeSpy: newWriteSpy } = attachAliveRun(service, teamName, { runId: 'run-new' });
+    inboxDeferred.resolve(inboxMessages);
+
+    await expect(relayPromise).resolves.toBe(0);
+    expect(oldWriteSpy).not.toHaveBeenCalled();
+    expect(newWriteSpy).not.toHaveBeenCalled();
+    inboxSpy.mockRestore();
   });
 
   it('marks pure member heartbeat idle as read without relaying it', async () => {

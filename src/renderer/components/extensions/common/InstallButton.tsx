@@ -24,6 +24,7 @@ interface InstallButtonProps {
   isInstalled: boolean;
   onInstall: () => void;
   onUninstall: () => void;
+  section?: 'plugins' | 'mcp';
   disabled?: boolean;
   size?: 'sm' | 'default';
   errorMessage?: string;
@@ -34,6 +35,7 @@ export const InstallButton = ({
   isInstalled,
   onInstall,
   onUninstall,
+  section = 'plugins',
   disabled,
   size = 'sm',
   errorMessage,
@@ -48,6 +50,7 @@ export const InstallButton = ({
     isInstalled,
     cliStatus,
     cliStatusLoading,
+    section,
   });
   const isDisabled = disabled || Boolean(disableReason);
   const [lastAction, setLastAction] = useState<'install' | 'uninstall' | null>(null);

@@ -33,6 +33,7 @@ import { useStore } from '@renderer/store';
 import { createLoadingMultimodelCliStatus } from '@renderer/store/slices/cliInstallerSlice';
 import { formatBytes } from '@renderer/utils/formatters';
 import { filterMainScreenCliProviders } from '@renderer/utils/geminiUiFreeze';
+import { isMultimodelRuntimeStatus } from '@renderer/utils/multimodelProviderVisibility';
 import {
   AlertTriangle,
   CheckCircle,
@@ -321,7 +322,11 @@ function formatRuntimeAuthSummary(
   cliStatus: NonNullable<ReturnType<typeof useCliInstaller>['cliStatus']>,
   visibleProviders: readonly CliProviderStatus[]
 ): string | null {
-  if (cliStatus.flavor === 'agent_teams_orchestrator' && visibleProviders.length > 0) {
+  if (isMultimodelRuntimeStatus(cliStatus)) {
+    if (visibleProviders.length === 0) {
+      return null;
+    }
+
     if (
       visibleProviders.every(
         (provider) => provider.statusMessage === 'Checking...' && !provider.authenticated
@@ -351,12 +356,18 @@ function isCheckingMultimodelStatus(
   visibleProviders: readonly CliProviderStatus[]
 ): boolean {
   return (
-    cliStatus.flavor === 'agent_teams_orchestrator' &&
+    isMultimodelRuntimeStatus(cliStatus) &&
     visibleProviders.length > 0 &&
     visibleProviders.every(
       (provider) => provider.statusMessage === 'Checking...' && !provider.authenticated
     )
   );
+}
+
+function hasVisibleAuthenticatedMultimodelProvider(
+  visibleProviders: readonly CliProviderStatus[]
+): boolean {
+  return visibleProviders.some((provider) => provider.authenticated);
 }
 
 const InstalledBanner = ({
@@ -382,6 +393,7 @@ const InstalledBanner = ({
     () => filterMainScreenCliProviders(cliStatus.providers),
     [cliStatus.providers]
   );
+  const canOpenExtensions = cliStatus.installed;
   const runtimeLabel = formatRuntimeLabel(cliStatus);
   const runtimeAuthSummary = formatRuntimeAuthSummary(cliStatus, visibleProviders);
 
@@ -466,8 +478,8 @@ const InstalledBanner = ({
               disabled={isBusy || cliStatusLoading || multimodelBusy}
             />
           </div>
-          {/* Extensions button — only when installed + authenticated */}
-          {cliStatus.authLoggedIn && (
+          {/* Extensions button — available whenever the runtime is installed */}
+          {canOpenExtensions && (
             <button
               onClick={openExtensionsTab}
               className="flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"
@@ -844,6 +856,16 @@ export const CliStatusBanner = (): React.JSX.Element | null => {
     if (isCheckingMultimodelStatus(cliStatus, visibleCliProviders)) return 'info';
     if (cliStatus.authStatusChecking) return 'info';
     if (!cliStatus.installed) return 'error';
+    if (isMultimodelRuntimeStatus(cliStatus) && visibleCliProviders.length === 0) {
+      return 'warning';
+    }
+    if (
+      isMultimodelRuntimeStatus(cliStatus) &&
+      visibleCliProviders.length > 0 &&
+      !hasVisibleAuthenticatedMultimodelProvider(visibleCliProviders)
+    ) {
+      return 'warning';
+    }
     if (cliStatus.installed && !cliStatus.authLoggedIn) return 'warning';
     if (cliStatus.updateAvailable) return 'info';
     return 'success';

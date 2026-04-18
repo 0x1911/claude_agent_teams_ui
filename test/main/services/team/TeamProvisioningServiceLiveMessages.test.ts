@@ -113,6 +113,12 @@ vi.mock('agent-teams-controller', () => ({
 }));
 
 import type { TeamChangeEvent } from '@shared/types/team';
+import { ConfigManager } from '../../../../src/main/services/infrastructure/ConfigManager';
+import {
+  clearAutoResumeService,
+  getAutoResumeService,
+  initializeAutoResumeService,
+} from '../../../../src/main/services/team/AutoResumeService';
 import { TeamProvisioningService } from '../../../../src/main/services/team/TeamProvisioningService';
 
 function seedConfig(teamName: string): void {
@@ -133,6 +139,7 @@ interface RunLike {
   runId: string;
   teamName: string;
   provisioningComplete: boolean;
+  detectedSessionId?: string | null;
   leadMsgSeq: number;
   pendingToolCalls: { name: string; preview: string }[];
   activeToolCalls: Map<string, unknown>;
@@ -150,6 +157,8 @@ interface RunLike {
   request: { members: { name: string; role?: string }[] };
   activeCrossTeamReplyHints?: Array<{ toTeam: string; conversationId: string }>;
   pendingInboxRelayCandidates?: unknown[];
+  memberSpawnStatuses: Map<string, unknown>;
+  pendingApprovals: Map<string, unknown>;
 }
 
 /**
@@ -159,13 +168,14 @@ interface RunLike {
 function attachRun(
   service: TeamProvisioningService,
   teamName: string,
-  opts?: { provisioningComplete?: boolean }
+  opts?: { provisioningComplete?: boolean; runId?: string; detectedSessionId?: string | null }
 ): RunLike {
-  const runId = 'run-1';
+  const runId = opts?.runId ?? 'run-1';
   const run: RunLike = {
     runId,
     teamName,
     provisioningComplete: opts?.provisioningComplete ?? false,
+    detectedSessionId: opts?.detectedSessionId ?? null,
     leadMsgSeq: 0,
     pendingToolCalls: [],
     activeToolCalls: new Map(),
@@ -180,6 +190,8 @@ function attachRun(
     provisioningOutputParts: [],
     request: { members: [{ name: 'team-lead', role: 'Team Lead' }] },
     activeCrossTeamReplyHints: [],
+    memberSpawnStatuses: new Map(),
+    pendingApprovals: new Map(),
   };
 
   (service as unknown as { aliveRunByTeam: Map<string, string> }).aliveRunByTeam.set(
@@ -225,6 +237,64 @@ describe('TeamProvisioningService pre-ready live messages', () => {
 
     // Also still in provisioningOutputParts for the banner
     expect(run.provisioningOutputParts).toHaveLength(1);
+  });
+
+  it('attaches leadSessionId to a live message when the same assistant payload carries session_id', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: false });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      session_id: 'sess-123',
+      content: [{ type: 'text', text: 'Команда создана. Запускаю всех тиммейтов параллельно.' }],
+    });
+
+    const live = service.getLiveLeadProcessMessages('my-team');
+    expect(live).toHaveLength(1);
+    expect(live[0].leadSessionId).toBe('sess-123');
+  });
+
+  it('makes leadSessionId visible to synchronous lead-message listeners in the same turn', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const seenSessionIds: Array<string | undefined> = [];
+    service.setTeamChangeEmitter((event) => {
+      if (event.type === 'lead-message') {
+        seenSessionIds.push(service.getLiveLeadProcessMessages('my-team')[0]?.leadSessionId);
+      }
+    });
+    const run = attachRun(service, 'my-team', { provisioningComplete: false });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      session_id: 'sess-sync',
+      content: [{ type: 'text', text: 'Команда создана. Запускаю всех тиммейтов параллельно.' }],
+    });
+
+    expect(seenSessionIds).toEqual(['sess-sync']);
+  });
+
+  it('retrofits leadSessionId onto earlier live messages after session detection', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: false });
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      content: [{ type: 'text', text: 'Команда создана. Запускаю всех тиммейтов параллельно.' }],
+    });
+    expect(service.getLiveLeadProcessMessages('my-team')[0]?.leadSessionId).toBeUndefined();
+
+    callHandleStreamJsonMessage(service, run, {
+      type: 'assistant',
+      session_id: 'sess-456',
+      content: [],
+    });
+
+    const live = service.getLiveLeadProcessMessages('my-team');
+    expect(live).toHaveLength(1);
+    expect(live[0].leadSessionId).toBe('sess-456');
   });
 
   it('emits lead-message event type (not inbox)', () => {
@@ -545,6 +615,82 @@ describe('TeamProvisioningService pre-ready live messages', () => {
     expect(live[0].text).toBe('Привет!');
     expect(hoisted.sendInboxMessage).not.toHaveBeenCalled();
     expect(hoisted.appendSentMessage).not.toHaveBeenCalled();
+  });
+
+  it('ignores stale cross-team send completions from an older run after a new run starts', async () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+
+    let resolveSend: ((value: { deliveredToInbox: boolean; messageId: string }) => void) | null =
+      null;
+    const crossTeamSender = vi.fn(
+      () =>
+        new Promise<{ deliveredToInbox: boolean; messageId: string }>((resolve) => {
+          resolveSend = resolve;
+        })
+    );
+    service.setCrossTeamSender(crossTeamSender);
+
+    const oldRun = attachRun(service, 'my-team', {
+      provisioningComplete: true,
+      runId: 'run-old',
+      detectedSessionId: 'sess-old',
+    });
+    oldRun.activeCrossTeamReplyHints = [{ toTeam: 'team-best', conversationId: 'conv-old' }];
+
+    callHandleStreamJsonMessage(service, oldRun, {
+      type: 'assistant',
+      content: [
+        {
+          type: 'tool_use',
+          name: 'SendMessage',
+          input: {
+            type: 'message',
+            recipient: 'team-best.user',
+            content: 'Old run cross-team reply.',
+            summary: 'Old run reply',
+          },
+        },
+      ],
+    });
+
+    await vi.waitFor(() => {
+      expect(crossTeamSender).toHaveBeenCalledTimes(1);
+    });
+
+    const newRun = attachRun(service, 'my-team', {
+      provisioningComplete: true,
+      runId: 'run-new',
+      detectedSessionId: 'sess-new',
+    });
+    service.pushLiveLeadProcessMessage('my-team', {
+      from: 'team-lead',
+      text: 'Current run is active.',
+      timestamp: '2026-04-17T12:00:10.000Z',
+      read: true,
+      source: 'lead_process',
+      messageId: 'lead-turn-run-new-1',
+      leadSessionId: 'sess-new',
+    });
+
+    expect(resolveSend).not.toBeNull();
+    const finishSend = resolveSend as unknown as ((
+      value: { deliveredToInbox: boolean; messageId: string }
+    ) => void);
+    finishSend({ deliveredToInbox: true, messageId: 'cross-stale-old-run' });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(service.getLiveLeadProcessMessages('my-team')).toEqual([
+      expect.objectContaining({
+        text: 'Current run is active.',
+        messageId: 'lead-turn-run-new-1',
+        leadSessionId: 'sess-new',
+      }),
+    ]);
+
+    (service as unknown as { cleanupRun: (runLike: unknown) => void }).cleanupRun(oldRun);
+    (service as unknown as { cleanupRun: (runLike: unknown) => void }).cleanupRun(newRun);
   });
 
   it('upgrades pseudo cross-team recipients into cross-team sends', async () => {
@@ -962,5 +1108,240 @@ describe('TeamProvisioningService pre-ready live messages', () => {
       'my-team',
       expect.objectContaining({ member: 'ops.bot' })
     );
+  });
+});
+
+describe('TeamProvisioningService auto-resume cleanup', () => {
+  beforeEach(() => {
+    hoisted.files.clear();
+    hoisted.appendSentMessage.mockClear();
+    hoisted.sendInboxMessage.mockClear();
+    clearAutoResumeService();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    clearAutoResumeService();
+    vi.useRealTimers();
+  });
+
+  it('cancels pending auto-resume timers when a run is cleaned up', async () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', { provisioningComplete: true });
+
+    const autoResumeProvisioning = {
+      getCurrentRunId: vi.fn(() => 'run-1' as string | null),
+      isTeamAlive: vi.fn(() => true),
+      sendMessageToTeam: vi.fn(async () => undefined),
+    };
+    initializeAutoResumeService(autoResumeProvisioning);
+
+    const configManager = ConfigManager.getInstance();
+    const actualConfig = configManager.getConfig();
+    const getConfigSpy = vi.spyOn(configManager, 'getConfig').mockImplementation(
+      () =>
+        ({
+          ...actualConfig,
+          notifications: {
+            ...actualConfig.notifications,
+            autoResumeOnRateLimit: true,
+          },
+        }) as never
+    );
+
+    try {
+      getAutoResumeService().handleRateLimitMessage(
+        'my-team',
+        "You've hit your limit. Resets in 5 minutes.",
+        new Date('2026-04-17T12:00:00.000Z')
+      );
+
+      (service as unknown as { cleanupRun: (runLike: unknown) => void }).cleanupRun(run);
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 30 * 1000 + 100);
+      expect(autoResumeProvisioning.sendMessageToTeam).not.toHaveBeenCalled();
+    } finally {
+      getConfigSpy.mockRestore();
+    }
+  });
+
+  it('does not let stale cleanup from an older run cancel the current run state', async () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const oldRun = attachRun(service, 'my-team', {
+      provisioningComplete: true,
+      runId: 'run-old',
+      detectedSessionId: 'sess-old',
+    });
+    const newRun = attachRun(service, 'my-team', {
+      provisioningComplete: true,
+      runId: 'run-new',
+      detectedSessionId: 'sess-new',
+    });
+
+    const autoResumeProvisioning = {
+      getCurrentRunId: vi.fn(() => 'run-1' as string | null),
+      isTeamAlive: vi.fn(() => true),
+      sendMessageToTeam: vi.fn(async () => undefined),
+    };
+    initializeAutoResumeService(autoResumeProvisioning);
+
+    const configManager = ConfigManager.getInstance();
+    const actualConfig = configManager.getConfig();
+    const getConfigSpy = vi.spyOn(configManager, 'getConfig').mockImplementation(
+      () =>
+        ({
+          ...actualConfig,
+          notifications: {
+            ...actualConfig.notifications,
+            autoResumeOnRateLimit: true,
+          },
+        }) as never
+    );
+
+    try {
+      getAutoResumeService().handleRateLimitMessage(
+        'my-team',
+        "You've hit your limit. Resets in 5 minutes.",
+        new Date('2026-04-17T12:00:00.000Z')
+      );
+
+      service.pushLiveLeadProcessMessage('my-team', {
+        from: 'team-lead',
+        text: 'Current run is active.',
+        timestamp: '2026-04-17T12:00:01.000Z',
+        read: true,
+        source: 'lead_process',
+        messageId: 'live-new-run',
+      });
+      expect(service.getLiveLeadProcessMessages('my-team')).toHaveLength(1);
+
+      (service as unknown as { cleanupRun: (runLike: unknown) => void }).cleanupRun(oldRun);
+
+      expect(service.getLiveLeadProcessMessages('my-team')).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 30 * 1000 + 100);
+      expect(autoResumeProvisioning.sendMessageToTeam).toHaveBeenCalledTimes(1);
+      expect(autoResumeProvisioning.sendMessageToTeam).toHaveBeenCalledWith(
+        'my-team',
+        expect.stringContaining('rate limit has reset')
+      );
+    } finally {
+      getConfigSpy.mockRestore();
+      (service as unknown as { cleanupRun: (runLike: unknown) => void }).cleanupRun(newRun);
+    }
+  });
+
+  it('removes stale live lead messages from an older run while preserving the current run', () => {
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const oldRun = attachRun(service, 'my-team', {
+      provisioningComplete: true,
+      runId: 'run-old',
+      detectedSessionId: 'sess-old',
+    });
+
+    service.pushLiveLeadProcessMessage('my-team', {
+      from: 'team-lead',
+      text: "You've hit your limit. Resets in 5 minutes.",
+      timestamp: '2026-04-17T12:00:00.000Z',
+      read: true,
+      source: 'lead_process',
+      messageId: 'lead-turn-run-old-1',
+      leadSessionId: 'sess-old',
+    });
+
+    const newRun = attachRun(service, 'my-team', {
+      provisioningComplete: true,
+      runId: 'run-new',
+      detectedSessionId: 'sess-new',
+    });
+
+    service.pushLiveLeadProcessMessage('my-team', {
+      from: 'team-lead',
+      text: 'Current run is active.',
+      timestamp: '2026-04-17T12:00:10.000Z',
+      read: true,
+      source: 'lead_process',
+      messageId: 'lead-turn-run-new-1',
+      leadSessionId: 'sess-new',
+    });
+
+    expect(service.getLiveLeadProcessMessages('my-team')).toHaveLength(2);
+
+    (service as unknown as { cleanupRun: (runLike: unknown) => void }).cleanupRun(oldRun);
+
+    expect(service.getLiveLeadProcessMessages('my-team')).toEqual([
+      expect.objectContaining({
+        text: 'Current run is active.',
+        messageId: 'lead-turn-run-new-1',
+        leadSessionId: 'sess-new',
+      }),
+    ]);
+
+    (service as unknown as { cleanupRun: (runLike: unknown) => void }).cleanupRun(newRun);
+  });
+
+  it('preserves the canonical assistant timestamp for live rate-limit messages', async () => {
+    vi.setSystemTime(new Date('2026-04-17T12:00:20.000Z'));
+
+    const service = new TeamProvisioningService();
+    seedConfig('my-team');
+    const run = attachRun(service, 'my-team', {
+      provisioningComplete: true,
+      detectedSessionId: 'sess-live',
+    });
+
+    const autoResumeProvisioning = {
+      getCurrentRunId: vi.fn(() => 'run-1' as string | null),
+      isTeamAlive: vi.fn(() => true),
+      sendMessageToTeam: vi.fn(async () => undefined),
+    };
+    initializeAutoResumeService(autoResumeProvisioning);
+
+    const configManager = ConfigManager.getInstance();
+    const actualConfig = configManager.getConfig();
+    const getConfigSpy = vi.spyOn(configManager, 'getConfig').mockImplementation(
+      () =>
+        ({
+          ...actualConfig,
+          notifications: {
+            ...actualConfig.notifications,
+            autoResumeOnRateLimit: true,
+          },
+        }) as never
+    );
+
+    try {
+      callHandleStreamJsonMessage(service, run, {
+        type: 'assistant',
+        timestamp: '2026-04-17T12:00:00.000Z',
+        content: [{ type: 'text', text: "You've hit your limit. Resets in 5 minutes." }],
+      });
+
+      const live = service.getLiveLeadProcessMessages('my-team');
+      expect(live).toHaveLength(1);
+      expect(live[0].timestamp).toBe('2026-04-17T12:00:00.000Z');
+
+      getAutoResumeService().handleRateLimitMessage(
+        'my-team',
+        live[0].text,
+        new Date('2026-04-17T12:00:20.000Z'),
+        new Date(live[0].timestamp)
+      );
+
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000 + 9 * 1000);
+      expect(autoResumeProvisioning.sendMessageToTeam).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(autoResumeProvisioning.sendMessageToTeam).toHaveBeenCalledTimes(1);
+      expect(autoResumeProvisioning.sendMessageToTeam).toHaveBeenCalledWith(
+        'my-team',
+        expect.stringContaining('rate limit has reset')
+      );
+    } finally {
+      getConfigSpy.mockRestore();
+    }
   });
 });

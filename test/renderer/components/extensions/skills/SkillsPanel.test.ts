@@ -2,7 +2,9 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { CliInstallationStatus } from '@shared/types';
 import type { SkillCatalogItem } from '@shared/types/extensions';
+import { createDefaultCliExtensionCapabilities } from '@shared/utils/providerExtensionCapabilities';
 
 interface StoreState {
   fetchSkillsCatalog: ReturnType<typeof vi.fn>;
@@ -12,6 +14,7 @@ interface StoreState {
   skillsDetailsById: Record<string, unknown>;
   skillsUserCatalog: SkillCatalogItem[];
   skillsProjectCatalogByProjectPath: Record<string, SkillCatalogItem[]>;
+  cliStatus: CliInstallationStatus | null;
 }
 
 const storeState = {} as StoreState;
@@ -107,11 +110,19 @@ vi.mock('@renderer/components/extensions/skills/SkillDetailDialog', () => ({
 }));
 
 vi.mock('@renderer/components/extensions/skills/SkillEditorDialog', () => ({
-  SkillEditorDialog: () => null,
+  SkillEditorDialog: ({ allowCodexRootKind }: { allowCodexRootKind: boolean }) =>
+    React.createElement('div', {
+      'data-testid': 'skill-editor-dialog',
+      'data-allow-codex-root-kind': String(allowCodexRootKind),
+    }),
 }));
 
 vi.mock('@renderer/components/extensions/skills/SkillImportDialog', () => ({
-  SkillImportDialog: () => null,
+  SkillImportDialog: ({ allowCodexRootKind }: { allowCodexRootKind: boolean }) =>
+    React.createElement('div', {
+      'data-testid': 'skill-import-dialog',
+      'data-allow-codex-root-kind': String(allowCodexRootKind),
+    }),
 }));
 
 vi.mock('lucide-react', () => {
@@ -158,6 +169,63 @@ function makeUserSkill(): SkillCatalogItem {
   };
 }
 
+function makeCodexSkill(): SkillCatalogItem {
+  return {
+    ...makeUserSkill(),
+    id: '/Users/me/.codex/skills/codex-helper',
+    name: 'Codex Helper',
+    description: 'Helps only Codex sessions',
+    folderName: 'codex-helper',
+    rootKind: 'codex',
+    discoveryRoot: '/Users/me/.codex/skills',
+    skillDir: '/Users/me/.codex/skills/codex-helper',
+    skillFile: '/Users/me/.codex/skills/codex-helper/SKILL.md',
+  };
+}
+
+function makeMultimodelStatus(
+  overrides?: Partial<CliInstallationStatus>
+): CliInstallationStatus {
+  return {
+    flavor: 'agent_teams_orchestrator',
+    displayName: 'Multimodel runtime',
+    supportsSelfUpdate: false,
+    showVersionDetails: true,
+    showBinaryPath: true,
+    installed: true,
+    installedVersion: '1.0.0',
+    binaryPath: '/usr/local/bin/agent-teams',
+    latestVersion: '1.0.0',
+    updateAvailable: false,
+    authLoggedIn: false,
+    authStatusChecking: false,
+    authMethod: null,
+    providers: [
+      {
+        providerId: 'anthropic',
+        displayName: 'Anthropic',
+        supported: true,
+        authenticated: true,
+        authMethod: 'oauth',
+        verificationState: 'verified',
+        statusMessage: 'Connected',
+        models: [],
+        canLoginFromUi: true,
+        capabilities: {
+          teamLaunch: true,
+          oneShot: true,
+          extensions: createDefaultCliExtensionCapabilities({
+            plugins: { status: 'supported', ownership: 'provider-scoped', reason: null },
+          }),
+        },
+        connection: null,
+        backend: null,
+      },
+    ],
+    ...overrides,
+  };
+}
+
 describe('SkillsPanel', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -169,6 +237,22 @@ describe('SkillsPanel', () => {
     storeState.skillsUserCatalog = [makeUserSkill()];
     storeState.skillsProjectCatalogByProjectPath = {
       '/tmp/project-a': [],
+    };
+    storeState.cliStatus = {
+      flavor: 'claude',
+      displayName: 'Claude CLI',
+      supportsSelfUpdate: true,
+      showVersionDetails: true,
+      showBinaryPath: true,
+      installed: true,
+      installedVersion: '1.0.0',
+      binaryPath: '/usr/local/bin/claude',
+      latestVersion: '1.0.0',
+      updateAvailable: false,
+      authLoggedIn: true,
+      authStatusChecking: false,
+      authMethod: 'oauth',
+      providers: [],
     };
     startWatchingMock.mockReset();
     stopWatchingMock.mockReset();
@@ -226,6 +310,170 @@ describe('SkillsPanel', () => {
 
     expect(storeState.fetchSkillsCatalog).toHaveBeenCalledWith('/tmp/project-a');
     expect(storeState.fetchSkillDetail).toHaveBeenCalledWith(skill.id, undefined);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('hides codex-only create and import affordances when codex runtime is unavailable', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillsPanel, {
+          projectPath: '/tmp/project-a',
+          projectLabel: 'Project A',
+          skillsSearchQuery: '',
+          setSkillsSearchQuery: vi.fn(),
+          skillsSort: 'name-asc',
+          setSkillsSort: vi.fn(),
+          selectedSkillId: null,
+          setSelectedSkillId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).not.toContain('Codex only');
+    for (const node of host.querySelectorAll('[data-testid="skill-editor-dialog"]')) {
+      expect(node.getAttribute('data-allow-codex-root-kind')).toBe('false');
+    }
+    const importDialog = host.querySelector('[data-testid="skill-import-dialog"]');
+    expect(importDialog?.getAttribute('data-allow-codex-root-kind')).toBe('false');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('uses a runtime-aware shared skills banner when codex is unavailable', async () => {
+    storeState.cliStatus = makeMultimodelStatus();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillsPanel, {
+          projectPath: '/tmp/project-a',
+          projectLabel: 'Project A',
+          skillsSearchQuery: '',
+          setSkillsSearchQuery: vi.fn(),
+          skillsSort: 'name-asc',
+          setSkillsSort: vi.fn(),
+          selectedSkillId: null,
+          setSelectedSkillId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain(
+      'Shared skills in `.claude`, `.cursor`, and `.agents` are available to Anthropic.'
+    );
+    expect(host.textContent).not.toContain('available to both Anthropic and Codex');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('resets the codex-only quick filter when codex entries disappear', async () => {
+    storeState.cliStatus = makeMultimodelStatus({
+      providers: [
+        ...makeMultimodelStatus().providers,
+        {
+          providerId: 'codex',
+          displayName: 'Codex',
+          supported: true,
+          authenticated: true,
+          authMethod: 'api_key',
+          verificationState: 'verified',
+          statusMessage: 'Connected',
+          models: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+            extensions: createDefaultCliExtensionCapabilities({
+              plugins: { status: 'unsupported', ownership: 'provider-scoped', reason: null },
+            }),
+          },
+          connection: null,
+          backend: null,
+        },
+      ],
+    });
+    storeState.skillsUserCatalog = [makeUserSkill(), makeCodexSkill()];
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillsPanel, {
+          projectPath: '/tmp/project-a',
+          projectLabel: 'Project A',
+          skillsSearchQuery: '',
+          setSkillsSearchQuery: vi.fn(),
+          skillsSort: 'name-asc',
+          setSkillsSort: vi.fn(),
+          selectedSkillId: null,
+          setSelectedSkillId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const codexOnlyButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Codex only')
+    );
+    expect(codexOnlyButton).toBeDefined();
+
+    await act(async () => {
+      (codexOnlyButton as HTMLButtonElement).click();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Codex Helper');
+    expect(host.textContent).not.toContain('Review Helper');
+
+    storeState.cliStatus = {
+      ...storeState.cliStatus,
+      providers: storeState.cliStatus.providers.filter((provider) => provider.providerId !== 'codex'),
+    };
+    storeState.skillsUserCatalog = [makeUserSkill()];
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillsPanel, {
+          projectPath: '/tmp/project-a',
+          projectLabel: 'Project A',
+          skillsSearchQuery: '',
+          setSkillsSearchQuery: vi.fn(),
+          skillsSort: 'name-asc',
+          setSkillsSort: vi.fn(),
+          selectedSkillId: null,
+          setSelectedSkillId: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Review Helper');
+    expect(host.textContent).not.toContain('Codex Helper');
+    expect(host.textContent).not.toContain('No skills yet');
 
     await act(async () => {
       root.unmount();

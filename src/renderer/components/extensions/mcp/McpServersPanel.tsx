@@ -17,6 +17,8 @@ import { useStore } from '@renderer/store';
 import { formatRelativeTime } from '@renderer/utils/formatters';
 import { CLI_NOT_FOUND_MARKER } from '@shared/constants/cli';
 import {
+  getMcpDiagnosticKey,
+  getMcpProjectStateKey,
   getPreferredMcpInstallationEntry,
   sanitizeMcpServerName,
 } from '@shared/utils/extensionNormalizers';
@@ -78,19 +80,27 @@ export const McpServersPanel = ({
   selectedMcpServerId,
   setSelectedMcpServerId,
 }: McpServersPanelProps): React.JSX.Element => {
+  const projectStateKey = getMcpProjectStateKey(projectPath);
   const {
     browseCatalog,
     browseNextCursor,
     browseLoading,
     browseError,
     mcpBrowse,
-    installedServers,
+    installedServersByProjectPath,
+    installedServersFallback,
     fetchMcpGitHubStars,
-    mcpDiagnostics,
-    mcpDiagnosticsLoading,
-    mcpDiagnosticsError,
-    mcpDiagnosticsLastCheckedAt,
+    mcpDiagnosticsByProjectPath,
+    mcpDiagnosticsFallback,
+    mcpDiagnosticsLoadingByProjectPath,
+    mcpDiagnosticsLoadingFallback,
+    mcpDiagnosticsErrorByProjectPath,
+    mcpDiagnosticsErrorFallback,
+    mcpDiagnosticsLastCheckedAtByProjectPath,
+    mcpDiagnosticsLastCheckedAtFallback,
     runMcpDiagnostics,
+    cliStatus,
+    cliStatusLoading,
   } = useStore(
     useShallow((s) => ({
       browseCatalog: s.mcpBrowseCatalog,
@@ -98,15 +108,34 @@ export const McpServersPanel = ({
       browseLoading: s.mcpBrowseLoading,
       browseError: s.mcpBrowseError,
       mcpBrowse: s.mcpBrowse,
-      installedServers: s.mcpInstalledServers,
+      installedServersByProjectPath: s.mcpInstalledServersByProjectPath,
+      installedServersFallback: s.mcpInstalledServers,
       fetchMcpGitHubStars: s.fetchMcpGitHubStars,
-      mcpDiagnostics: s.mcpDiagnostics,
-      mcpDiagnosticsLoading: s.mcpDiagnosticsLoading,
-      mcpDiagnosticsError: s.mcpDiagnosticsError,
-      mcpDiagnosticsLastCheckedAt: s.mcpDiagnosticsLastCheckedAt,
+      mcpDiagnosticsByProjectPath: s.mcpDiagnosticsByProjectPath,
+      mcpDiagnosticsFallback: s.mcpDiagnostics,
+      mcpDiagnosticsLoadingByProjectPath: s.mcpDiagnosticsLoadingByProjectPath,
+      mcpDiagnosticsLoadingFallback: s.mcpDiagnosticsLoading,
+      mcpDiagnosticsErrorByProjectPath: s.mcpDiagnosticsErrorByProjectPath,
+      mcpDiagnosticsErrorFallback: s.mcpDiagnosticsError,
+      mcpDiagnosticsLastCheckedAtByProjectPath: s.mcpDiagnosticsLastCheckedAtByProjectPath,
+      mcpDiagnosticsLastCheckedAtFallback: s.mcpDiagnosticsLastCheckedAt,
       runMcpDiagnostics: s.runMcpDiagnostics,
+      cliStatus: s.cliStatus,
+      cliStatusLoading: s.cliStatusLoading,
     }))
   );
+  const installedServers =
+    installedServersByProjectPath?.[projectStateKey] ?? installedServersFallback ?? [];
+  const mcpDiagnostics =
+    mcpDiagnosticsByProjectPath?.[projectStateKey] ?? mcpDiagnosticsFallback ?? {};
+  const mcpDiagnosticsLoading =
+    mcpDiagnosticsLoadingByProjectPath?.[projectStateKey] ?? mcpDiagnosticsLoadingFallback ?? false;
+  const mcpDiagnosticsError =
+    mcpDiagnosticsErrorByProjectPath?.[projectStateKey] ?? mcpDiagnosticsErrorFallback ?? null;
+  const mcpDiagnosticsLastCheckedAt =
+    mcpDiagnosticsLastCheckedAtByProjectPath?.[projectStateKey] ??
+    mcpDiagnosticsLastCheckedAtFallback ??
+    null;
 
   const [mcpSort, setMcpSort] = useState<McpSortValue>('name-asc');
 
@@ -117,9 +146,31 @@ export const McpServersPanel = ({
     }
   }, [browseCatalog.length, browseError, browseLoading, mcpBrowse]);
 
+  const diagnosticsDisableReason = useMemo(() => {
+    if (cliStatusLoading) {
+      return 'Checking runtime status...';
+    }
+
+    if (cliStatus === null || typeof cliStatus === 'undefined') {
+      return 'Checking runtime availability...';
+    }
+
+    if (cliStatus?.installed === false) {
+      if (cliStatus.binaryPath && cliStatus.launchError) {
+        return 'The configured runtime was found but failed to start. Open the Dashboard to repair or reinstall it.';
+      }
+      return 'The configured runtime is required. Install or repair it from the Dashboard.';
+    }
+
+    return null;
+  }, [cliStatus, cliStatusLoading]);
+
   useEffect(() => {
-    void runMcpDiagnostics();
-  }, [runMcpDiagnostics]);
+    if (diagnosticsDisableReason) {
+      return;
+    }
+    void runMcpDiagnostics(projectPath ?? undefined);
+  }, [diagnosticsDisableReason, projectPath, runMcpDiagnostics]);
 
   // Fetch GitHub stars after catalog loads (fire-and-forget)
   useEffect(() => {
@@ -162,7 +213,12 @@ export const McpServersPanel = ({
 
   const getDiagnostic = (server: McpCatalogItem): McpServerDiagnostic | null => {
     const installedEntry = getInstalledEntry(server);
-    return installedEntry ? (mcpDiagnostics[installedEntry.name] ?? null) : null;
+    return installedEntry
+      ? (mcpDiagnostics[getMcpDiagnosticKey(installedEntry.name, installedEntry.scope)] ??
+          mcpDiagnostics[getMcpDiagnosticKey(installedEntry.name)] ??
+          mcpDiagnostics[installedEntry.name] ??
+          null)
+      : null;
   };
 
   const allDiagnostics = useMemo(
@@ -185,6 +241,8 @@ export const McpServersPanel = ({
 
   // Sort displayed servers
   const displayServers = useMemo(() => sortMcpServers(rawServers, mcpSort), [rawServers, mcpSort]);
+  const runtimeLabel =
+    cliStatus?.flavor === 'agent_teams_orchestrator' ? 'multimodel runtime' : 'Claude CLI';
 
   // Find selected server (search in both lists to avoid losing selection during search toggle)
   const selectedServer = useMemo(() => {
@@ -205,24 +263,21 @@ export const McpServersPanel = ({
             <p className="text-sm font-medium text-text">MCP Health Status</p>
             <p className="text-xs text-text-muted">
               {mcpDiagnosticsLoading ? (
-                <>
-                  Checking installed MCP servers via Claude CLI (<code>claude mcp list</code>) ...
-                </>
+                <>Checking installed MCP servers via {runtimeLabel} ...</>
+              ) : diagnosticsDisableReason ? (
+                diagnosticsDisableReason
               ) : mcpDiagnosticsLastCheckedAt ? (
                 `Last checked ${formatRelativeTime(new Date(mcpDiagnosticsLastCheckedAt).toISOString())}`
               ) : (
-                <>
-                  Run diagnostics (<code>claude mcp list</code>) to verify installed MCP
-                  connectivity.
-                </>
+                <>Run diagnostics from this page to verify installed MCP connectivity.</>
               )}
             </p>
           </div>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void runMcpDiagnostics()}
-            disabled={mcpDiagnosticsLoading}
+            onClick={() => void runMcpDiagnostics(projectPath ?? undefined)}
+            disabled={mcpDiagnosticsLoading || Boolean(diagnosticsDisableReason)}
             className="whitespace-nowrap"
           >
             <RefreshCw
@@ -235,7 +290,7 @@ export const McpServersPanel = ({
         {(mcpDiagnosticsLoading || allDiagnostics.length > 0) && (
           <div className="mt-4 border-t border-black/10 pt-4 dark:border-white/10">
             <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-medium text-text">Claude MCP List Results</p>
+              <p className="text-sm font-medium text-text">Runtime MCP Diagnostics</p>
               {allDiagnostics.length > 0 && (
                 <span className="text-xs text-text-muted">{allDiagnostics.length} servers</span>
               )}
@@ -244,11 +299,18 @@ export const McpServersPanel = ({
               <div className="mcp-diagnostics-list max-h-[18.5rem] space-y-2 overflow-y-auto pr-1">
                 {allDiagnostics.map((diagnostic) => (
                   <div
-                    key={diagnostic.name}
+                    key={getMcpDiagnosticKey(diagnostic.name, diagnostic.scope)}
                     className="flex items-start justify-between gap-3 rounded-md border border-black/10 px-3 py-2 dark:border-white/10"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm text-text">{diagnostic.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm text-text">{diagnostic.name}</p>
+                        {diagnostic.scope && (
+                          <span className="rounded-full border border-border bg-surface-raised px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-text-muted">
+                            {diagnostic.scope}
+                          </span>
+                        )}
+                      </div>
                       <p
                         className="truncate font-mono text-[11px] text-text-muted"
                         title={diagnostic.target}
@@ -263,7 +325,7 @@ export const McpServersPanel = ({
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-text-muted">Waiting for `claude mcp list` results...</p>
+              <p className="text-xs text-text-muted">Waiting for diagnostics results...</p>
             )}
           </div>
         )}
@@ -347,10 +409,15 @@ export const McpServersPanel = ({
           <div className="flex items-start gap-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
             <div>
-              <p className="text-sm font-medium text-amber-300">Claude CLI not installed</p>
+              <p className="text-sm font-medium text-amber-300">
+                {cliStatus?.flavor === 'agent_teams_orchestrator'
+                  ? 'Configured runtime not available'
+                  : 'Claude CLI not installed'}
+              </p>
               <p className="mt-0.5 text-xs text-text-muted">
-                MCP health checks require Claude CLI. Go to the Dashboard to install it
-                automatically.
+                {cliStatus?.flavor === 'agent_teams_orchestrator'
+                  ? 'MCP health checks require the configured runtime. Go to the Dashboard to install or repair it.'
+                  : 'MCP health checks require Claude CLI. Go to the Dashboard to install or repair it.'}
               </p>
             </div>
           </div>

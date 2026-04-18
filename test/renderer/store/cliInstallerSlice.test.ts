@@ -51,6 +51,7 @@ vi.mock('@renderer/api', () => ({
 
 import { api } from '@renderer/api';
 import { useStore } from '@renderer/store';
+import { createDefaultCliExtensionCapabilities } from '@shared/utils/providerExtensionCapabilities';
 
 import type { CliInstallationStatus } from '@shared/types';
 
@@ -196,7 +197,11 @@ describe('cliInstallerSlice', () => {
             statusMessage: 'Runtime found, but startup health check failed.',
             models: [],
             canLoginFromUi: false,
-            capabilities: { teamLaunch: false, oneShot: false },
+            capabilities: {
+              teamLaunch: false,
+              oneShot: false,
+              extensions: createDefaultCliExtensionCapabilities(),
+            },
             backend: null,
           },
         ],

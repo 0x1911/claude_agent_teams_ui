@@ -16,6 +16,7 @@ import {
   getMcpOperationKey,
   sanitizeMcpServerName,
 } from '@shared/utils/extensionNormalizers';
+import { getDefaultMcpSharedScope } from '@shared/utils/mcpScopes';
 import { Clock, Cloud, Globe, KeyRound, Lock, Monitor, Star, Tag, Wrench } from 'lucide-react';
 import { Github as GithubIcon } from 'lucide-react';
 
@@ -47,7 +48,9 @@ export const McpServerCard = ({
   diagnosticsLoading,
   onClick,
 }: McpServerCardProps): React.JSX.Element => {
-  const operationKey = getMcpOperationKey(server.id, 'user');
+  const cliStatus = useStore((s) => s.cliStatus);
+  const sharedScope = getDefaultMcpSharedScope(cliStatus?.flavor);
+  const operationKey = getMcpOperationKey(server.id, sharedScope);
   const installProgress = useStore((s) => s.mcpInstallProgress[operationKey] ?? 'idle');
   const installMcpServer = useStore((s) => s.installMcpServer);
   const uninstallMcpServer = useStore((s) => s.uninstallMcpServer);
@@ -67,13 +70,13 @@ export const McpServerCard = ({
     server.requiresAuth ||
     (server.authHeaders?.length ?? 0) > 0;
   const defaultServerName = sanitizeMcpServerName(server.name);
-  const userInstallEntry =
-    normalizedInstalledEntries.find((entry) => entry.scope === 'user') ?? null;
+  const sharedInstallEntry =
+    normalizedInstalledEntries.find((entry) => entry.scope === sharedScope) ?? null;
   const installSummaryLabel = getMcpInstallationSummaryLabel(normalizedInstalledEntries);
   const supportsDirectInstalledAction =
     isInstalled &&
     normalizedInstalledEntries.length === 1 &&
-    userInstallEntry?.name === defaultServerName &&
+    sharedInstallEntry?.name === defaultServerName &&
     !requiresConfiguration;
   const shouldShowDirectInstallButton =
     canAutoInstall && (!isInstalled ? !requiresConfiguration : supportsDirectInstalledAction);
@@ -258,17 +261,22 @@ export const McpServerCard = ({
             <InstallButton
               state={installProgress}
               isInstalled={isInstalled}
+              section="mcp"
               onInstall={() =>
                 installMcpServer({
                   registryId: server.id,
                   serverName: defaultServerName,
-                  scope: 'user',
+                  scope: sharedScope,
                   envValues: {},
                   headers: [],
                 })
               }
               onUninstall={() =>
-                uninstallMcpServer(server.id, userInstallEntry?.name ?? defaultServerName, 'user')
+                uninstallMcpServer(
+                  server.id,
+                  sharedInstallEntry?.name ?? defaultServerName,
+                  sharedScope
+                )
               }
               size="sm"
               errorMessage={installError}

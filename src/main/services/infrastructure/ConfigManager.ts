@@ -62,6 +62,12 @@ export interface NotificationConfig {
   notifyOnTeamLaunched: boolean;
   /** Whether to show native OS notifications when a tool needs user approval */
   notifyOnToolApproval: boolean;
+  /** Whether to automatically resume a rate-limited team when the limit resets.
+   * When enabled, the app parses the reset time from Claude's rate-limit
+   * message and schedules a nudge to the team lead once the limit expires.
+   * Default is `false` — opt-in to avoid unexpected API usage after the reset.
+   */
+  autoResumeOnRateLimit: boolean;
   /** Only notify on status changes in solo teams (no teammates) */
   statusChangeOnlySolo: boolean;
   /** Which target statuses to notify about (e.g. ['in_progress', 'completed']) */
@@ -306,6 +312,7 @@ const DEFAULT_CONFIG: AppConfig = {
     notifyOnCrossTeamMessage: true,
     notifyOnTeamLaunched: true,
     notifyOnToolApproval: true,
+    autoResumeOnRateLimit: false,
     statusChangeOnlySolo: false,
     statusChangeStatuses: ['in_progress', 'completed'],
     triggers: DEFAULT_TRIGGERS,
@@ -502,8 +509,55 @@ export class ConfigManager {
 
     return {
       notifications: {
-        ...DEFAULT_CONFIG.notifications,
-        ...loadedNotifications,
+        enabled: loadedNotifications.enabled ?? DEFAULT_CONFIG.notifications.enabled,
+        soundEnabled: loadedNotifications.soundEnabled ?? DEFAULT_CONFIG.notifications.soundEnabled,
+        ignoredRegex: loadedNotifications.ignoredRegex ?? DEFAULT_CONFIG.notifications.ignoredRegex,
+        ignoredRepositories:
+          loadedNotifications.ignoredRepositories ??
+          DEFAULT_CONFIG.notifications.ignoredRepositories,
+        snoozedUntil: loadedNotifications.snoozedUntil ?? DEFAULT_CONFIG.notifications.snoozedUntil,
+        snoozeMinutes:
+          loadedNotifications.snoozeMinutes ?? DEFAULT_CONFIG.notifications.snoozeMinutes,
+        includeSubagentErrors:
+          loadedNotifications.includeSubagentErrors ??
+          DEFAULT_CONFIG.notifications.includeSubagentErrors,
+        notifyOnLeadInbox:
+          loadedNotifications.notifyOnLeadInbox ?? DEFAULT_CONFIG.notifications.notifyOnLeadInbox,
+        notifyOnUserInbox:
+          loadedNotifications.notifyOnUserInbox ?? DEFAULT_CONFIG.notifications.notifyOnUserInbox,
+        notifyOnClarifications:
+          loadedNotifications.notifyOnClarifications ??
+          DEFAULT_CONFIG.notifications.notifyOnClarifications,
+        notifyOnStatusChange:
+          loadedNotifications.notifyOnStatusChange ??
+          DEFAULT_CONFIG.notifications.notifyOnStatusChange,
+        notifyOnTaskComments:
+          loadedNotifications.notifyOnTaskComments ??
+          DEFAULT_CONFIG.notifications.notifyOnTaskComments,
+        notifyOnTaskCreated:
+          loadedNotifications.notifyOnTaskCreated ??
+          DEFAULT_CONFIG.notifications.notifyOnTaskCreated,
+        notifyOnAllTasksCompleted:
+          loadedNotifications.notifyOnAllTasksCompleted ??
+          DEFAULT_CONFIG.notifications.notifyOnAllTasksCompleted,
+        notifyOnCrossTeamMessage:
+          loadedNotifications.notifyOnCrossTeamMessage ??
+          DEFAULT_CONFIG.notifications.notifyOnCrossTeamMessage,
+        notifyOnTeamLaunched:
+          loadedNotifications.notifyOnTeamLaunched ??
+          DEFAULT_CONFIG.notifications.notifyOnTeamLaunched,
+        notifyOnToolApproval:
+          loadedNotifications.notifyOnToolApproval ??
+          DEFAULT_CONFIG.notifications.notifyOnToolApproval,
+        autoResumeOnRateLimit:
+          loadedNotifications.autoResumeOnRateLimit ??
+          DEFAULT_CONFIG.notifications.autoResumeOnRateLimit,
+        statusChangeOnlySolo:
+          loadedNotifications.statusChangeOnlySolo ??
+          DEFAULT_CONFIG.notifications.statusChangeOnlySolo,
+        statusChangeStatuses:
+          loadedNotifications.statusChangeStatuses ??
+          DEFAULT_CONFIG.notifications.statusChangeStatuses,
         triggers: mergedTriggers,
       },
       general: mergedGeneral,

@@ -23,21 +23,15 @@ import {
 
 describe('normalizeRepoUrl', () => {
   it('lowercases and strips .git', () => {
-    expect(normalizeRepoUrl('https://GitHub.com/Org/Repo.git')).toBe(
-      'https://github.com/org/repo',
-    );
+    expect(normalizeRepoUrl('https://GitHub.com/Org/Repo.git')).toBe('https://github.com/org/repo');
   });
 
   it('strips trailing slashes', () => {
-    expect(normalizeRepoUrl('https://github.com/org/repo/')).toBe(
-      'https://github.com/org/repo',
-    );
+    expect(normalizeRepoUrl('https://github.com/org/repo/')).toBe('https://github.com/org/repo');
   });
 
   it('handles already clean URLs', () => {
-    expect(normalizeRepoUrl('https://github.com/org/repo')).toBe(
-      'https://github.com/org/repo',
-    );
+    expect(normalizeRepoUrl('https://github.com/org/repo')).toBe('https://github.com/org/repo');
   });
 });
 
@@ -68,9 +62,10 @@ describe('inferCapabilities', () => {
   });
 
   it('detects multiple capabilities', () => {
-    expect(
-      inferCapabilities(makePlugin({ hasLspServers: true, hasMcpServers: true })),
-    ).toEqual(['lsp', 'mcp']);
+    expect(inferCapabilities(makePlugin({ hasLspServers: true, hasMcpServers: true }))).toEqual([
+      'lsp',
+      'mcp',
+    ]);
   });
 
   it('preserves capability order', () => {
@@ -80,8 +75,8 @@ describe('inferCapabilities', () => {
           hasHooks: true,
           hasAgents: true,
           hasLspServers: true,
-        }),
-      ),
+        })
+      )
     ).toEqual(['lsp', 'agent', 'hook']);
   });
 });
@@ -151,38 +146,36 @@ describe('normalizeCategory', () => {
 describe('buildPluginId', () => {
   it('creates qualifiedName format', () => {
     expect(buildPluginId('context7', 'claude-plugins-official')).toBe(
-      'context7@claude-plugins-official',
+      'context7@claude-plugins-official'
     );
   });
 });
 
 describe('getPluginOperationKey', () => {
-  it('namespaces plugin operation keys by scope', () => {
-    expect(getPluginOperationKey('context7@claude-plugins-official', 'local')).toBe(
-      'plugin:context7@claude-plugins-official:local',
+  it('namespaces user-scope plugin operation keys without a project suffix', () => {
+    expect(getPluginOperationKey('context7@claude-plugins-official', 'user')).toBe(
+      'plugin:context7@claude-plugins-official:user'
+    );
+  });
+
+  it('namespaces repo-scoped plugin operation keys by project path', () => {
+    expect(getPluginOperationKey('context7@claude-plugins-official', 'local', '/tmp/project')).toBe(
+      'plugin:context7@claude-plugins-official:local:/tmp/project'
     );
   });
 });
 
 describe('getMcpOperationKey', () => {
   it('namespaces MCP operation keys by scope', () => {
-    expect(getMcpOperationKey('io.github.upstash/context7', 'project')).toBe(
-      'mcp:io.github.upstash/context7:project',
+    expect(getMcpOperationKey('io.github.upstash/context7', 'project', '/tmp/project')).toBe(
+      'mcp:io.github.upstash/context7:project:/tmp/project'
     );
   });
 });
 
 describe('hasInstallationInScope', () => {
   it('returns true when the selected scope exists', () => {
-    expect(
-      hasInstallationInScope(
-        [
-          { scope: 'user' },
-          { scope: 'project' },
-        ],
-        'project',
-      ),
-    ).toBe(true);
+    expect(hasInstallationInScope([{ scope: 'user' }, { scope: 'project' }], 'project')).toBe(true);
   });
 
   it('returns false when the selected scope is missing', () => {
@@ -204,12 +197,9 @@ describe('getInstallationSummaryLabel', () => {
   });
 
   it('summarizes multiple scopes without pretending they are global', () => {
-    expect(
-      getInstallationSummaryLabel([
-        { scope: 'project' },
-        { scope: 'user' },
-      ]),
-    ).toBe('Installed in 2 scopes');
+    expect(getInstallationSummaryLabel([{ scope: 'project' }, { scope: 'user' }])).toBe(
+      'Installed in 2 scopes'
+    );
   });
 });
 
@@ -241,24 +231,42 @@ describe('getMcpInstallationSummaryLabel', () => {
     expect(getMcpInstallationSummaryLabel([{ scope: 'local' }])).toBe('Installed locally');
   });
 
+  it('describes a single global MCP installation', () => {
+    expect(getMcpInstallationSummaryLabel([{ scope: 'global' }])).toBe('Installed globally');
+  });
+
   it('summarizes multiple MCP scopes', () => {
-    expect(
-      getMcpInstallationSummaryLabel([
-        { scope: 'user' },
-        { scope: 'project' },
-      ])
-    ).toBe('Installed in 2 scopes');
+    expect(getMcpInstallationSummaryLabel([{ scope: 'user' }, { scope: 'project' }])).toBe(
+      'Installed in 2 scopes'
+    );
   });
 });
 
 describe('getExtensionActionDisableReason', () => {
+  const createDirectCliStatus = (
+    overrides: Partial<{
+      installed: boolean;
+      authLoggedIn: boolean;
+      binaryPath: string | null;
+      launchError: string | null;
+    }> = {}
+  ) => ({
+    flavor: 'claude' as const,
+    installed: true,
+    authLoggedIn: true,
+    binaryPath: null,
+    launchError: null,
+    providers: [],
+    ...overrides,
+  });
+
   it('requires auth only for install actions', () => {
     expect(
       getExtensionActionDisableReason({
         isInstalled: false,
-        cliStatus: { installed: true, authLoggedIn: false, binaryPath: null, launchError: null },
+        cliStatus: createDirectCliStatus({ authLoggedIn: false }),
         cliStatusLoading: false,
-      }),
+      })
     ).toContain('not signed in');
   });
 
@@ -266,9 +274,9 @@ describe('getExtensionActionDisableReason', () => {
     expect(
       getExtensionActionDisableReason({
         isInstalled: true,
-        cliStatus: { installed: true, authLoggedIn: false, binaryPath: null, launchError: null },
+        cliStatus: createDirectCliStatus({ authLoggedIn: false }),
         cliStatusLoading: false,
-      }),
+      })
     ).toBeNull();
   });
 
@@ -276,10 +284,10 @@ describe('getExtensionActionDisableReason', () => {
     expect(
       getExtensionActionDisableReason({
         isInstalled: true,
-        cliStatus: { installed: false, authLoggedIn: false, binaryPath: null, launchError: null },
+        cliStatus: createDirectCliStatus({ installed: false, authLoggedIn: false }),
         cliStatusLoading: false,
-      }),
-    ).toContain('Claude CLI required');
+      })
+    ).toContain('configured runtime');
   });
 
   it('surfaces startup health-check failures separately from missing CLI', () => {
@@ -287,14 +295,132 @@ describe('getExtensionActionDisableReason', () => {
       getExtensionActionDisableReason({
         isInstalled: false,
         cliStatus: {
-          installed: false,
-          authLoggedIn: false,
-          binaryPath: '/usr/local/bin/claude',
-          launchError: 'spawn EACCES',
+          ...createDirectCliStatus({
+            installed: false,
+            authLoggedIn: false,
+            binaryPath: '/usr/local/bin/claude',
+            launchError: 'spawn EACCES',
+          }),
         },
         cliStatusLoading: false,
-      }),
+      })
     ).toContain('failed to start');
+  });
+
+  it('disables multimodel plugin installs when the runtime declares plugins unsupported', () => {
+    expect(
+      getExtensionActionDisableReason({
+        isInstalled: false,
+        section: 'plugins',
+        cliStatus: {
+          installed: true,
+          authLoggedIn: true,
+          binaryPath: '/usr/local/bin/claude-multimodel',
+          launchError: null,
+          flavor: 'agent_teams_orchestrator',
+          providers: [
+            {
+              providerId: 'anthropic',
+              displayName: 'Anthropic',
+              supported: true,
+              authenticated: false,
+              authMethod: null,
+              verificationState: 'unknown',
+              models: [],
+              canLoginFromUi: true,
+              capabilities: {
+                teamLaunch: true,
+                oneShot: true,
+                extensions: {
+                  plugins: {
+                    status: 'unsupported',
+                    ownership: 'shared',
+                    reason: 'Anthropic plugins unavailable',
+                  },
+                  mcp: { status: 'supported', ownership: 'shared', reason: null },
+                  skills: { status: 'supported', ownership: 'shared', reason: null },
+                  apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+                },
+              },
+            },
+          ],
+        },
+        cliStatusLoading: false,
+      })
+    ).toContain('Anthropic plugins unavailable');
+  });
+
+  it('allows multimodel MCP actions without aggregate auth when MCP support is declared', () => {
+    expect(
+      getExtensionActionDisableReason({
+        isInstalled: false,
+        section: 'mcp',
+        cliStatus: {
+          installed: true,
+          authLoggedIn: false,
+          binaryPath: '/usr/local/bin/claude-multimodel',
+          launchError: null,
+          flavor: 'agent_teams_orchestrator',
+          providers: [
+            {
+              providerId: 'codex',
+              displayName: 'Codex',
+              supported: true,
+              authenticated: false,
+              authMethod: null,
+              verificationState: 'unknown',
+              models: [],
+              canLoginFromUi: true,
+              capabilities: {
+                teamLaunch: true,
+                oneShot: true,
+                extensions: {
+                  plugins: { status: 'unsupported', ownership: 'shared', reason: null },
+                  mcp: { status: 'supported', ownership: 'shared', reason: null },
+                  skills: { status: 'supported', ownership: 'shared', reason: null },
+                  apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+                },
+              },
+            },
+          ],
+        },
+        cliStatusLoading: false,
+      })
+    ).toBeNull();
+  });
+
+  it('uses conservative multimodel fallback when provider metadata is not available yet', () => {
+    expect(
+      getExtensionActionDisableReason({
+        isInstalled: false,
+        section: 'plugins',
+        cliStatus: {
+          installed: true,
+          authLoggedIn: false,
+          binaryPath: '/usr/local/bin/claude-multimodel',
+          launchError: null,
+          flavor: 'agent_teams_orchestrator',
+          providers: [],
+        },
+        cliStatusLoading: false,
+      })
+    ).toContain('not supported by the current runtime');
+
+    expect(
+      getExtensionActionDisableReason({
+        isInstalled: false,
+        section: 'mcp',
+        cliStatus: {
+          installed: true,
+          authLoggedIn: false,
+          binaryPath: '/usr/local/bin/claude-multimodel',
+          launchError: null,
+          flavor: 'agent_teams_orchestrator',
+          providers: [],
+        },
+        cliStatusLoading: false,
+      })
+    ).toContain('not supported by the current runtime');
   });
 });
 

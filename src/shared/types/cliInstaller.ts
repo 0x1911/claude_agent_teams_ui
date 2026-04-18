@@ -57,6 +57,22 @@ export interface CliExternalRuntimeDiagnostic {
   detailMessage?: string | null;
 }
 
+export type CliExtensionCapabilityStatus = 'supported' | 'read-only' | 'unsupported';
+export type CliExtensionOwnership = 'shared' | 'provider-scoped';
+
+export interface CliExtensionCapability {
+  status: CliExtensionCapabilityStatus;
+  ownership: CliExtensionOwnership;
+  reason?: string | null;
+}
+
+export interface CliExtensionCapabilities {
+  plugins: CliExtensionCapability;
+  mcp: CliExtensionCapability;
+  skills: CliExtensionCapability;
+  apiKeys: CliExtensionCapability;
+}
+
 export type CliProviderModelAvailabilityStatus =
   | 'checking'
   | 'available'
@@ -85,6 +101,7 @@ export interface CliProviderStatus {
   capabilities: {
     teamLaunch: boolean;
     oneShot: boolean;
+    extensions: CliExtensionCapabilities;
   };
   selectedBackendId?: string | null;
   resolvedBackendId?: string | null;

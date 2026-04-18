@@ -1,5 +1,5 @@
 /**
- * Main process entry point for Claude Agent Teams UI.
+ * Main process entry point for Agent Teams UI.
  *
  * Responsibilities:
  * - Initialize Electron app and main window
@@ -70,6 +70,7 @@ import { setReviewMainWindow } from './ipc/review';
 import { setTmuxMainWindow } from './ipc/tmux';
 import {
   ApiKeyService,
+  createExtensionsRuntimeAdapter,
   ExtensionFacadeService,
   GlamaMcpEnrichmentService,
   McpCatalogAggregator,
@@ -99,6 +100,7 @@ import {
   type TeamReconcileTrigger,
 } from './services/team/TeamReconcileDrainScheduler';
 import { TeamSentMessagesStore } from './services/team/TeamSentMessagesStore';
+import { clearAutoResumeService } from './services/team/AutoResumeService';
 import { getAppIconPath } from './utils/appIcon';
 import { getProjectsBasePath, getTeamsBasePath, getTodosBasePath } from './utils/pathDecoder';
 import {
@@ -878,8 +880,9 @@ async function initializeServices(): Promise<void> {
   const officialMcpRegistry = new OfficialMcpRegistryService();
   const glamaMcpService = new GlamaMcpEnrichmentService();
   const mcpAggregator = new McpCatalogAggregator(officialMcpRegistry, glamaMcpService);
-  const mcpStateService = new McpInstallationStateService();
-  const mcpHealthDiagnosticsService = new McpHealthDiagnosticsService();
+  const extensionsRuntimeAdapter = createExtensionsRuntimeAdapter();
+  const mcpStateService = new McpInstallationStateService(extensionsRuntimeAdapter);
+  const mcpHealthDiagnosticsService = new McpHealthDiagnosticsService(extensionsRuntimeAdapter);
   const skillsCatalogService = new SkillsCatalogService();
   const skillsMutationService = new SkillsMutationService();
   skillsWatcherService = new SkillsWatcherService();
@@ -891,8 +894,11 @@ async function initializeServices(): Promise<void> {
   );
 
   // Install services — resolve binary dynamically via ClaudeBinaryResolver
-  const pluginInstallService = new PluginInstallService(pluginCatalogService);
-  const mcpInstallService = new McpInstallService(mcpAggregator);
+  const pluginInstallService = new PluginInstallService(
+    pluginCatalogService,
+    extensionsRuntimeAdapter
+  );
+  const mcpInstallService = new McpInstallService(mcpAggregator, extensionsRuntimeAdapter);
   const apiKeyService = new ApiKeyService();
   await apiKeyService.syncProcessEnv(RUNTIME_MANAGED_API_KEY_ENV_VARS);
   // warmup() and ensureInstalled() are deferred to after window creation
@@ -1078,6 +1084,11 @@ async function startHttpServer(
 function shutdownServices(): void {
   logger.info('Shutting down services...');
 
+  // Clear pending auto-resume timers before anything else — otherwise the
+  // dangling setTimeout handles keep the event loop alive past shutdown and
+  // may fire against a torn-down provisioning service.
+  clearAutoResumeService();
+
   // Kill all team CLI processes via SIGKILL BEFORE anything else.
   // This must happen before the OS closes stdin pipes (on app exit),
   // because stdin EOF triggers CLI's graceful shutdown which deletes team files.
@@ -1220,7 +1231,7 @@ function createWindow(): void {
     backgroundColor: '#1a1a1a',
     ...(useNativeTitleBar ? {} : { titleBarStyle: 'hidden' as const }),
     ...(isMac && { trafficLightPosition: getTrafficLightPositionForZoom(1) }),
-    title: 'Claude Agent Teams UI',
+    title: 'Agent Teams UI',
   });
   markRendererUnavailable(mainWindow);
 

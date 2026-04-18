@@ -11,7 +11,7 @@ const PASSIVE_USER_REPLY_LINK_WINDOW_MS = 15_000;
 interface TeamMessageFeedDeps {
   getConfig: (teamName: string) => Promise<TeamConfig | null>;
   getInboxMessages: (teamName: string) => Promise<InboxMessage[]>;
-  getLeadSessionMessages: (config: TeamConfig) => Promise<InboxMessage[]>;
+  getLeadSessionMessages: (teamName: string, config: TeamConfig) => Promise<InboxMessage[]>;
   getSentMessages: (teamName: string) => Promise<InboxMessage[]>;
 }
 
@@ -370,7 +370,7 @@ export class TeamMessageFeedService {
 
     const [inboxMessages, leadTexts, sentMessages] = await Promise.all([
       this.deps.getInboxMessages(teamName).catch(() => [] as InboxMessage[]),
-      this.deps.getLeadSessionMessages(config).catch(() => [] as InboxMessage[]),
+      this.deps.getLeadSessionMessages(teamName, config).catch(() => [] as InboxMessage[]),
       this.deps.getSentMessages(teamName).catch(() => [] as InboxMessage[]),
     ]);
 

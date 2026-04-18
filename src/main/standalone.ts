@@ -1,5 +1,5 @@
 /**
- * Standalone (non-Electron) entry point for Claude Agent Teams UI.
+ * Standalone (non-Electron) entry point for Agent Teams UI.
  *
  * Runs the HTTP server + API without Electron, suitable for Docker
  * or any headless/remote environment. The renderer is served as

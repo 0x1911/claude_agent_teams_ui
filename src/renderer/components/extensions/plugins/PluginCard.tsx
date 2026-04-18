@@ -119,6 +119,7 @@ export const PluginCard = ({ plugin, index, onClick }: PluginCardProps): React.J
           <InstallButton
             state={installProgress}
             isInstalled={isUserInstalled}
+            section="plugins"
             onInstall={() => installPlugin({ pluginId: plugin.pluginId, scope: 'user' })}
             onUninstall={() => uninstallPlugin(plugin.pluginId, 'user')}
             size="sm"

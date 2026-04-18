@@ -11,6 +11,7 @@ interface StoreState {
   uninstallMcpServer: ReturnType<typeof vi.fn>;
   installErrors: Record<string, string>;
   mcpGitHubStars: Record<string, number>;
+  cliStatus?: { flavor: 'claude' | 'agent_teams_orchestrator' } | null;
 }
 
 const storeState = {} as StoreState;
@@ -127,6 +128,7 @@ describe('McpServerCard direct action safety', () => {
     storeState.uninstallMcpServer = vi.fn();
     storeState.installErrors = {};
     storeState.mcpGitHubStars = {};
+    storeState.cliStatus = null;
   });
 
   afterEach(() => {
@@ -253,11 +255,12 @@ describe('McpServerCard direct action safety', () => {
     };
 
     storeState.mcpInstallProgress = {
-      [getMcpOperationKey('io.github.upstash/context7', 'project')]: 'error',
+      [getMcpOperationKey('io.github.upstash/context7', 'project', '/tmp/project')]: 'error',
       [getMcpOperationKey('io.github.upstash/context7', 'user')]: 'pending',
     };
     storeState.installErrors = {
-      [getMcpOperationKey('io.github.upstash/context7', 'project')]: 'Project failed',
+      [getMcpOperationKey('io.github.upstash/context7', 'project', '/tmp/project')]:
+        'Project failed',
       [getMcpOperationKey('io.github.upstash/context7', 'user')]: 'User failed',
     };
 
@@ -279,6 +282,39 @@ describe('McpServerCard direct action safety', () => {
     const installButton = host.querySelector('[data-testid="install-button"]') as HTMLButtonElement;
     expect(installButton.dataset.state).toBe('pending');
     expect(installButton.dataset.error).toBe('User failed');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps direct actions for standard global installs in multimodel mode', async () => {
+    storeState.cliStatus = { flavor: 'agent_teams_orchestrator' };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const installedEntry: InstalledMcpEntry = {
+      name: 'context7',
+      scope: 'global',
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerCard, {
+          server: makeServer(),
+          isInstalled: true,
+          installedEntry,
+          installedEntries: [installedEntry],
+          diagnostic: null,
+          diagnosticsLoading: false,
+          onClick: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.querySelector('[data-testid="install-button"]')).not.toBeNull();
 
     await act(async () => {
       root.unmount();

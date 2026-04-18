@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface StoreState {
   installCustomMcpServer: ReturnType<typeof vi.fn>;
+  cliStatus?: Record<string, unknown> | null;
+  cliStatusLoading?: boolean;
 }
 
 const storeState = {} as StoreState;
@@ -116,6 +118,15 @@ describe('CustomMcpServerDialog project scope', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     storeState.installCustomMcpServer = vi.fn().mockResolvedValue(undefined);
+    storeState.cliStatus = {
+      flavor: 'claude',
+      installed: true,
+      authLoggedIn: true,
+      binaryPath: '/usr/local/bin/claude',
+      launchError: null,
+      providers: [],
+    };
+    storeState.cliStatusLoading = false;
     lookupMock.mockReset();
     lookupMock.mockResolvedValue([]);
   });
@@ -145,6 +156,273 @@ describe('CustomMcpServerDialog project scope', () => {
     const localOption = host.querySelector('option[value="local"]') as HTMLOptionElement;
     expect(projectOption.disabled).toBe(true);
     expect(localOption.disabled).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('defaults to global scope in multimodel mode', async () => {
+    storeState.cliStatus = { flavor: 'agent_teams_orchestrator' };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(CustomMcpServerDialog, {
+          open: true,
+          onClose: vi.fn(),
+          projectPath: null,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+    expect(scopeSelect.value).toBe('global');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('preserves entered values when multimodel scope metadata loads after open', async () => {
+    storeState.cliStatus = null;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(CustomMcpServerDialog, {
+          open: true,
+          onClose: vi.fn(),
+          projectPath: null,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const nameInput = host.querySelector('#custom-name') as HTMLInputElement;
+    const packageInput = host.querySelector('#custom-npm') as HTMLInputElement;
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+
+    await act(async () => {
+      setNativeValue(nameInput, 'late-hydration-server', 'input');
+      setNativeValue(packageInput, '@example/late-hydration', 'input');
+      await Promise.resolve();
+    });
+
+    expect(scopeSelect.value).toBe('user');
+
+    storeState.cliStatus = { flavor: 'agent_teams_orchestrator' };
+    await act(async () => {
+      root.render(
+        React.createElement(CustomMcpServerDialog, {
+          open: true,
+          onClose: vi.fn(),
+          projectPath: null,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect((host.querySelector('#custom-name') as HTMLInputElement).value).toBe(
+      'late-hydration-server'
+    );
+    expect((host.querySelector('#custom-npm') as HTMLInputElement).value).toBe(
+      '@example/late-hydration'
+    );
+    expect((host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement).value).toBe(
+      'global'
+    );
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('disables installation when the runtime declares MCP writes unavailable', async () => {
+    storeState.cliStatus = {
+      flavor: 'agent_teams_orchestrator',
+      installed: true,
+      authLoggedIn: true,
+      binaryPath: '/usr/local/bin/claude-multimodel',
+      launchError: null,
+      providers: [
+        {
+          providerId: 'anthropic',
+          displayName: 'Anthropic',
+          supported: true,
+          authenticated: true,
+          authMethod: 'oauth_token',
+          verificationState: 'verified',
+          models: [],
+          canLoginFromUi: true,
+          capabilities: {
+            teamLaunch: true,
+            oneShot: true,
+            extensions: {
+              plugins: { status: 'supported', ownership: 'shared', reason: null },
+              mcp: {
+                status: 'read-only',
+                ownership: 'shared',
+                reason: 'MCP writes unavailable',
+              },
+              skills: { status: 'supported', ownership: 'shared', reason: null },
+              apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+            },
+          },
+        },
+      ],
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(CustomMcpServerDialog, {
+          open: true,
+          onClose: vi.fn(),
+          projectPath: null,
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('MCP writes unavailable');
+    const installButton = Array.from(host.querySelectorAll('button')).find(
+      (button) => button.textContent?.includes('Install')
+    ) as HTMLButtonElement | undefined;
+    expect(installButton).toBeDefined();
+    expect(installButton?.disabled).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('looks up project-scoped API keys only when project scope is selected', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(CustomMcpServerDialog, {
+          open: true,
+          onClose: vi.fn(),
+          projectPath: '/tmp/custom-mcp-project',
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const addEnvButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Add')
+    ) as HTMLButtonElement;
+    await act(async () => {
+      addEnvButton.click();
+      await Promise.resolve();
+    });
+
+    const envKeyInput = host.querySelector(
+      'input[placeholder="ENV_VAR_NAME"]'
+    ) as HTMLInputElement;
+    await act(async () => {
+      setNativeValue(envKeyInput, 'CONTEXT7_API_KEY', 'input');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(lookupMock).toHaveBeenCalledWith(['CONTEXT7_API_KEY'], undefined);
+
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+    await act(async () => {
+      setNativeValue(scopeSelect, 'project', 'change');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(lookupMock).toHaveBeenLastCalledWith(['CONTEXT7_API_KEY'], '/tmp/custom-mcp-project');
+
+    await act(async () => {
+      setNativeValue(scopeSelect, 'user', 'change');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(lookupMock).toHaveBeenLastCalledWith(['CONTEXT7_API_KEY'], undefined);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('clears stale project auto-filled values when switching back to user scope', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    lookupMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ envVarName: 'CONTEXT7_API_KEY', value: 'project-secret' }])
+      .mockResolvedValueOnce([]);
+
+    await act(async () => {
+      root.render(
+        React.createElement(CustomMcpServerDialog, {
+          open: true,
+          onClose: vi.fn(),
+          projectPath: '/tmp/custom-mcp-project',
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const addEnvButton = Array.from(host.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Add')
+    ) as HTMLButtonElement;
+    await act(async () => {
+      addEnvButton.click();
+      await Promise.resolve();
+    });
+
+    const envKeyInput = host.querySelector(
+      'input[placeholder="ENV_VAR_NAME"]'
+    ) as HTMLInputElement;
+    const envValueInput = host.querySelector(
+      'input[placeholder="value"]'
+    ) as HTMLInputElement;
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+
+    await act(async () => {
+      setNativeValue(envKeyInput, 'CONTEXT7_API_KEY', 'input');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      setNativeValue(scopeSelect, 'project', 'change');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(envValueInput.value).toBe('project-secret');
+
+    await act(async () => {
+      setNativeValue(scopeSelect, 'user', 'change');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(envValueInput.value).toBe('');
 
     await act(async () => {
       root.unmount();

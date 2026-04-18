@@ -1583,7 +1583,8 @@ const electronAPI: ElectronAPI = {
       invokeIpcWithResult<McpCatalogItem | null>(MCP_REGISTRY_GET_BY_ID, registryId),
     getInstalled: (projectPath?: string) =>
       invokeIpcWithResult<InstalledMcpEntry[]>(MCP_REGISTRY_GET_INSTALLED, projectPath),
-    diagnose: () => invokeIpcWithResult<McpServerDiagnostic[]>(MCP_REGISTRY_DIAGNOSE),
+    diagnose: (projectPath?: string) =>
+      invokeIpcWithResult<McpServerDiagnostic[]>(MCP_REGISTRY_DIAGNOSE, projectPath),
     install: (request: McpInstallRequest) =>
       invokeIpcWithResult<OperationResult>(MCP_REGISTRY_INSTALL, request),
     installCustom: (request: McpCustomInstallRequest) =>
@@ -1627,8 +1628,8 @@ const electronAPI: ElectronAPI = {
     list: () => invokeIpcWithResult<ApiKeyEntry[]>(API_KEYS_LIST),
     save: (request: ApiKeySaveRequest) => invokeIpcWithResult<ApiKeyEntry>(API_KEYS_SAVE, request),
     delete: (id: string) => invokeIpcWithResult<void>(API_KEYS_DELETE, id),
-    lookup: (envVarNames: string[]) =>
-      invokeIpcWithResult<ApiKeyLookupResult[]>(API_KEYS_LOOKUP, envVarNames),
+    lookup: (envVarNames: string[], projectPath?: string) =>
+      invokeIpcWithResult<ApiKeyLookupResult[]>(API_KEYS_LOOKUP, envVarNames, projectPath),
     getStorageStatus: () => invokeIpcWithResult<ApiKeyStorageStatus>(API_KEYS_STORAGE_STATUS),
   },
 

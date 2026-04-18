@@ -17,6 +17,7 @@ import {
   CliProviderModelAvailabilityService,
   type ProviderModelAvailabilityContext,
 } from '@main/services/runtime/CliProviderModelAvailabilityService';
+import { createDefaultCliExtensionCapabilities } from '@shared/utils/providerExtensionCapabilities';
 
 function createContext(models: string[]): ProviderModelAvailabilityContext {
   return {
@@ -33,6 +34,7 @@ function createContext(models: string[]): ProviderModelAvailabilityContext {
       capabilities: {
         teamLaunch: true,
         oneShot: true,
+        extensions: createDefaultCliExtensionCapabilities(),
       },
       backend: {
         kind: 'openai',
@@ -78,14 +80,12 @@ describe('CliProviderModelAvailabilityService', () => {
       connectionIssues: {},
     });
     execCliMock.mockRejectedValue(
-      new Error(
-        "The 'gpt-5.1-codex-max' model is not supported when using Codex with a ChatGPT account."
-      )
+      new Error("The 'gpt-5.4' model is not supported when using Codex with a ChatGPT account.")
     );
 
     const onUpdate = vi.fn();
     const service = new CliProviderModelAvailabilityService(onUpdate);
-    service.getSnapshot(createContext(['gpt-5.1-codex-max']));
+    service.getSnapshot(createContext(['gpt-5.4']));
 
     await vi.waitFor(() => {
       expect(onUpdate).toHaveBeenCalledWith(
@@ -94,7 +94,7 @@ describe('CliProviderModelAvailabilityService', () => {
         expect.objectContaining({
           modelAvailability: [
             expect.objectContaining({
-              modelId: 'gpt-5.1-codex-max',
+              modelId: 'gpt-5.4',
               status: 'unavailable',
               reason: 'Not available with Codex ChatGPT subscription',
             }),

@@ -2,6 +2,11 @@
  * Pure-function normalizers for Extension Store data.
  */
 
+import {
+  getCliProviderExtensionCapability,
+  isCliExtensionCapabilityMutable,
+} from './providerExtensionCapabilities';
+
 import type {
   CliInstallationStatus,
   InstalledMcpEntry,
@@ -104,15 +109,44 @@ export function buildPluginId(pluginName: string, marketplaceName: string): stri
 /**
  * Namespaced operation-state key for plugin install/uninstall UI state.
  */
-export function getPluginOperationKey(pluginId: string, scope: InstallScope): string {
+export function getPluginOperationKey(
+  pluginId: string,
+  scope: InstallScope,
+  projectPath?: string | null
+): string {
+  if (scope === 'project' || scope === 'local') {
+    return `plugin:${pluginId}:${scope}:${getMcpProjectStateKey(projectPath)}`;
+  }
   return `plugin:${pluginId}:${scope}`;
 }
 
 /**
  * Namespaced operation-state key for MCP install/uninstall UI state.
  */
-export function getMcpOperationKey(registryId: string, scope: InstallScope): string {
+export function getMcpOperationKey(
+  registryId: string,
+  scope: InstallScope,
+  projectPath?: string | null
+): string {
+  if (scope === 'project' || scope === 'local') {
+    return `mcp:${registryId}:${scope}:${getMcpProjectStateKey(projectPath)}`;
+  }
   return `mcp:${registryId}:${scope}`;
+}
+
+/**
+ * Namespaced lookup key for MCP diagnostics. Scope is included when available
+ * so the same server name can coexist across global/project/local installs.
+ */
+export function getMcpDiagnosticKey(name: string, scope?: string | null): string {
+  return scope ? `mcp-diagnostic:${scope}:${name}` : `mcp-diagnostic:${name}`;
+}
+
+/**
+ * Stable project-aware cache key for MCP installed/diagnostics state.
+ */
+export function getMcpProjectStateKey(projectPath?: string | null): string {
+  return projectPath ?? '__global__';
 }
 
 /**
@@ -135,6 +169,7 @@ function summarizeInstallationScopes(scopes: InstallScope[]): string | null {
   }
 
   switch (scopes[0]) {
+    case 'global':
     case 'user':
       return 'Installed globally';
     case 'project':
@@ -159,6 +194,7 @@ export function getInstallationSummaryLabel(
 const MCP_SCOPE_PRIORITY: Record<InstalledMcpEntry['scope'], number> = {
   local: 0,
   project: 1,
+  global: 2,
   user: 2,
 };
 
@@ -175,7 +211,7 @@ export function getPreferredMcpInstallationEntry(
 
   return [...installations].sort(
     (left, right) => MCP_SCOPE_PRIORITY[left.scope] - MCP_SCOPE_PRIORITY[right.scope]
-  )[0]!;
+  )[0];
 }
 
 /**
@@ -195,28 +231,74 @@ export function getExtensionActionDisableReason(options: {
   isInstalled: boolean;
   cliStatus: Pick<
     CliInstallationStatus,
-    'installed' | 'authLoggedIn' | 'binaryPath' | 'launchError'
+    'installed' | 'authLoggedIn' | 'binaryPath' | 'launchError' | 'flavor' | 'providers'
   > | null;
   cliStatusLoading: boolean;
+  section?: 'plugins' | 'mcp';
 }): string | null {
-  const { isInstalled, cliStatus, cliStatusLoading } = options;
+  const { isInstalled, cliStatus, cliStatusLoading, section = 'plugins' } = options;
   if (cliStatusLoading) {
-    return 'Checking Claude CLI status...';
+    return 'Checking runtime status...';
   }
 
   if (cliStatus === null) {
-    return 'Checking Claude CLI availability...';
+    return 'Checking runtime availability...';
   }
 
   if (cliStatus.installed === false) {
     if (cliStatus.binaryPath && cliStatus.launchError) {
-      return 'Claude CLI was found but failed to start. Open the Dashboard to repair or reinstall it.';
+      return 'The configured runtime was found but failed to start. Open the Dashboard to repair or reinstall it.';
     }
-    return 'Claude CLI required. Install it from the Dashboard.';
+    return 'The configured runtime is required. Install or repair it from the Dashboard.';
   }
 
-  if (!isInstalled && !cliStatus.authLoggedIn) {
-    return 'Claude CLI is installed but not signed in. Open the Dashboard to sign in.';
+  const providers = cliStatus.providers ?? [];
+  const isMultimodel = cliStatus.flavor === 'agent_teams_orchestrator';
+
+  if (section === 'mcp') {
+    if (!isMultimodel) {
+      return null;
+    }
+
+    const mutableProviders = providers.filter((provider) =>
+      isCliExtensionCapabilityMutable(getCliProviderExtensionCapability(provider, 'mcp'))
+    );
+    if (mutableProviders.length > 0) {
+      return null;
+    }
+
+    const reason = providers
+      .map((provider) => getCliProviderExtensionCapability(provider, 'mcp').reason)
+      .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+    return reason ?? 'MCP management is not supported by the current runtime.';
+  }
+
+  if (!isMultimodel) {
+    if (!isInstalled && !cliStatus.authLoggedIn) {
+      return 'Claude CLI is installed but not signed in. Open the Dashboard to sign in.';
+    }
+    return null;
+  }
+
+  const pluginProviders = providers.filter((provider) =>
+    isCliExtensionCapabilityMutable(getCliProviderExtensionCapability(provider, 'plugins'))
+  );
+
+  if (pluginProviders.length === 0) {
+    const reason = providers
+      .map((provider) => getCliProviderExtensionCapability(provider, 'plugins').reason)
+      .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    return reason ?? 'Plugin installs are not supported by the current runtime.';
+  }
+
+  if (isInstalled) {
+    return null;
+  }
+
+  const authenticatedProvider = pluginProviders.find((provider) => provider.authenticated);
+  if (!authenticatedProvider) {
+    return `${pluginProviders[0]?.displayName ?? 'Anthropic'} is not connected. Open the Dashboard to sign in.`;
   }
 
   return null;

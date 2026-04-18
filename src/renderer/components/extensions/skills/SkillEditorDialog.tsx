@@ -23,6 +23,7 @@ import {
 import { Textarea } from '@renderer/components/ui/textarea';
 import { useMarkdownScrollSync } from '@renderer/hooks/useMarkdownScrollSync';
 import { useStore } from '@renderer/store';
+import { SKILL_ROOT_DEFINITIONS } from '@shared/utils/skillRoots';
 import { FileSearch, RotateCcw, X } from 'lucide-react';
 
 import { SkillCodeEditor } from './SkillCodeEditor';
@@ -41,6 +42,7 @@ import type {
   SkillDetail,
   SkillInvocationMode,
   SkillReviewPreview,
+  SkillRootKind,
 } from '@shared/types/extensions';
 
 type EditorMode = 'create' | 'edit';
@@ -50,6 +52,7 @@ interface SkillEditorDialogProps {
   mode: EditorMode;
   projectPath: string | null;
   projectLabel: string | null;
+  allowCodexRootKind: boolean;
   detail: SkillDetail | null;
   onClose: () => void;
   onSaved: (skillId: string | null) => void;
@@ -68,6 +71,7 @@ export const SkillEditorDialog = ({
   mode,
   projectPath,
   projectLabel,
+  allowCodexRootKind,
   detail,
   onClose,
   onSaved,
@@ -79,7 +83,7 @@ export const SkillEditorDialog = ({
   const applySkillUpsert = useStore((s) => s.applySkillUpsert);
 
   const [scope, setScope] = useState<'user' | 'project'>('user');
-  const [rootKind, setRootKind] = useState<'claude' | 'cursor' | 'agents'>('claude');
+  const [rootKind, setRootKind] = useState<SkillRootKind>('claude');
   const [folderName, setFolderName] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -218,7 +222,7 @@ export const SkillEditorDialog = ({
     setReviewLoading(false);
     setSaveLoading(false);
     setMutationError(null);
-  }, [detail, mode, open, projectPath]);
+  }, [allowCodexRootKind, detail, mode, open, projectPath]);
 
   useEffect(() => {
     if (open) {
@@ -237,6 +241,12 @@ export const SkillEditorDialog = ({
       setScope('user');
     }
   }, [mode, open, projectPath, scope]);
+
+  useEffect(() => {
+    if (open && mode === 'create' && rootKind === 'codex' && !allowCodexRootKind) {
+      setRootKind('claude');
+    }
+  }, [allowCodexRootKind, mode, open, rootKind]);
 
   useEffect(() => {
     rawContentRef.current = rawContent;
@@ -289,6 +299,14 @@ export const SkillEditorDialog = ({
   );
 
   const canUseProjectScope = Boolean(projectPath);
+  const visibleRootDefinitions = useMemo(
+    () =>
+      SKILL_ROOT_DEFINITIONS.filter(
+        (definition) =>
+          definition.rootKind !== 'codex' || allowCodexRootKind || detail?.item.rootKind === 'codex'
+      ),
+    [allowCodexRootKind, detail?.item.rootKind]
+  );
   const instructionsLocked = manualRawEdit || customMarkdownDetected;
   const title = mode === 'create' ? 'Create skill' : 'Edit skill';
   const descriptionText =
@@ -427,18 +445,19 @@ export const SkillEditorDialog = ({
                     <Label htmlFor="skill-root">Where to store it</Label>
                     <Select
                       value={rootKind}
-                      onValueChange={(value) =>
-                        setRootKind(value as 'claude' | 'cursor' | 'agents')
-                      }
+                      onValueChange={(value) => setRootKind(value as SkillRootKind)}
                       disabled={mode === 'edit'}
                     >
                       <SelectTrigger id="skill-root">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="claude">.claude</SelectItem>
-                        <SelectItem value="cursor">.cursor</SelectItem>
-                        <SelectItem value="agents">.agents</SelectItem>
+                        {visibleRootDefinitions.map((definition) => (
+                          <SelectItem key={definition.rootKind} value={definition.rootKind}>
+                            {definition.directoryName}
+                            {definition.audience === 'codex' ? ' - Codex only' : ' - Shared'}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -463,7 +482,7 @@ export const SkillEditorDialog = ({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="skill-invocation">How Claude should use it</Label>
+                    <Label htmlFor="skill-invocation">How it should be used</Label>
                     <Select
                       value={invocationMode}
                       onValueChange={(value) => {
@@ -476,7 +495,7 @@ export const SkillEditorDialog = ({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="auto">Claude can use it automatically</SelectItem>
+                        <SelectItem value="auto">Can be used automatically</SelectItem>
                         <SelectItem value="manual-only">Only when you ask for it</SelectItem>
                       </SelectContent>
                     </Select>
@@ -556,7 +575,7 @@ export const SkillEditorDialog = ({
 
                     <div className="grid gap-3">
                       <div className="space-y-2">
-                        <Label htmlFor="skill-when-to-use">When Claude should reach for this</Label>
+                        <Label htmlFor="skill-when-to-use">When to reach for this</Label>
                         <Textarea
                           id="skill-when-to-use"
                           value={whenToUse}
@@ -572,7 +591,7 @@ export const SkillEditorDialog = ({
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="skill-steps">Main steps Claude should follow</Label>
+                        <Label htmlFor="skill-steps">Main steps to follow</Label>
                         <Textarea
                           id="skill-steps"
                           value={steps}
@@ -647,7 +666,7 @@ export const SkillEditorDialog = ({
                       <div>
                         <p className="font-medium text-text">References</p>
                         <p className="mt-1 text-xs text-text-muted">
-                          Add supporting docs, links, or examples that Claude can look at.
+                          Add supporting docs, links, or examples the runtime can look at.
                         </p>
                       </div>
                     </label>

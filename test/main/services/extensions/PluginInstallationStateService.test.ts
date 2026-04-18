@@ -13,12 +13,16 @@ function normalizeMockPath(filePath: unknown): string {
   return String(filePath).replaceAll('\\', '/');
 }
 
-// Mock pathDecoder to control ~/.claude path
 vi.mock('@main/utils/pathDecoder', () => ({
-  getClaudeBasePath: () => MOCK_CLAUDE_BASE_PATH,
+  getClaudeBasePath: () => {
+    const cwd = process.cwd();
+    const windowsRoot = cwd.match(/^[A-Za-z]:[\\/]/)?.[0] ?? null;
+    const root = windowsRoot ?? '/';
+    const sep = windowsRoot ? '\\' : '/';
+    return `${root}tmp${sep}mock-claude`;
+  },
 }));
 
-// Mock filesystem
 vi.mock('node:fs/promises');
 
 describe('PluginInstallationStateService', () => {

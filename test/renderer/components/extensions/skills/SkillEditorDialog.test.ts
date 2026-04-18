@@ -181,6 +181,20 @@ function makeDetail(rawContent: string): SkillDetail {
   };
 }
 
+function makeCodexDetail(rawContent: string): SkillDetail {
+  const detail = makeDetail(rawContent);
+  return {
+    ...detail,
+    item: {
+      ...detail.item,
+      rootKind: 'codex',
+      discoveryRoot: '/tmp/project/.codex/skills',
+      skillDir: '/tmp/project/.codex/skills/custom-skill',
+      skillFile: '/tmp/project/.codex/skills/custom-skill/SKILL.md',
+    },
+  };
+}
+
 describe('SkillEditorDialog', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -214,6 +228,7 @@ This file uses a freeform layout without generated sections.
           mode: 'edit',
           projectPath: '/tmp/project',
           projectLabel: 'Project',
+          allowCodexRootKind: true,
           detail,
           onClose: vi.fn(),
           onSaved: vi.fn(),
@@ -272,6 +287,7 @@ This file uses a freeform layout without generated sections.
           mode: 'create',
           projectPath: '/tmp/project',
           projectLabel: 'Project',
+          allowCodexRootKind: true,
           detail: null,
           onClose: vi.fn(),
           onSaved: vi.fn(),
@@ -298,6 +314,7 @@ This file uses a freeform layout without generated sections.
           mode: 'create',
           projectPath: '/tmp/project',
           projectLabel: 'Project',
+          allowCodexRootKind: true,
           detail: null,
           onClose: vi.fn(),
           onSaved: vi.fn(),
@@ -326,6 +343,7 @@ This file uses a freeform layout without generated sections.
           mode: 'create',
           projectPath: '/tmp/project',
           projectLabel: 'Project',
+          allowCodexRootKind: true,
           detail: null,
           onClose: vi.fn(),
           onSaved: vi.fn(),
@@ -354,6 +372,76 @@ This file uses a freeform layout without generated sections.
     expect(host.textContent).toContain(
       'Pick a simpler folder name using letters, numbers, dots, dashes, or underscores.'
     );
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('hides the codex root option in create mode when codex runtime is unavailable', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillEditorDialog, {
+          open: true,
+          mode: 'create',
+          projectPath: '/tmp/project',
+          projectLabel: 'Project',
+          allowCodexRootKind: false,
+          detail: null,
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const selects = host.querySelectorAll('select');
+    const rootSelect = selects[1] as HTMLSelectElement;
+    expect(Array.from(rootSelect.options).some((option) => option.value === 'codex')).toBe(false);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps the codex root visible when editing an existing codex-only skill', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const detail = makeCodexDetail(`---
+name: Codex Skill
+description: Codex markdown skill
+---
+
+# Codex Skill
+`);
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillEditorDialog, {
+          open: true,
+          mode: 'edit',
+          projectPath: '/tmp/project',
+          projectLabel: 'Project',
+          allowCodexRootKind: false,
+          detail,
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const selects = host.querySelectorAll('select');
+    const rootSelect = selects[1] as HTMLSelectElement;
+    expect(rootSelect.value).toBe('codex');
+    expect(Array.from(rootSelect.options).some((option) => option.value === 'codex')).toBe(true);
 
     await act(async () => {
       root.unmount();

@@ -163,6 +163,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
     !cliStatus && cliStatusLoading && multimodelEnabled
       ? createLoadingMultimodelCliStatus()
       : cliStatus;
+  const canOpenExtensions = effectiveCliStatus?.installed === true;
   const showInstalledControls =
     effectiveCliStatus !== null && (installerState === 'idle' || installerState === 'completed');
 
@@ -396,7 +397,7 @@ export const CliStatusSection = (): React.JSX.Element | null => {
                     </button>
                   ) : null}
                   {/* Extensions button — right-aligned */}
-                  {effectiveCliStatus.authLoggedIn && (
+                  {canOpenExtensions && (
                     <button
                       type="button"
                       onClick={openExtensionsTab}

@@ -1,12 +1,5 @@
 import { yieldToEventLoop } from '@main/utils/asyncYield';
-import {
-  encodePath,
-  extractBaseDir,
-  getClaudeBasePath,
-  getProjectsBasePath,
-  getTasksBasePath,
-  getTeamsBasePath,
-} from '@main/utils/pathDecoder';
+import { getClaudeBasePath, getTasksBasePath, getTeamsBasePath } from '@main/utils/pathDecoder';
 import { killProcessByPid } from '@main/utils/processKill';
 import {
   AGENT_BLOCK_CLOSE,
@@ -16,7 +9,7 @@ import {
 } from '@shared/constants/agentBlocks';
 import { getMemberColorByName } from '@shared/constants/memberColors';
 import { classifyIdleNotificationText } from '@shared/utils/idleNotificationSemantics';
-import { isLeadAgentType, isLeadMember } from '@shared/utils/leadDetection';
+import { isLeadMember } from '@shared/utils/leadDetection';
 import { createLogger } from '@shared/utils/logger';
 import { getKanbanColumnFromReviewState, normalizeReviewState } from '@shared/utils/reviewState';
 import { buildStandaloneSlashCommandMeta } from '@shared/utils/slashCommands';
@@ -40,6 +33,10 @@ import {
 import { atomicWriteAsync } from './atomicWrite';
 import { extractLeadSessionMessagesFromJsonl } from './leadSessionMessageExtractor';
 import { MemberActivityMetaService } from './MemberActivityMetaService';
+import {
+  getLiveLeadProcessMessageKey,
+  mergeLiveLeadProcessMessages,
+} from './mergeLiveLeadProcessMessages';
 import { buildTaskChangePresenceDescriptor } from './taskChangePresenceUtils';
 import { TeamConfigReader } from './TeamConfigReader';
 import { TeamInboxReader } from './TeamInboxReader';
@@ -54,6 +51,7 @@ import { TeamSentMessagesStore } from './TeamSentMessagesStore';
 import { TeamTaskCommentNotificationJournal } from './TeamTaskCommentNotificationJournal';
 import { TeamTaskReader } from './TeamTaskReader';
 import { TeamTaskWriter } from './TeamTaskWriter';
+import { TeamTranscriptProjectResolver } from './TeamTranscriptProjectResolver';
 
 import type { PersistedTaskChangePresenceIndex } from './cache/taskChangePresenceCacheTypes';
 import type { TaskChangePresenceRepository } from './cache/TaskChangePresenceRepository';
@@ -194,12 +192,15 @@ export class TeamDataService {
     private readonly taskCommentNotificationJournal: TeamTaskCommentNotificationJournal = new TeamTaskCommentNotificationJournal(),
     private readonly teamMetaStore: TeamMetaStore = new TeamMetaStore(),
     private memberRuntimeAdvisoryService: TeamMemberRuntimeAdvisoryService = new TeamMemberRuntimeAdvisoryService(),
-    private readonly leadSessionParseCache: LeadSessionParseCache = new LeadSessionParseCache()
+    private readonly leadSessionParseCache: LeadSessionParseCache = new LeadSessionParseCache(),
+    private readonly projectResolver: TeamTranscriptProjectResolver = new TeamTranscriptProjectResolver(
+      configReader
+    )
   ) {
     this.messageFeedService = new TeamMessageFeedService({
       getConfig: (teamName) => this.configReader.getConfig(teamName),
       getInboxMessages: (teamName) => this.inboxReader.getMessages(teamName),
-      getLeadSessionMessages: (config) => this.extractLeadSessionTexts(config),
+      getLeadSessionMessages: (teamName, config) => this.extractLeadSessionTexts(teamName, config),
       getSentMessages: (teamName) => this.sentMessagesStore.readMessages(teamName),
     });
     this.memberActivityMetaService = new MemberActivityMetaService(this.messageFeedService);
@@ -910,10 +911,14 @@ export class TeamDataService {
    */
   async getMessagesPage(
     teamName: string,
-    options: { cursor?: string | null; limit: number }
+    options: { cursor?: string | null; limit: number; liveMessages?: InboxMessage[] }
   ): Promise<MessagesPage> {
     const feed = await this.messageFeedService.getFeed(teamName);
-    let messages = feed.messages;
+    const newestDurableMessages = feed.messages;
+    const durableMessageIndexByKey = new Map(
+      newestDurableMessages.map((message, index) => [getLiveLeadProcessMessageKey(message), index])
+    );
+    let messages = newestDurableMessages;
 
     if (options.cursor) {
       const [cursorTs, cursorId] = options.cursor.split('|');
@@ -933,7 +938,61 @@ export class TeamDataService {
     const nextCursor =
       hasMore && lastMsg ? `${lastMsg.timestamp}|${requireCanonicalMessageId(lastMsg)}` : null;
 
-    return { messages: page, nextCursor, hasMore, feedRevision: feed.feedRevision };
+    if (options.cursor || !options.liveMessages?.length) {
+      return { messages: page, nextCursor, hasMore, feedRevision: feed.feedRevision };
+    }
+
+    // Merge live lead thoughts against the full durable newest-page history so we do not
+    // re-introduce persisted thoughts that have simply paged off the first durable page.
+    const displayMessages = mergeLiveLeadProcessMessages(
+      newestDurableMessages,
+      options.liveMessages
+    ).slice(0, options.limit);
+
+    if (displayMessages.length === 0) {
+      return {
+        messages: displayMessages,
+        nextCursor: null,
+        hasMore: false,
+        feedRevision: feed.feedRevision,
+      };
+    }
+
+    let lastDurableDisplayed: InboxMessage | null = null;
+    for (let index = displayMessages.length - 1; index >= 0; index -= 1) {
+      const candidate = displayMessages[index];
+      if (durableMessageIndexByKey.has(getLiveLeadProcessMessageKey(candidate))) {
+        lastDurableDisplayed = candidate;
+        break;
+      }
+    }
+
+    if (!lastDurableDisplayed) {
+      const boundary = displayMessages[displayMessages.length - 1];
+      return {
+        messages: displayMessages,
+        nextCursor:
+          newestDurableMessages.length > 0
+            ? `${boundary.timestamp}|${boundary.messageId ?? ''}`
+            : null,
+        hasMore: newestDurableMessages.length > 0,
+        feedRevision: feed.feedRevision,
+      };
+    }
+
+    const durableIndex =
+      durableMessageIndexByKey.get(getLiveLeadProcessMessageKey(lastDurableDisplayed)) ??
+      Number.POSITIVE_INFINITY;
+    const durableHasMore = durableIndex < newestDurableMessages.length - 1;
+
+    return {
+      messages: displayMessages,
+      nextCursor: durableHasMore
+        ? `${lastDurableDisplayed.timestamp}|${lastDurableDisplayed.messageId ?? ''}`
+        : null,
+      hasMore: durableHasMore,
+      feedRevision: feed.feedRevision,
+    };
   }
 
   async getMessageFeed(
@@ -2369,37 +2428,20 @@ export class TeamDataService {
     }
   }
 
-  private getLeadProjectDirCandidates(projectPath: string): string[] {
-    const projectId = encodePath(projectPath);
-    const baseDir = extractBaseDir(projectId);
-    const candidateDirs = [
-      path.join(getProjectsBasePath(), baseDir),
-      // Claude Code encodes underscores as hyphens in project directory names;
-      // our encodePath only handles slashes. Try the underscore-to-hyphen variant.
-      ...(baseDir.includes('_')
-        ? [path.join(getProjectsBasePath(), baseDir.replace(/_/g, '-'))]
-        : []),
-    ];
-
-    return [...new Set(candidateDirs)];
-  }
-
-  private async getLeadSessionJsonlPaths(projectPath: string): Promise<Map<string, string>> {
+  private async getLeadSessionJsonlPaths(projectDir: string): Promise<Map<string, string>> {
     const jsonlPaths = new Map<string, string>();
-    for (const dirPath of this.getLeadProjectDirCandidates(projectPath)) {
-      let entries: fs.Dirent[];
-      try {
-        entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-      } catch {
-        continue;
-      }
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(projectDir, { withFileTypes: true });
+    } catch {
+      return jsonlPaths;
+    }
 
-      for (const entry of entries) {
-        if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
-        const sessionId = entry.name.slice(0, -'.jsonl'.length).trim();
-        if (!sessionId || jsonlPaths.has(sessionId)) continue;
-        jsonlPaths.set(sessionId, path.join(dirPath, entry.name));
-      }
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
+      const sessionId = entry.name.slice(0, -'.jsonl'.length).trim();
+      if (!sessionId || jsonlPaths.has(sessionId)) continue;
+      jsonlPaths.set(sessionId, path.join(projectDir, entry.name));
     }
 
     return jsonlPaths;
@@ -2645,17 +2687,23 @@ export class TeamDataService {
     }
   }
 
-  private async extractLeadSessionTexts(config: TeamConfig): Promise<InboxMessage[]> {
-    if (!config.projectPath) {
+  private async extractLeadSessionTexts(
+    teamName: string,
+    config: TeamConfig
+  ): Promise<InboxMessage[]> {
+    const transcriptContext = await this.projectResolver.getContext(teamName);
+    if (!transcriptContext) {
       return [];
     }
-
-    const leadName = config.members?.find((m) => isLeadMember(m))?.name ?? 'team-lead';
-    const sessionIds = this.getRecentLeadSessionIds(config);
+    const leadName =
+      transcriptContext.config.members?.find((m) => isLeadMember(m))?.name ?? 'team-lead';
+    const sessionIds = Array.from(
+      new Set([...this.getRecentLeadSessionIds(config), ...transcriptContext.sessionIds])
+    );
     if (sessionIds.length === 0) {
       return [];
     }
-    const availableJsonlPaths = await this.getLeadSessionJsonlPaths(config.projectPath);
+    const availableJsonlPaths = await this.getLeadSessionJsonlPaths(transcriptContext.projectDir);
     if (availableJsonlPaths.size === 0) {
       return [];
     }

@@ -213,7 +213,7 @@
   },
   "build": {
     "appId": "com.agent-teams.app",
-    "productName": "Claude Agent Teams UI",
+    "productName": "Agent Teams UI",
     "directories": {
       "output": "release"
     },

@@ -3,7 +3,7 @@
  * Provides Fullscreen button that opens the overlay.
  */
 
-import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 
 import { GraphView } from '@claude-teams/agent-graph';
 import { TeamSidebarHost } from '@renderer/components/team/sidebar/TeamSidebarHost';
@@ -11,6 +11,7 @@ import { TeamSidebarHost } from '@renderer/components/team/sidebar/TeamSidebarHo
 import { useGraphCreateTaskDialog } from '../hooks/useGraphCreateTaskDialog';
 import { useGraphSidebarVisibility } from '../hooks/useGraphSidebarVisibility';
 import { useTeamGraphAdapter } from '../hooks/useTeamGraphAdapter';
+import { useTeamGraphSlotReset } from '../hooks/useTeamGraphSlotReset';
 import { useTeamGraphSurfaceActions } from '../hooks/useTeamGraphSurfaceActions';
 
 import { GraphActivityHud } from './GraphActivityHud';
@@ -45,11 +46,12 @@ export const TeamGraphTab = ({
   isPaneFocused = false,
 }: TeamGraphTabProps): React.JSX.Element => {
   const graphData = useTeamGraphAdapter(teamName);
-  const { openTeamPage, resetOwnerSlotAssignmentsToDefaults, commitOwnerSlotDrop } =
-    useTeamGraphSurfaceActions(teamName);
+  const { openTeamPage, commitOwnerSlotDrop } = useTeamGraphSurfaceActions(teamName);
   const [fullscreen, setFullscreen] = useState(false);
   const { sidebarVisible, toggleSidebarVisible } = useGraphSidebarVisibility();
   const { dialog: createTaskDialog, openCreateTaskDialog } = useGraphCreateTaskDialog(teamName);
+
+  useTeamGraphSlotReset(teamName, isActive);
 
   // Typed event dispatchers (DRY — used in both events + renderOverlay)
   const dispatchOpenTask = useCallback(
@@ -76,14 +78,6 @@ export const TeamGraphTab = ({
   const openCreateTask = useCallback(() => {
     openCreateTaskDialog('');
   }, [openCreateTaskDialog]);
-
-  useLayoutEffect(() => {
-    if (!isActive) {
-      return;
-    }
-    resetOwnerSlotAssignmentsToDefaults();
-  }, [isActive, resetOwnerSlotAssignmentsToDefaults]);
-
   // Task action dispatchers
   const dispatchTaskAction = useCallback(
     (action: string) => (taskId: string) =>

@@ -23,10 +23,13 @@ import {
   DialogTitle,
 } from '@renderer/components/ui/dialog';
 import { useStore } from '@renderer/store';
-import { AlertTriangle, ExternalLink, FolderOpen, Pencil, Trash2 } from 'lucide-react';
+import { formatSkillRootKind, getSkillAudienceLabel } from '@shared/utils/skillRoots';
+import { AlertTriangle, ExternalLink, FolderOpen, Info, Pencil, Trash2 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { resolveSkillProjectPath } from './skillProjectUtils';
+
+import type { SkillValidationIssue } from '@shared/types';
 
 interface SkillDetailDialogProps {
   skillId: string | null;
@@ -80,10 +83,7 @@ export const SkillDetailDialog = ({
   const effectiveProjectPath = item
     ? resolveSkillProjectPath(item.scope, projectPath, item.projectRoot)
     : (projectPath ?? undefined);
-
-  function formatRootKind(rootKind: 'claude' | 'cursor' | 'agents'): string {
-    return `.${rootKind}`;
-  }
+  const issuesTone = item?.issues.length ? getIssuesTone(item.issues) : null;
 
   function formatScopeLabel(scope: 'user' | 'project'): string {
     return scope === 'project' ? 'This project only' : 'Your personal skills';
@@ -91,8 +91,29 @@ export const SkillDetailDialog = ({
 
   function formatInvocationLabel(invocationMode: 'auto' | 'manual-only'): string {
     return invocationMode === 'manual-only'
-      ? 'Claude will only use this when you explicitly ask for it.'
-      : 'Claude can pick this automatically when it matches the task.';
+      ? 'Only runs when you explicitly ask for it.'
+      : 'Runs automatically when it matches the task.';
+  }
+
+  function getIssuesTone(issues: SkillValidationIssue[]): {
+    className: string;
+    title: string;
+    Icon: typeof AlertTriangle;
+  } {
+    const informationalOnly = issues.every((issue) => issue.severity === 'info');
+    if (informationalOnly) {
+      return {
+        className: 'border-blue-500/30 bg-blue-500/5',
+        title: 'This skill includes bundled scripts',
+        Icon: Info,
+      };
+    }
+
+    return {
+      className: 'border-amber-500/30 bg-amber-500/5',
+      title: 'Review this skill carefully before using it',
+      Icon: AlertTriangle,
+    };
   }
 
   async function handleDelete(): Promise<void> {
@@ -159,7 +180,8 @@ export const SkillDetailDialog = ({
             )}
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">{formatScopeLabel(item.scope)}</Badge>
-              <Badge variant="outline">Stored in {formatRootKind(item.rootKind)}</Badge>
+              <Badge variant="outline">Stored in {formatSkillRootKind(item.rootKind)}</Badge>
+              <Badge variant="outline">{getSkillAudienceLabel(item.rootKind)}</Badge>
               <Badge variant="secondary">
                 {item.invocationMode === 'manual-only' ? 'Manual use' : 'Auto use'}
               </Badge>
@@ -169,16 +191,30 @@ export const SkillDetailDialog = ({
             </div>
 
             {item.issues.length > 0 && (
-              <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-4">
-                <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                  Review this skill carefully before using it
+              <div className={`space-y-2 rounded-md border p-4 ${issuesTone?.className ?? ''}`}>
+                <p
+                  className={`text-sm font-medium ${
+                    issuesTone?.Icon === Info
+                      ? 'text-blue-700 dark:text-blue-300'
+                      : 'text-amber-700 dark:text-amber-300'
+                  }`}
+                >
+                  {issuesTone?.title}
                 </p>
                 {item.issues.map((issue, index) => (
                   <div
                     key={`${issue.code}-${index}`}
-                    className="flex gap-2 text-sm text-amber-700 dark:text-amber-300"
+                    className={`flex gap-2 text-sm ${
+                      issue.severity === 'info'
+                        ? 'text-blue-700 dark:text-blue-300'
+                        : 'text-amber-700 dark:text-amber-300'
+                    }`}
                   >
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                    {issue.severity === 'info' ? (
+                      <Info className="mt-0.5 size-4 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                    )}
                     <span>{issue.message}</span>
                   </div>
                 ))}
@@ -194,7 +230,7 @@ export const SkillDetailDialog = ({
               </div>
               <div className="space-y-1">
                 <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-                  How Claude uses it
+                  How it is used
                 </p>
                 <p className="text-sm text-text">{formatInvocationLabel(item.invocationMode)}</p>
               </div>

@@ -112,6 +112,7 @@ import { TeamMembersMetaStore } from './TeamMembersMetaStore';
 import { TeamMetaStore } from './TeamMetaStore';
 import { TeamSentMessagesStore } from './TeamSentMessagesStore';
 import { TeamTaskReader } from './TeamTaskReader';
+import { peekAutoResumeService } from './AutoResumeService';
 
 /**
  * Kill a team CLI process using SIGKILL (uncatchable).
@@ -2413,6 +2414,40 @@ export class TeamProvisioningService {
     return this.getProvisioningRunId(teamName) ?? this.getAliveRunId(teamName);
   }
 
+  private clearSameTeamRetryTimers(teamName: string): void {
+    for (const suffix of ['deferred', 'persist']) {
+      const key = `same-team-${suffix}:${teamName}`;
+      const timer = this.pendingTimeouts.get(key);
+      if (timer) {
+        clearTimeout(timer);
+        this.pendingTimeouts.delete(key);
+      }
+    }
+  }
+
+  private resetTeamScopedTransientStateForNewRun(teamName: string): void {
+    peekAutoResumeService()?.cancelPendingAutoResume(teamName);
+    this.leadInboxRelayInFlight.delete(teamName);
+    this.relayedLeadInboxMessageIds.delete(teamName);
+    this.pendingCrossTeamFirstReplies.delete(teamName);
+    this.recentCrossTeamLeadDeliveryMessageIds.delete(teamName);
+    this.recentSameTeamNativeFingerprints.delete(teamName);
+    this.clearSameTeamRetryTimers(teamName);
+
+    for (const key of Array.from(this.memberInboxRelayInFlight.keys())) {
+      if (key.startsWith(`${teamName}:`)) {
+        this.memberInboxRelayInFlight.delete(key);
+      }
+    }
+    for (const key of Array.from(this.relayedMemberInboxMessageIds.keys())) {
+      if (key.startsWith(`${teamName}:`)) {
+        this.relayedMemberInboxMessageIds.delete(key);
+      }
+    }
+
+    this.liveLeadProcessMessages.delete(teamName);
+  }
+
   private appendCliLogs(run: ProvisioningRun, stream: 'stdout' | 'stderr', text: string): void {
     const nowMs = Date.now();
     run.claudeLogsUpdatedAt = new Date(nowMs).toISOString();
@@ -3191,7 +3226,58 @@ export class TeamProvisioningService {
   }
 
   getLiveLeadProcessMessages(teamName: string): InboxMessage[] {
-    return [...(this.liveLeadProcessMessages.get(teamName) ?? [])];
+    const runId = this.getTrackedRunId(teamName);
+    const detectedSessionId = runId ? (this.runs.get(runId)?.detectedSessionId ?? null) : null;
+
+    return (this.liveLeadProcessMessages.get(teamName) ?? []).map((message) =>
+      !message.leadSessionId && detectedSessionId
+        ? { ...message, leadSessionId: detectedSessionId }
+        : { ...message }
+    );
+  }
+
+  private pruneLiveLeadMessagesForCleanedRun(run: ProvisioningRun): void {
+    const list = this.liveLeadProcessMessages.get(run.teamName);
+    if (!list || list.length === 0) {
+      return;
+    }
+
+    const runMessageIdPrefixes = [
+      `lead-turn-${run.runId}-`,
+      `lead-sendmsg-${run.runId}-`,
+      `lead-process-${run.runId}-`,
+      `compact-${run.runId}-`,
+    ];
+
+    const filtered = list.filter((message) => {
+      const messageId = typeof message.messageId === 'string' ? message.messageId.trim() : '';
+      if (messageId && runMessageIdPrefixes.some((prefix) => messageId.startsWith(prefix))) {
+        return false;
+      }
+
+      if (run.detectedSessionId && message.leadSessionId === run.detectedSessionId) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      this.liveLeadProcessMessages.delete(run.teamName);
+      return;
+    }
+
+    this.liveLeadProcessMessages.set(run.teamName, filtered);
+  }
+
+  getCurrentLeadSessionId(teamName: string): string | null {
+    const runId = this.getTrackedRunId(teamName);
+    if (!runId) return null;
+    return this.runs.get(runId)?.detectedSessionId ?? null;
+  }
+
+  getCurrentRunId(teamName: string): string | null {
+    return this.getAliveRunId(teamName);
   }
 
   getLeadActivityState(teamName: string): {
@@ -5110,6 +5196,7 @@ export class TeamProvisioningService {
         },
       };
 
+      this.resetTeamScopedTransientStateForNewRun(request.teamName);
       this.runs.set(runId, run);
       this.provisioningRunByTeam.set(request.teamName, runId);
       run.onProgress(run.progress);
@@ -5655,7 +5742,7 @@ export class TeamProvisioningService {
         pendingInboxRelayCandidates: [],
         provisioningOutputParts: [],
         provisioningOutputIndexByMessageId: new Map(),
-        detectedSessionId: null,
+        detectedSessionId: previousSessionId ?? null,
         leadActivityState: 'active',
         leadContextUsage: null,
         authFailureRetried: false,
@@ -5696,6 +5783,7 @@ export class TeamProvisioningService {
         },
       };
 
+      this.resetTeamScopedTransientStateForNewRun(request.teamName);
       this.runs.set(runId, run);
       this.provisioningRunByTeam.set(request.teamName, runId);
       run.onProgress(run.progress);
@@ -5954,6 +6042,21 @@ export class TeamProvisioningService {
       throw new Error(`Team "${teamName}" process stdin is not writable`);
     }
 
+    await this.sendMessageToRun(run, message, attachments);
+  }
+
+  private async sendMessageToRun(
+    run: ProvisioningRun,
+    message: string,
+    attachments?: { data: string; mimeType: string; filename?: string }[]
+  ): Promise<void> {
+    if (!this.isCurrentTrackedRun(run)) {
+      throw new Error(`Team "${run.teamName}" run "${run.runId}" is no longer current`);
+    }
+    if (run.processKilled || run.cancelRequested || !run.child?.stdin?.writable) {
+      throw new Error(`Team "${run.teamName}" process stdin is not writable`);
+    }
+
     const contentBlocks: Record<string, unknown>[] = [{ type: 'text', text: message }];
     if (attachments?.length) {
       for (const att of attachments) {
@@ -6073,7 +6176,7 @@ export class TeamProvisioningService {
       userText,
     ].join('\n');
 
-    await this.sendMessageToTeam(teamName, message);
+    await this.sendMessageToRun(run, message);
   }
 
   async relayMemberInboxMessages(teamName: string, memberName: string): Promise<number> {
@@ -6095,6 +6198,8 @@ export class TeamProvisioningService {
       const run = this.runs.get(runId);
       if (!run?.child || run.processKilled || run.cancelRequested) return 0;
       if (!run.provisioningComplete) return 0;
+      const isStaleRelayRun = (): boolean =>
+        !this.isCurrentTrackedRun(run) || !run.child || run.processKilled || run.cancelRequested;
 
       const relayedIds = this.relayedMemberInboxMessageIds.get(relayKey) ?? new Set<string>();
 
@@ -6104,6 +6209,7 @@ export class TeamProvisioningService {
       } catch {
         return 0;
       }
+      if (isStaleRelayRun()) return 0;
 
       const unread = memberInboxMessages
         .filter((m): m is InboxMessage & { messageId: string } => {
@@ -6134,6 +6240,7 @@ export class TeamProvisioningService {
         .map(({ message }) => message);
 
       const readOnlyIgnoredUnread = [...silentNoiseUnread, ...passiveIdleUnread];
+      if (isStaleRelayRun()) return 0;
 
       if (readOnlyIgnoredUnread.length > 0) {
         try {
@@ -6207,7 +6314,7 @@ export class TeamProvisioningService {
       ].join('\n');
 
       try {
-        await this.sendMessageToTeam(teamName, message);
+        await this.sendMessageToRun(run, message);
       } catch {
         this.forgetPendingInboxRelayCandidates(run, memberName, rememberedRelayIds);
         return 0;
@@ -6263,6 +6370,8 @@ export class TeamProvisioningService {
       if (!runId) return 0;
       const run = this.runs.get(runId);
       if (!run?.child || run.processKilled || run.cancelRequested) return 0;
+      const isStaleRelayRun = (): boolean =>
+        !this.isCurrentTrackedRun(run) || !run.child || run.processKilled || run.cancelRequested;
 
       // Permission request scan runs even during provisioning — teammates may need
       // tool approval before the lead's first turn completes. CLI marks inbox messages
@@ -6273,10 +6382,12 @@ export class TeamProvisioningService {
       } catch {
         // config not ready yet during early provisioning — skip scan
       }
+      if (isStaleRelayRun()) return 0;
       if (config) {
         const leadName = config.members?.find((m) => isLeadMember(m))?.name?.trim() || 'team-lead';
         try {
           const leadInboxMessages = await this.inboxReader.getMessagesFor(teamName, leadName);
+          if (isStaleRelayRun()) return 0;
           const permMsgsToMarkRead: { messageId: string }[] = [];
           const runStartedAtMs = Date.parse(run.startedAt);
           for (const msg of leadInboxMessages) {
@@ -6321,6 +6432,7 @@ export class TeamProvisioningService {
           return 0;
         }
       }
+      if (isStaleRelayRun()) return 0;
       if (!config) return 0;
 
       const leadName = config.members?.find((m) => isLeadMember(m))?.name?.trim() || 'team-lead';
@@ -6330,8 +6442,10 @@ export class TeamProvisioningService {
       } catch {
         return 0;
       }
+      if (isStaleRelayRun()) return 0;
 
       await this.refreshMemberSpawnStatusesFromLeadInbox(run);
+      if (isStaleRelayRun()) return 0;
 
       const unread = leadInboxMessages
         .filter((m): m is InboxMessage & { messageId: string } => {
@@ -6469,6 +6583,7 @@ export class TeamProvisioningService {
         ...passiveIdleUnread.map((m) => m.messageId),
       ]);
       const remainingUnread = unread.filter((m) => !readOnlyIgnoredIds.has(m.messageId));
+      if (isStaleRelayRun()) return 0;
 
       // Category 2: same-team native delivery confirmation (one-to-one pairing).
       const { nativeMatchedMessageIds, persisted: sameTeamPersisted } =
@@ -6631,7 +6746,7 @@ export class TeamProvisioningService {
       });
 
       try {
-        await this.sendMessageToTeam(teamName, message);
+        await this.sendMessageToRun(run, message);
       } catch {
         if (run.leadRelayCapture) {
           clearTimeout(run.leadRelayCapture.timeoutHandle);
@@ -7677,6 +7792,12 @@ export class TeamProvisioningService {
             if (result.deduplicated) {
               return;
             }
+            if (this.getTrackedRunId(run.teamName) !== run.runId) {
+              logger.debug(
+                `[${run.teamName}] Skipping stale cross-team send result for old run ${run.runId}`
+              );
+              return;
+            }
             const msg: InboxMessage = {
               from: leadName,
               to: recipient.startsWith('cross-team:')
@@ -7904,11 +8025,18 @@ export class TeamProvisioningService {
   private pushLiveLeadTextMessage(
     run: ProvisioningRun,
     cleanText: string,
-    stableMessageId?: string
+    stableMessageId?: string,
+    messageTimestamp?: string
   ): void {
     run.leadMsgSeq += 1;
     const leadName = this.getRunLeadName(run);
     const messageId = stableMessageId || `lead-turn-${run.runId}-${run.leadMsgSeq}`;
+    const timestamp =
+      typeof messageTimestamp === 'string' &&
+      messageTimestamp.trim().length > 0 &&
+      Number.isFinite(Date.parse(messageTimestamp))
+        ? messageTimestamp
+        : nowIso();
     // Attach accumulated tool call details from preceding tool_use messages, then reset.
     const toolCalls = run.pendingToolCalls.length > 0 ? [...run.pendingToolCalls] : undefined;
     const toolSummary = toolCalls ? formatToolSummaryFromCalls(toolCalls) : undefined;
@@ -7916,7 +8044,7 @@ export class TeamProvisioningService {
     const leadMsg: InboxMessage = {
       from: leadName,
       text: cleanText,
-      timestamp: nowIso(),
+      timestamp,
       read: true,
       summary: cleanText.length > 60 ? cleanText.slice(0, 57) + '...' : cleanText,
       messageId,
@@ -8264,6 +8392,18 @@ export class TeamProvisioningService {
     // stream-json output has various message types:
     // {"type":"assistant","content":[{"type":"text","text":"..."},...]}
     // {"type":"result","subtype":"success",...}
+    // Capture session_id as early as possible so live messages emitted during this
+    // handler already carry the session identity used by merge/dedup paths.
+    if (!run.detectedSessionId) {
+      const sid = typeof msg.session_id === 'string' ? msg.session_id : undefined;
+      if (sid && sid.trim().length > 0) {
+        run.detectedSessionId = sid.trim();
+        logger.info(
+          `[${run.teamName}] Detected session ID from stream-json: ${run.detectedSessionId}`
+        );
+      }
+    }
+
     if (msg.type === 'user') {
       // Check for permission_request in raw user message text BEFORE teammate-message parsing.
       // The permission_request may arrive as plain JSON without <teammate-message> wrapper,
@@ -8306,6 +8446,12 @@ export class TeamProvisioningService {
         .map((part) => part.text as string);
       if (textParts.length > 0) {
         const text = textParts.join('\n');
+        const messageTimestamp =
+          typeof msg.timestamp === 'string' &&
+          msg.timestamp.trim().length > 0 &&
+          Number.isFinite(Date.parse(msg.timestamp))
+            ? msg.timestamp
+            : undefined;
         // Auth failures sometimes show up as assistant text (e.g. "401", "Please run /login")
         // rather than stderr or a result.subtype=error. Detect early to avoid false "ready".
         this.handleAuthFailureInOutput(run, text, 'assistant');
@@ -8348,7 +8494,8 @@ export class TeamProvisioningService {
               this.pushLiveLeadTextMessage(
                 run,
                 cleanText,
-                this.getStableLeadThoughtMessageId(msg) ?? undefined
+                this.getStableLeadThoughtMessageId(msg) ?? undefined,
+                messageTimestamp
               );
             }
           }
@@ -8361,7 +8508,8 @@ export class TeamProvisioningService {
               this.pushLiveLeadTextMessage(
                 run,
                 cleanText,
-                this.getStableLeadThoughtMessageId(msg) ?? undefined
+                this.getStableLeadThoughtMessageId(msg) ?? undefined,
+                messageTimestamp
               );
             }
           }
@@ -8442,17 +8590,6 @@ export class TeamProvisioningService {
             this.emitLeadContextUsage(run);
           }
         }
-      }
-    }
-
-    // Capture session_id from any message type (first occurrence wins)
-    if (!run.detectedSessionId) {
-      const sid = typeof msg.session_id === 'string' ? msg.session_id : undefined;
-      if (sid && sid.trim().length > 0) {
-        run.detectedSessionId = sid.trim();
-        logger.info(
-          `[${run.teamName}] Detected session ID from stream-json: ${run.detectedSessionId}`
-        );
       }
     }
 
@@ -10041,7 +10178,7 @@ export class TeamProvisioningService {
           `Не стартовали тиммейты: ${failedSpawnMembers.map((member) => `@${member.name}`).join(', ')}.`,
           `Не считай их доступными, пока их запуск не будет повторён успешно.`,
         ].join(' ');
-        await this.sendMessageToTeam(run.teamName, failureNotice).catch((error: unknown) =>
+        await this.sendMessageToRun(run, failureNotice).catch((error: unknown) =>
           logger.warn(
             `[${run.teamName}] failed to send teammate-start failure notice to lead: ${
               error instanceof Error ? error.message : String(error)
@@ -10089,7 +10226,7 @@ export class TeamProvisioningService {
               .filter(Boolean)
               .join('\n\n');
 
-            await this.sendMessageToTeam(run.teamName, message);
+            await this.sendMessageToRun(run, message);
           } catch (error) {
             logger.warn(
               `[${run.teamName}] Failed to kick off solo task resumption: ${
@@ -10209,7 +10346,7 @@ export class TeamProvisioningService {
         `Не стартовали тиммейты: ${failedSpawnMembers.map((member) => `@${member.name}`).join(', ')}.`,
         `Не считай их доступными, пока их запуск не будет повторён успешно.`,
       ].join(' ');
-      await this.sendMessageToTeam(run.teamName, failureNotice).catch((error: unknown) =>
+      await this.sendMessageToRun(run, failureNotice).catch((error: unknown) =>
         logger.warn(
           `[${run.teamName}] failed to send teammate-start failure notice to lead: ${
             error instanceof Error ? error.message : String(error)
@@ -10529,7 +10666,14 @@ export class TeamProvisioningService {
    * Remove a run from tracking maps.
    */
   private cleanupRun(run: ProvisioningRun): void {
-    if (run.isLaunch && !run.provisioningComplete) {
+    const currentTrackedRunId = this.getTrackedRunId(run.teamName);
+    const hasNewerTrackedRun = currentTrackedRunId !== null && currentTrackedRunId !== run.runId;
+
+    if (!hasNewerTrackedRun) {
+      peekAutoResumeService()?.cancelPendingAutoResume(run.teamName);
+    }
+
+    if (!hasNewerTrackedRun && run.isLaunch && !run.provisioningComplete) {
       void this.persistLaunchStateSnapshot(run, 'finished');
     }
     this.resetRuntimeToolActivity(run);
@@ -10558,19 +10702,13 @@ export class TeamProvisioningService {
     if (this.aliveRunByTeam.get(run.teamName) === run.runId) {
       this.aliveRunByTeam.delete(run.teamName);
     }
-    this.leadInboxRelayInFlight.delete(run.teamName);
-    this.relayedLeadInboxMessageIds.delete(run.teamName);
-    this.pendingCrossTeamFirstReplies.delete(run.teamName);
-    this.recentCrossTeamLeadDeliveryMessageIds.delete(run.teamName);
-    this.recentSameTeamNativeFingerprints.delete(run.teamName);
-    // Clear same-team retry timers
-    for (const suffix of ['deferred', 'persist']) {
-      const key = `same-team-${suffix}:${run.teamName}`;
-      const timer = this.pendingTimeouts.get(key);
-      if (timer) {
-        clearTimeout(timer);
-        this.pendingTimeouts.delete(key);
-      }
+    if (!hasNewerTrackedRun) {
+      this.leadInboxRelayInFlight.delete(run.teamName);
+      this.relayedLeadInboxMessageIds.delete(run.teamName);
+      this.pendingCrossTeamFirstReplies.delete(run.teamName);
+      this.recentCrossTeamLeadDeliveryMessageIds.delete(run.teamName);
+      this.recentSameTeamNativeFingerprints.delete(run.teamName);
+      this.clearSameTeamRetryTimers(run.teamName);
     }
     for (const memberName of run.memberSpawnStatuses.keys()) {
       const key = this.getMemberLaunchGraceKey(run, memberName);
@@ -10582,17 +10720,21 @@ export class TeamProvisioningService {
     }
     run.activeCrossTeamReplyHints = [];
     run.pendingInboxRelayCandidates = [];
-    for (const key of Array.from(this.memberInboxRelayInFlight.keys())) {
-      if (key.startsWith(`${run.teamName}:`)) {
-        this.memberInboxRelayInFlight.delete(key);
+    if (!hasNewerTrackedRun) {
+      for (const key of Array.from(this.memberInboxRelayInFlight.keys())) {
+        if (key.startsWith(`${run.teamName}:`)) {
+          this.memberInboxRelayInFlight.delete(key);
+        }
       }
-    }
-    for (const key of Array.from(this.relayedMemberInboxMessageIds.keys())) {
-      if (key.startsWith(`${run.teamName}:`)) {
-        this.relayedMemberInboxMessageIds.delete(key);
+      for (const key of Array.from(this.relayedMemberInboxMessageIds.keys())) {
+        if (key.startsWith(`${run.teamName}:`)) {
+          this.relayedMemberInboxMessageIds.delete(key);
+        }
       }
+      this.liveLeadProcessMessages.delete(run.teamName);
+    } else {
+      this.pruneLiveLeadMessagesForCleanedRun(run);
     }
-    this.liveLeadProcessMessages.delete(run.teamName);
     // Dismiss any pending tool approvals for this run
     if (run.pendingApprovals.size > 0) {
       for (const requestId of run.pendingApprovals.keys()) {

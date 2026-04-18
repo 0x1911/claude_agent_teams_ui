@@ -543,10 +543,10 @@ export class NotificationManager extends EventEmitter {
     logger.debug(`[test-notification] creating Notification (platform=${process.platform})`);
     const notification = new NotificationClass({
       title: 'Test Notification',
-      ...(isMac ? { subtitle: 'Claude Agent Teams UI' } : {}),
+      ...(isMac ? { subtitle: 'Agent Teams UI' } : {}),
       body: isMac
         ? 'Notifications are working correctly!'
-        : 'Claude Agent Teams UI\nNotifications are working correctly!',
+        : 'Agent Teams UI\nNotifications are working correctly!',
       ...(iconPath ? { icon: iconPath } : {}),
     });
 

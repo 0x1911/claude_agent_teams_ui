@@ -7,12 +7,14 @@
 
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
 import { execCli } from '@main/utils/childProcess';
-import { buildEnrichedEnv } from '@main/utils/cliEnv';
 import { CLI_NOT_FOUND_MESSAGE } from '@shared/constants/cli';
 import { createLogger } from '@shared/utils/logger';
 import path from 'path';
 
+import { createExtensionsRuntimeAdapter } from '../runtime/ExtensionsRuntimeAdapter';
+
 import type { PluginCatalogService } from '../catalog/PluginCatalogService';
+import type { ExtensionsRuntimeAdapter } from '../runtime/ExtensionsRuntimeAdapter';
 import type { OperationResult, PluginInstallRequest } from '@shared/types/extensions';
 
 const logger = createLogger('Extensions:PluginInstall');
@@ -31,7 +33,10 @@ function scopeRequiresProjectPath(scope?: string): boolean {
 }
 
 export class PluginInstallService {
-  constructor(private readonly catalogService: PluginCatalogService) {}
+  constructor(
+    private readonly catalogService: PluginCatalogService,
+    private readonly runtimeAdapter: ExtensionsRuntimeAdapter = createExtensionsRuntimeAdapter()
+  ) {}
 
   async install(request: PluginInstallRequest): Promise<OperationResult> {
     const { pluginId, scope, projectPath } = request;
@@ -95,11 +100,12 @@ export class PluginInstallService {
           error: CLI_NOT_FOUND_MESSAGE,
         };
       }
+      const env = await this.runtimeAdapter.buildManagementCliEnv(claudeBinary);
 
       const { stdout, stderr } = await execCli(claudeBinary, args, {
         timeout: INSTALL_TIMEOUT_MS,
         cwd: projectPath,
-        env: buildEnrichedEnv(claudeBinary),
+        env,
       });
 
       if (stderr && !stdout) {
@@ -175,11 +181,12 @@ export class PluginInstallService {
           error: CLI_NOT_FOUND_MESSAGE,
         };
       }
+      const env = await this.runtimeAdapter.buildManagementCliEnv(claudeBinary);
 
       await execCli(claudeBinary, args, {
         timeout: UNINSTALL_TIMEOUT_MS,
         cwd: projectPath,
-        env: buildEnrichedEnv(claudeBinary),
+        env,
       });
       return { state: 'success' };
     } catch (err) {

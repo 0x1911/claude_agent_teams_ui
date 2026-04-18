@@ -132,6 +132,7 @@ describe('SkillImportDialog', () => {
           open: true,
           projectPath: null,
           projectLabel: null,
+          allowCodexRootKind: true,
           onClose: vi.fn(),
           onImported: vi.fn(),
         })
@@ -167,6 +168,7 @@ describe('SkillImportDialog', () => {
           open: true,
           projectPath: null,
           projectLabel: null,
+          allowCodexRootKind: true,
           onClose: vi.fn(),
           onImported: vi.fn(),
         })
@@ -232,6 +234,7 @@ describe('SkillImportDialog', () => {
           open: true,
           projectPath: null,
           projectLabel: null,
+          allowCodexRootKind: true,
           onClose: vi.fn(),
           onImported: vi.fn(),
         })
@@ -268,6 +271,7 @@ describe('SkillImportDialog', () => {
           open: true,
           projectPath: '/tmp/project-a',
           projectLabel: 'Project A',
+          allowCodexRootKind: true,
           onClose: vi.fn(),
           onImported: vi.fn(),
         })
@@ -284,6 +288,7 @@ describe('SkillImportDialog', () => {
           open: true,
           projectPath: null,
           projectLabel: null,
+          allowCodexRootKind: true,
           onClose: vi.fn(),
           onImported: vi.fn(),
         })
@@ -332,6 +337,7 @@ describe('SkillImportDialog', () => {
           open: true,
           projectPath: null,
           projectLabel: null,
+          allowCodexRootKind: true,
           onClose: vi.fn(),
           onImported: vi.fn(),
         })
@@ -364,6 +370,7 @@ describe('SkillImportDialog', () => {
           open: false,
           projectPath: null,
           projectLabel: null,
+          allowCodexRootKind: true,
           onClose: vi.fn(),
           onImported: vi.fn(),
         })
@@ -390,6 +397,7 @@ describe('SkillImportDialog', () => {
           open: true,
           projectPath: null,
           projectLabel: null,
+          allowCodexRootKind: true,
           onClose: vi.fn(),
           onImported: vi.fn(),
         })
@@ -438,6 +446,7 @@ describe('SkillImportDialog', () => {
           open: true,
           projectPath: null,
           projectLabel: null,
+          allowCodexRootKind: true,
           onClose: vi.fn(),
           onImported: vi.fn(),
         })
@@ -465,6 +474,35 @@ describe('SkillImportDialog', () => {
     });
 
     expect(storeState.previewSkillImport).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('hides the codex root option when codex runtime is unavailable', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillImportDialog, {
+          open: true,
+          projectPath: null,
+          projectLabel: null,
+          allowCodexRootKind: false,
+          onClose: vi.fn(),
+          onImported: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const selects = host.querySelectorAll('select');
+    const rootSelect = selects[1] as HTMLSelectElement;
+    expect(Array.from(rootSelect.options).some((option) => option.value === 'codex')).toBe(false);
 
     await act(async () => {
       root.unmount();

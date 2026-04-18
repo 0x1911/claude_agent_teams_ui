@@ -113,6 +113,7 @@ vi.mock('lucide-react', () => {
     AlertTriangle: Icon,
     ExternalLink: Icon,
     FolderOpen: Icon,
+    Info: Icon,
     Pencil: Icon,
     Trash2: Icon,
   };
@@ -271,6 +272,53 @@ describe('SkillDetailDialog', () => {
     });
 
     expect(openPathMock).toHaveBeenCalledWith(detail.item.skillFile, undefined);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('renders script-only advisory issues as informational copy', async () => {
+    const detail = makeDetail({
+      flags: {
+        hasScripts: true,
+        hasReferences: false,
+        hasAssets: false,
+      },
+      issues: [
+        {
+          code: 'has-scripts',
+          message: 'This skill includes a scripts directory. Review bundled scripts before trusting it.',
+          severity: 'info',
+        },
+      ],
+    });
+    storeState.skillsDetailsById[detail.item.id] = detail;
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(SkillDetailDialog, {
+          skillId: detail.item.id,
+          open: true,
+          onClose: vi.fn(),
+          projectPath: '/tmp/project-a',
+          onEdit: vi.fn(),
+          onDeleted: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('This skill includes bundled scripts');
+    expect(host.textContent).toContain(
+      'This skill includes a scripts directory. Review bundled scripts before trusting it.'
+    );
+    expect(host.textContent).not.toContain('Review this skill carefully before using it');
 
     await act(async () => {
       root.unmount();

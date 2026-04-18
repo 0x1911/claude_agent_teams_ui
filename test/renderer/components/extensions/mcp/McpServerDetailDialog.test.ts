@@ -11,6 +11,7 @@ interface StoreState {
   uninstallMcpServer: ReturnType<typeof vi.fn>;
   installErrors: Record<string, string>;
   mcpGitHubStars: Record<string, number>;
+  cliStatus?: { flavor: 'claude' | 'agent_teams_orchestrator' } | null;
 }
 
 const storeState = {} as StoreState;
@@ -164,6 +165,15 @@ function makeServer(): McpCatalogItem {
   };
 }
 
+function setInputValue(element: HTMLInputElement | HTMLSelectElement, value: string): void {
+  const prototype =
+    element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+  descriptor?.set?.call(element, value);
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+  element.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 describe('McpServerDetailDialog installed entry handling', () => {
   beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -172,6 +182,7 @@ describe('McpServerDetailDialog installed entry handling', () => {
     storeState.uninstallMcpServer = vi.fn();
     storeState.installErrors = {};
     storeState.mcpGitHubStars = {};
+    storeState.cliStatus = null;
     lookupMock.mockReset();
     lookupMock.mockResolvedValue([]);
   });
@@ -264,11 +275,258 @@ describe('McpServerDetailDialog installed entry handling', () => {
     });
 
     expect(lookupMock).toHaveBeenCalledTimes(1);
-    expect(lookupMock).toHaveBeenCalledWith(['CONTEXT7_API_KEY']);
+    expect(lookupMock).toHaveBeenCalledWith(['CONTEXT7_API_KEY'], undefined);
     const projectOption = host.querySelector('option[value="project"]') as HTMLOptionElement;
     const localOption = host.querySelector('option[value="local"]') as HTMLOptionElement;
     expect(projectOption.disabled).toBe(true);
     expect(localOption.disabled).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('looks up project-scoped API keys only when project scope is selected', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const server = makeServer();
+    server.envVars = [{ name: 'CONTEXT7_API_KEY', isSecret: true }];
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server,
+          isInstalled: false,
+          installedEntry: null,
+          diagnostic: null,
+          diagnosticsLoading: false,
+          projectPath: '/tmp/project-context7',
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(lookupMock).toHaveBeenCalledWith(['CONTEXT7_API_KEY'], undefined);
+
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+    await act(async () => {
+      scopeSelect.value = 'project';
+      scopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(lookupMock).toHaveBeenLastCalledWith(['CONTEXT7_API_KEY'], '/tmp/project-context7');
+
+    await act(async () => {
+      scopeSelect.value = 'user';
+      scopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(lookupMock).toHaveBeenLastCalledWith(['CONTEXT7_API_KEY'], undefined);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('clears stale project auto-filled values when switching back to user scope', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const server = makeServer();
+    server.envVars = [{ name: 'CONTEXT7_API_KEY', isSecret: true }];
+    lookupMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ envVarName: 'CONTEXT7_API_KEY', value: 'project-secret' }])
+      .mockResolvedValueOnce([]);
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server,
+          isInstalled: false,
+          installedEntry: null,
+          diagnostic: null,
+          diagnosticsLoading: false,
+          projectPath: '/tmp/project-context7',
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+    const envValueInput = host.querySelector('input[type="password"]') as HTMLInputElement;
+
+    await act(async () => {
+      scopeSelect.value = 'project';
+      scopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(envValueInput.value).toBe('project-secret');
+
+    await act(async () => {
+      scopeSelect.value = 'user';
+      scopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(envValueInput.value).toBe('');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('defaults to global scope in multimodel mode', async () => {
+    storeState.cliStatus = { flavor: 'agent_teams_orchestrator' };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server: makeServer(),
+          isInstalled: false,
+          installedEntry: null,
+          installedEntries: [],
+          diagnostic: null,
+          diagnosticsLoading: false,
+          projectPath: null,
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+    expect(scopeSelect.value).toBe('global');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('uses a runtime-aware status label in multimodel mode', async () => {
+    storeState.cliStatus = { flavor: 'agent_teams_orchestrator' };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const installedEntry: InstalledMcpEntry = {
+      name: 'context7-global',
+      scope: 'global',
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server: makeServer(),
+          isInstalled: true,
+          installedEntry,
+          installedEntries: [installedEntry],
+          diagnostic: null,
+          diagnosticsLoading: false,
+          projectPath: null,
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Runtime Status');
+    expect(host.textContent).not.toContain('Claude Status');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('preserves edited fields when multimodel scope metadata loads after open', async () => {
+    storeState.cliStatus = null;
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const server = makeServer();
+    server.envVars = [{ name: 'CONTEXT7_API_KEY', isSecret: true }];
+
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server,
+          isInstalled: false,
+          installedEntry: null,
+          installedEntries: [],
+          diagnostic: null,
+          diagnosticsLoading: false,
+          projectPath: null,
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const serverNameInput = host.querySelector('#server-name') as HTMLInputElement;
+    const envValueInput = host.querySelector('input[type="password"]') as HTMLInputElement;
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+
+    await act(async () => {
+      setInputValue(serverNameInput, 'late-hydration-context7');
+      setInputValue(envValueInput, 'secret');
+      await Promise.resolve();
+    });
+
+    expect(scopeSelect.value).toBe('user');
+
+    storeState.cliStatus = { flavor: 'agent_teams_orchestrator' };
+    await act(async () => {
+      root.render(
+        React.createElement(McpServerDetailDialog, {
+          server,
+          isInstalled: false,
+          installedEntry: null,
+          installedEntries: [],
+          diagnostic: null,
+          diagnosticsLoading: false,
+          projectPath: null,
+          open: true,
+          onClose: vi.fn(),
+        })
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect((host.querySelector('#server-name') as HTMLInputElement).value).toBe(
+      'late-hydration-context7'
+    );
+    expect((host.querySelector('input[type="password"]') as HTMLInputElement).value).toBe(
+      'secret'
+    );
+    expect((host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement).value).toBe(
+      'global'
+    );
 
     await act(async () => {
       root.unmount();
@@ -547,10 +805,11 @@ describe('McpServerDetailDialog installed entry handling', () => {
     const root = createRoot(host);
     storeState.mcpInstallProgress = {
       [getMcpOperationKey('io.github.upstash/context7', 'user')]: 'success',
-      [getMcpOperationKey('io.github.upstash/context7', 'project')]: 'error',
+      [getMcpOperationKey('io.github.upstash/context7', 'project', '/tmp/project')]: 'error',
     };
     storeState.installErrors = {
-      [getMcpOperationKey('io.github.upstash/context7', 'project')]: 'Project failed',
+      [getMcpOperationKey('io.github.upstash/context7', 'project', '/tmp/project')]:
+        'Project failed',
     };
 
     await act(async () => {

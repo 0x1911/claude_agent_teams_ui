@@ -172,7 +172,7 @@ export const AdvancedSection = ({
         <div>
           <div className="flex items-center gap-3">
             <p className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>
-              Claude Agent Teams UI
+              Agent Teams UI
             </p>
             {isElectron && (
               <button

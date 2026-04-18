@@ -111,10 +111,14 @@ vi.mock('@renderer/components/ui/select', () => ({
 
 vi.mock('@renderer/components/extensions/common/InstallButton', () => ({
   InstallButton: ({
+    state,
+    errorMessage,
     isInstalled,
     onInstall,
     onUninstall,
   }: {
+    state?: string;
+    errorMessage?: string;
     isInstalled: boolean;
     onInstall: () => void;
     onUninstall: () => void;
@@ -124,6 +128,8 @@ vi.mock('@renderer/components/extensions/common/InstallButton', () => ({
       {
         type: 'button',
         'data-testid': 'install-button',
+        'data-state': state,
+        'data-error-message': errorMessage,
         onClick: () => (isInstalled ? onUninstall() : onInstall()),
       },
       isInstalled ? 'Uninstall' : 'Install'
@@ -150,6 +156,7 @@ vi.mock('lucide-react', () => {
 });
 
 import { PluginDetailDialog } from '@renderer/components/extensions/plugins/PluginDetailDialog';
+import { getPluginOperationKey } from '@shared/utils/extensionNormalizers';
 
 const makePlugin = (): EnrichedPlugin => ({
   pluginId: 'context7@claude-plugins-official',
@@ -266,6 +273,51 @@ describe('PluginDetailDialog project context', () => {
     expect(scopeSelect).not.toBeNull();
     expect(projectOption?.disabled).toBe(true);
     expect(localOption?.disabled).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('reads project-scope action state from the current tab project path', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const plugin = makePlugin();
+
+    storeState.pluginInstallProgress = {
+      [getPluginOperationKey(plugin.pluginId, 'project', '/tmp/tab-project')]: 'pending',
+    };
+    storeState.installErrors = {
+      [getPluginOperationKey(plugin.pluginId, 'project', '/tmp/other-project')]: 'Wrong project',
+    };
+
+    await act(async () => {
+      root.render(
+        React.createElement(PluginDetailDialog, {
+          plugin,
+          open: true,
+          onClose: vi.fn(),
+          projectPath: '/tmp/tab-project',
+        })
+      );
+      await Promise.resolve();
+    });
+
+    const scopeSelect = host.querySelector('[data-testid="scope-select"]') as HTMLSelectElement;
+    const installButton = host.querySelector('[data-testid="install-button"]') as HTMLButtonElement;
+    expect(scopeSelect).not.toBeNull();
+    expect(installButton).not.toBeNull();
+
+    await act(async () => {
+      scopeSelect.value = 'project';
+      scopeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(installButton.getAttribute('data-state')).toBe('pending');
+    expect(installButton.getAttribute('data-error-message')).toBeNull();
 
     await act(async () => {
       root.unmount();

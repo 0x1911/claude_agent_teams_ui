@@ -22,6 +22,7 @@ vi.mock('../../../src/renderer/api', () => ({
       getInstalled: vi.fn(),
       diagnose: vi.fn(),
       install: vi.fn(),
+      installCustom: vi.fn(),
       uninstall: vi.fn(),
     },
     skills: {
@@ -36,14 +37,32 @@ vi.mock('../../../src/renderer/api', () => ({
       stopWatching: vi.fn(),
       onChanged: vi.fn(),
     },
+    apiKeys: {
+      list: vi.fn(),
+      save: vi.fn(),
+      delete: vi.fn(),
+      lookup: vi.fn(),
+      getStorageStatus: vi.fn(),
+    },
+    cliInstaller: {
+      getStatus: vi.fn(),
+      getProviderStatus: vi.fn(),
+      verifyProviderModels: vi.fn(),
+      invalidateStatus: vi.fn(),
+      onProgress: vi.fn(),
+    },
   },
 }));
 
 import { api } from '../../../src/renderer/api';
+import type { CliInstallationStatus } from '../../../src/shared/types';
 import {
+  getMcpDiagnosticKey,
+  getMcpProjectStateKey,
   getMcpOperationKey,
   getPluginOperationKey,
 } from '../../../src/shared/utils/extensionNormalizers';
+import { createDefaultCliExtensionCapabilities } from '../../../src/shared/utils/providerExtensionCapabilities';
 
 import type {
   EnrichedPlugin,
@@ -120,7 +139,7 @@ const makeSkillDetail = (overrides: Partial<SkillDetail> = {}): SkillDetail => (
   ...overrides,
 });
 
-const makeReadyCliStatus = () => ({
+const makeReadyCliStatus = (): CliInstallationStatus => ({
   flavor: 'claude' as const,
   displayName: 'Claude',
   supportsSelfUpdate: true,
@@ -137,10 +156,66 @@ const makeReadyCliStatus = () => ({
   providers: [],
 });
 
-const pluginOperationKey = (pluginId: string, scope: 'user' | 'project' | 'local' = 'user') =>
-  getPluginOperationKey(pluginId, scope);
-const mcpOperationKey = (registryId: string, scope: 'user' | 'project' | 'local' = 'user') =>
-  getMcpOperationKey(registryId, scope);
+const makeLimitedMultimodelCliStatus = (
+  section: 'plugins' | 'mcp',
+  reason: string
+): CliInstallationStatus => ({
+  flavor: 'agent_teams_orchestrator' as const,
+  displayName: 'Claude Multimodel',
+  supportsSelfUpdate: false,
+  showVersionDetails: true,
+  showBinaryPath: true,
+  installed: true,
+  installedVersion: '1.0.0',
+  binaryPath: '/usr/local/bin/claude-multimodel',
+  latestVersion: '1.0.0',
+  updateAvailable: false,
+  authLoggedIn: true,
+  authStatusChecking: false,
+  authMethod: null,
+  providers: [
+    {
+      providerId: 'anthropic' as const,
+      displayName: 'Anthropic',
+      supported: true,
+      authenticated: true,
+      authMethod: 'oauth_token',
+      verificationState: 'verified' as const,
+      models: [],
+      canLoginFromUi: true,
+      capabilities: {
+        teamLaunch: true,
+        oneShot: true,
+        extensions: createDefaultCliExtensionCapabilities({
+          plugins: {
+            status: section === 'plugins' ? 'unsupported' : 'supported',
+            ownership: 'shared',
+            reason: section === 'plugins' ? reason : null,
+          },
+          mcp: {
+            status: section === 'mcp' ? 'read-only' : 'supported',
+            ownership: 'shared',
+            reason: section === 'mcp' ? reason : null,
+          },
+        }),
+      },
+      statusMessage: null,
+      connection: null,
+      backend: null,
+    },
+  ],
+});
+
+const pluginOperationKey = (
+  pluginId: string,
+  scope: 'user' | 'project' | 'local' = 'user',
+  projectPath?: string
+) => getPluginOperationKey(pluginId, scope, projectPath);
+const mcpOperationKey = (
+  registryId: string,
+  scope: 'user' | 'project' | 'local' | 'global' = 'user',
+  projectPath?: string
+) => getMcpOperationKey(registryId, scope, projectPath);
 
 describe('extensionsSlice', () => {
   let store: TestStore;
@@ -148,6 +223,7 @@ describe('extensionsSlice', () => {
   beforeEach(() => {
     store = createTestStore();
     vi.clearAllMocks();
+    (api.cliInstaller!.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue(makeReadyCliStatus());
   });
 
   afterEach(() => {
@@ -377,20 +453,34 @@ describe('extensionsSlice', () => {
       expect(store.getState().mcpInstalledServers).toEqual(installed);
     });
 
+    it('stores installed MCP servers independently per project context', async () => {
+      (api.mcpRegistry!.getInstalled as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce([{ name: 'global-server', scope: 'global' as const }])
+        .mockResolvedValueOnce([{ name: 'project-server', scope: 'project' as const }]);
+
+      await store.getState().mcpFetchInstalled();
+      await store.getState().mcpFetchInstalled('/tmp/project-a');
+
+      expect(store.getState().mcpInstalledServersByProjectPath).toMatchObject({
+        [getMcpProjectStateKey()]: [{ name: 'global-server', scope: 'global' }],
+        [getMcpProjectStateKey('/tmp/project-a')]: [{ name: 'project-server', scope: 'project' }],
+      });
+    });
+
     it('clears stale project- and local-scoped MCP operation state when project changes', async () => {
       store.setState({
         mcpInstalledProjectPath: '/tmp/project-a',
         mcpInstallProgress: {
-          [mcpOperationKey('project-server', 'project')]: 'error',
-          [mcpOperationKey('local-server', 'local')]: 'success',
+          [mcpOperationKey('project-server', 'project', '/tmp/project-a')]: 'error',
+          [mcpOperationKey('local-server', 'local', '/tmp/project-a')]: 'success',
           [mcpOperationKey('user-server', 'user')]: 'pending',
         },
         installErrors: {
-          [mcpOperationKey('project-server', 'project')]: 'Project failed',
-          [mcpOperationKey('local-server', 'local')]: 'Local failed',
+          [mcpOperationKey('project-server', 'project', '/tmp/project-a')]: 'Project failed',
+          [mcpOperationKey('local-server', 'local', '/tmp/project-a')]: 'Local failed',
           [mcpOperationKey('user-server', 'user')]: 'Keep user state',
           'plugin:test@marketplace:user': 'Keep plugin state',
-          'mcp-custom:custom-server:project': 'Clear custom project state',
+          'mcp-custom:custom-server:project:/tmp/project-a': 'Clear custom project state',
         },
       });
       (api.mcpRegistry!.getInstalled as ReturnType<typeof vi.fn>).mockResolvedValue([]);
@@ -398,13 +488,21 @@ describe('extensionsSlice', () => {
       await store.getState().mcpFetchInstalled('/tmp/project-b');
 
       expect(store.getState().mcpInstalledProjectPath).toBe('/tmp/project-b');
-      expect(store.getState().mcpInstallProgress[mcpOperationKey('project-server', 'project')]).toBeUndefined();
-      expect(store.getState().mcpInstallProgress[mcpOperationKey('local-server', 'local')]).toBeUndefined();
+      expect(
+        store.getState().mcpInstallProgress[mcpOperationKey('project-server', 'project', '/tmp/project-a')]
+      ).toBeUndefined();
+      expect(
+        store.getState().mcpInstallProgress[mcpOperationKey('local-server', 'local', '/tmp/project-a')]
+      ).toBeUndefined();
       expect(store.getState().mcpInstallProgress[mcpOperationKey('user-server', 'user')]).toBe(
         'pending',
       );
-      expect(store.getState().installErrors[mcpOperationKey('project-server', 'project')]).toBeUndefined();
-      expect(store.getState().installErrors[mcpOperationKey('local-server', 'local')]).toBeUndefined();
+      expect(
+        store.getState().installErrors[mcpOperationKey('project-server', 'project', '/tmp/project-a')]
+      ).toBeUndefined();
+      expect(
+        store.getState().installErrors[mcpOperationKey('local-server', 'local', '/tmp/project-a')]
+      ).toBeUndefined();
       expect(store.getState().installErrors[mcpOperationKey('user-server', 'user')]).toBe(
         'Keep user state',
       );
@@ -532,6 +630,33 @@ describe('extensionsSlice', () => {
       });
     });
 
+    it('keys project-scope install state by project path and refreshes that same project context', async () => {
+      store.setState({
+        cliStatus: makeReadyCliStatus(),
+        pluginCatalogProjectPath: '/tmp/project-b',
+      });
+      (api.plugins!.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (api.plugins!.install as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
+
+      await store.getState().installPlugin({
+        pluginId: 'project@m',
+        scope: 'project',
+        projectPath: '/tmp/project-a',
+      });
+
+      expect(
+        store.getState().pluginInstallProgress[
+          pluginOperationKey('project@m', 'project', '/tmp/project-a')
+        ]
+      ).toBe('success');
+      expect(
+        store.getState().pluginInstallProgress[
+          pluginOperationKey('project@m', 'project', '/tmp/project-b')
+        ]
+      ).toBeUndefined();
+      expect(api.plugins!.getAll).toHaveBeenLastCalledWith('/tmp/project-a', true);
+    });
+
     it('fails fast for project scope when there is no active project path', async () => {
       store.setState({ cliStatus: makeReadyCliStatus(), pluginCatalogProjectPath: null });
 
@@ -543,6 +668,22 @@ describe('extensionsSlice', () => {
       );
       expect(store.getState().installErrors[pluginOperationKey('project@m', 'project')]).toContain(
         'active project',
+      );
+    });
+
+    it('fails fast when multimodel runtime declares plugin installs unsupported', async () => {
+      store.setState({
+        cliStatus: makeLimitedMultimodelCliStatus('plugins', 'Plugin writes unavailable'),
+      });
+
+      await store.getState().installPlugin({ pluginId: 'unsupported@m', scope: 'user' });
+
+      expect(api.plugins!.install).not.toHaveBeenCalled();
+      expect(store.getState().pluginInstallProgress[pluginOperationKey('unsupported@m')]).toBe(
+        'error',
+      );
+      expect(store.getState().installErrors[pluginOperationKey('unsupported@m')]).toContain(
+        'Plugin writes unavailable',
       );
     });
 
@@ -610,6 +751,7 @@ describe('extensionsSlice', () => {
 
   describe('uninstallPlugin', () => {
     it('sets progress to pending then success', async () => {
+      store.setState({ cliStatus: makeReadyCliStatus() });
       const plugins = [makePlugin({ pluginId: 'a@m', isInstalled: false })];
       (api.plugins!.getAll as ReturnType<typeof vi.fn>).mockResolvedValue(plugins);
       (api.plugins!.uninstall as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
@@ -629,6 +771,26 @@ describe('extensionsSlice', () => {
       await store.getState().uninstallPlugin('project@m', 'project');
 
       expect(api.plugins!.uninstall).toHaveBeenCalledWith('project@m', 'project', '/tmp/project-a');
+    });
+
+    it('keys project-scope uninstall state by project path and refreshes that same project context', async () => {
+      store.setState({ pluginCatalogProjectPath: '/tmp/project-b' });
+      (api.plugins!.getAll as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (api.plugins!.uninstall as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
+
+      await store.getState().uninstallPlugin('project@m', 'project', '/tmp/project-a');
+
+      expect(
+        store.getState().pluginInstallProgress[
+          pluginOperationKey('project@m', 'project', '/tmp/project-a')
+        ]
+      ).toBe('success');
+      expect(
+        store.getState().pluginInstallProgress[
+          pluginOperationKey('project@m', 'project', '/tmp/project-b')
+        ]
+      ).toBeUndefined();
+      expect(api.plugins!.getAll).toHaveBeenLastCalledWith('/tmp/project-a', true);
     });
 
     it('fails fast for project uninstall when there is no active project path', async () => {
@@ -693,6 +855,7 @@ describe('extensionsSlice', () => {
 
   describe('installMcpServer', () => {
     it('sets progress to pending then success', async () => {
+      store.setState({ cliStatus: makeReadyCliStatus() });
       (api.mcpRegistry!.install as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
       (api.mcpRegistry!.getInstalled as ReturnType<typeof vi.fn>).mockResolvedValue([]);
       (api.mcpRegistry!.diagnose as ReturnType<typeof vi.fn>).mockResolvedValue([]);
@@ -733,21 +896,75 @@ describe('extensionsSlice', () => {
         headers: [],
       });
 
-      expect(store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'project')]).toBe(
-        'success',
-      );
+      expect(
+        store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'project', '/tmp/project-a')]
+      ).toBe('success');
 
       await store.getState().mcpFetchInstalled('/tmp/project-b');
-      expect(store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'project')]).toBeUndefined();
+      expect(
+        store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'project', '/tmp/project-a')]
+      ).toBeUndefined();
 
       await vi.advanceTimersByTimeAsync(2_000);
 
-      expect(store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'project')]).toBeUndefined();
+      expect(
+        store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'project', '/tmp/project-a')]
+      ).toBeUndefined();
+    });
+
+    it('fails fast when multimodel runtime exposes MCP as read-only', async () => {
+      store.setState({
+        cliStatus: makeLimitedMultimodelCliStatus('mcp', 'MCP writes unavailable'),
+      });
+
+      await store.getState().installMcpServer({
+        registryId: 'test-id',
+        serverName: 'test-server',
+        scope: 'global',
+        envValues: {},
+        headers: [],
+      });
+
+      expect(api.mcpRegistry!.install).not.toHaveBeenCalled();
+      expect(store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'global')]).toBe(
+        'error',
+      );
+      expect(store.getState().installErrors[mcpOperationKey('test-id', 'global')]).toContain(
+        'MCP writes unavailable',
+      );
+    });
+  });
+
+  describe('installCustomMcpServer', () => {
+    it('rejects and records an error when MCP writes are unavailable', async () => {
+      store.setState({
+        cliStatus: makeLimitedMultimodelCliStatus('mcp', 'MCP writes unavailable'),
+      });
+
+      await expect(
+        store.getState().installCustomMcpServer({
+          serverName: 'custom-server',
+          scope: 'global',
+          installSpec: {
+            type: 'stdio',
+            npmPackage: '@example/custom-mcp',
+          },
+          envValues: {},
+          headers: [],
+        }),
+      ).rejects.toThrow('MCP writes unavailable');
+
+      expect(api.mcpRegistry!.installCustom).not.toHaveBeenCalled();
+      expect(store.getState().mcpInstallProgress['mcp-custom:custom-server:global']).toBe('error');
+      expect(store.getState().installErrors['mcp-custom:custom-server:global']).toContain(
+        'MCP writes unavailable',
+      );
     });
   });
 
   describe('uninstallMcpServer', () => {
     it('sets progress to pending then success', async () => {
+      store.setState({ cliStatus: makeReadyCliStatus() });
       (api.mcpRegistry!.uninstall as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
       (api.mcpRegistry!.getInstalled as ReturnType<typeof vi.fn>).mockResolvedValue([]);
       (api.mcpRegistry!.diagnose as ReturnType<typeof vi.fn>).mockResolvedValue([]);
@@ -762,6 +979,265 @@ describe('extensionsSlice', () => {
       expect(store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'user')]).toBe(
         'success',
       );
+    });
+
+    it('fails fast when multimodel runtime exposes MCP as read-only', async () => {
+      store.setState({
+        cliStatus: makeLimitedMultimodelCliStatus('mcp', 'MCP writes unavailable'),
+      });
+
+      await store.getState().uninstallMcpServer('test-id', 'test-server', 'global');
+
+      expect(api.mcpRegistry!.uninstall).not.toHaveBeenCalled();
+      expect(store.getState().mcpInstallProgress[mcpOperationKey('test-id', 'global')]).toBe(
+        'error',
+      );
+      expect(store.getState().installErrors[mcpOperationKey('test-id', 'global')]).toContain(
+        'MCP writes unavailable',
+      );
+    });
+  });
+
+  describe('provider-aware runtime refresh', () => {
+    it('passes projectPath through MCP diagnostics', async () => {
+      (api.mcpRegistry!.diagnose as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      await store.getState().runMcpDiagnostics('/tmp/project-a');
+
+      expect(api.mcpRegistry!.diagnose).toHaveBeenCalledWith('/tmp/project-a');
+    });
+
+    it('refreshes CLI status after saving an API key', async () => {
+      (api.apiKeys!.save as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'k1' });
+      (api.apiKeys!.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          id: 'k1',
+          name: 'Codex key',
+          envVarName: 'OPENAI_API_KEY',
+          maskedValue: '***',
+          scope: 'user',
+          createdAt: '2026-04-17T10:00:00.000Z',
+        },
+      ]);
+
+      await store.getState().saveApiKey({
+        name: 'Codex key',
+        envVarName: 'OPENAI_API_KEY',
+        value: 'secret',
+        scope: 'user',
+      });
+
+      expect(api.cliInstaller!.getStatus).toHaveBeenCalled();
+      expect(store.getState().apiKeys).toHaveLength(1);
+    });
+
+    it('keeps saved API keys updated when provider status refresh fails', async () => {
+      (api.apiKeys!.save as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'k1',
+        name: 'Codex key',
+        envVarName: 'OPENAI_API_KEY',
+        maskedValue: '***',
+        scope: 'user',
+        createdAt: '2026-04-17T10:00:00.000Z',
+      });
+      (api.apiKeys!.list as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          id: 'k1',
+          name: 'Codex key',
+          envVarName: 'OPENAI_API_KEY',
+          maskedValue: '***',
+          scope: 'user',
+          createdAt: '2026-04-17T10:00:00.000Z',
+        },
+      ]);
+      (api.cliInstaller!.getStatus as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('refresh boom')
+      );
+
+      await store.getState().saveApiKey({
+        name: 'Codex key',
+        envVarName: 'OPENAI_API_KEY',
+        value: 'secret',
+        scope: 'user',
+      });
+
+      expect(store.getState().apiKeys).toHaveLength(1);
+      expect(store.getState().apiKeysError).toContain('API key saved, but failed to refresh provider status.');
+    });
+
+    it('keeps local API key state updated when key list refresh fails after save', async () => {
+      (api.apiKeys!.save as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 'k1',
+        name: 'Codex key',
+        envVarName: 'OPENAI_API_KEY',
+        maskedValue: '***',
+        scope: 'user',
+        createdAt: '2026-04-17T10:00:00.000Z',
+      });
+      (api.apiKeys!.list as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('list boom'));
+
+      await store.getState().saveApiKey({
+        name: 'Codex key',
+        envVarName: 'OPENAI_API_KEY',
+        value: 'secret',
+        scope: 'user',
+      });
+
+      expect(store.getState().apiKeys).toEqual([
+        {
+          id: 'k1',
+          name: 'Codex key',
+          envVarName: 'OPENAI_API_KEY',
+          maskedValue: '***',
+          scope: 'user',
+          createdAt: '2026-04-17T10:00:00.000Z',
+        },
+      ]);
+      expect(store.getState().apiKeysError).toContain('API key saved, but failed to refresh key list.');
+    });
+
+    it('refreshes CLI status after deleting an API key', async () => {
+      store.setState({
+        apiKeys: [
+          {
+            id: 'k1',
+            name: 'Codex key',
+            envVarName: 'OPENAI_API_KEY',
+            maskedValue: '***',
+            scope: 'user',
+            createdAt: '2026-04-17T10:00:00.000Z',
+          },
+        ],
+      });
+      (api.apiKeys!.delete as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+      await store.getState().deleteApiKey('k1');
+
+      expect(api.cliInstaller!.getStatus).toHaveBeenCalled();
+      expect(store.getState().apiKeys).toEqual([]);
+    });
+
+    it('keeps local API key state updated when provider status refresh fails after delete', async () => {
+      store.setState({
+        apiKeys: [
+          {
+            id: 'k1',
+            name: 'Codex key',
+            envVarName: 'OPENAI_API_KEY',
+            maskedValue: '***',
+            scope: 'user',
+            createdAt: '2026-04-17T10:00:00.000Z',
+          },
+        ],
+      });
+      (api.apiKeys!.delete as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+      (api.cliInstaller!.getStatus as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('refresh boom')
+      );
+
+      await store.getState().deleteApiKey('k1');
+
+      expect(store.getState().apiKeys).toEqual([]);
+      expect(store.getState().apiKeysError).toContain(
+        'API key deleted, but failed to refresh provider status.'
+      );
+    });
+
+    it('keys MCP diagnostics by scope when the same server exists in multiple scopes', async () => {
+      (api.mcpRegistry!.diagnose as ReturnType<typeof vi.fn>).mockResolvedValue([
+        {
+          name: 'context7',
+          scope: 'global',
+          target: 'npx -y @upstash/context7-mcp',
+          status: 'connected',
+          statusLabel: 'Connected',
+          rawLine: 'context7: npx -y @upstash/context7-mcp - Connected',
+          checkedAt: 1,
+        },
+        {
+          name: 'context7',
+          scope: 'project',
+          target: 'uvx context7-project',
+          status: 'failed',
+          statusLabel: 'Failed to connect',
+          rawLine: 'context7: uvx context7-project - Failed to connect',
+          checkedAt: 1,
+        },
+      ]);
+
+      await store.getState().runMcpDiagnostics('/tmp/project-a');
+
+      expect(store.getState().mcpDiagnostics).toMatchObject({
+        [getMcpDiagnosticKey('context7', 'global')]: expect.objectContaining({
+          target: 'npx -y @upstash/context7-mcp',
+        }),
+        [getMcpDiagnosticKey('context7', 'project')]: expect.objectContaining({
+          target: 'uvx context7-project',
+        }),
+      });
+    });
+
+    it('stores MCP diagnostics independently per project context', async () => {
+      (api.mcpRegistry!.diagnose as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce([
+          {
+            name: 'global-server',
+            scope: 'global',
+            target: 'npx global-server',
+            status: 'connected',
+            statusLabel: 'Connected',
+            rawLine: 'global-server: npx global-server - Connected',
+            checkedAt: 1,
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            name: 'project-server',
+            scope: 'project',
+            target: 'uvx project-server',
+            status: 'failed',
+            statusLabel: 'Failed to connect',
+            rawLine: 'project-server: uvx project-server - Failed to connect',
+            checkedAt: 2,
+          },
+        ]);
+
+      await store.getState().runMcpDiagnostics();
+      await store.getState().runMcpDiagnostics('/tmp/project-a');
+
+      expect(store.getState().mcpDiagnosticsByProjectPath).toMatchObject({
+        [getMcpProjectStateKey()]: {
+          [getMcpDiagnosticKey('global-server', 'global')]: expect.objectContaining({
+            target: 'npx global-server',
+          }),
+        },
+        [getMcpProjectStateKey('/tmp/project-a')]: {
+          [getMcpDiagnosticKey('project-server', 'project')]: expect.objectContaining({
+            target: 'uvx project-server',
+          }),
+        },
+      });
+    });
+
+    it('refreshes MCP install state using the operation project context instead of the last viewed tab', async () => {
+      store.setState({
+        mcpInstalledProjectPath: '/tmp/project-b',
+      });
+      (api.mcpRegistry!.install as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'success' });
+      (api.mcpRegistry!.getInstalled as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (api.mcpRegistry!.diagnose as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+      await store.getState().installMcpServer({
+        registryId: 'test-id',
+        serverName: 'test-server',
+        scope: 'project',
+        projectPath: '/tmp/project-a',
+        envValues: {},
+        headers: [],
+      });
+
+      expect(api.mcpRegistry!.getInstalled).toHaveBeenLastCalledWith('/tmp/project-a');
+      expect(api.mcpRegistry!.diagnose).toHaveBeenLastCalledWith('/tmp/project-a');
     });
   });
 

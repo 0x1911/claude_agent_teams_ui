@@ -9,12 +9,15 @@
 
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
 import { execCli } from '@main/utils/childProcess';
-import { buildEnrichedEnv } from '@main/utils/cliEnv';
 import { CLI_NOT_FOUND_MESSAGE } from '@shared/constants/cli';
 import { createLogger } from '@shared/utils/logger';
+import { isProjectScopedMcpScope } from '@shared/utils/mcpScopes';
 import path from 'path';
 
+import { createExtensionsRuntimeAdapter } from '../runtime/ExtensionsRuntimeAdapter';
+
 import type { McpCatalogAggregator } from '../catalog/McpCatalogAggregator';
+import type { ExtensionsRuntimeAdapter } from '../runtime/ExtensionsRuntimeAdapter';
 import type {
   McpCustomInstallRequest,
   McpInstallRequest,
@@ -27,7 +30,7 @@ const logger = createLogger('Extensions:McpInstall');
 const SERVER_NAME_RE = /^[\w.-]{1,100}$/;
 
 /** Allowed scope values (prevent command injection) */
-const VALID_SCOPES = new Set(['local', 'user', 'project']);
+const VALID_SCOPES = new Set(['local', 'user', 'project', 'global']);
 
 /** Env var key must be safe shell identifier */
 const ENV_KEY_RE = /^[A-Z_][A-Z0-9_]{0,100}$/i;
@@ -38,11 +41,14 @@ const HEADER_KEY_RE = /^[A-Za-z][\w-]{0,100}$/;
 const TIMEOUT_MS = 30_000;
 
 function scopeRequiresProjectPath(scope?: string): boolean {
-  return scope === 'local' || scope === 'project';
+  return isProjectScopedMcpScope(scope);
 }
 
 export class McpInstallService {
-  constructor(private readonly aggregator: McpCatalogAggregator) {}
+  constructor(
+    private readonly aggregator: McpCatalogAggregator,
+    private readonly runtimeAdapter: ExtensionsRuntimeAdapter = createExtensionsRuntimeAdapter()
+  ) {}
 
   async install(request: McpInstallRequest): Promise<OperationResult> {
     const { registryId, serverName, scope, projectPath, envValues, headers } = request;
@@ -59,7 +65,7 @@ export class McpInstallService {
     if (scope && !VALID_SCOPES.has(scope)) {
       return {
         state: 'error',
-        error: `Invalid scope: "${scope}". Must be one of: local, user, project.`,
+        error: `Invalid scope: "${scope}". Must be one of: local, user, project, global.`,
       };
     }
 
@@ -180,11 +186,12 @@ export class McpInstallService {
           error: CLI_NOT_FOUND_MESSAGE,
         };
       }
+      const env = await this.runtimeAdapter.buildManagementCliEnv(claudeBinary);
 
       const { stderr } = await execCli(claudeBinary, args, {
         timeout: TIMEOUT_MS,
         cwd: projectPath,
-        env: buildEnrichedEnv(claudeBinary),
+        env,
       });
 
       if (stderr) {
@@ -295,11 +302,12 @@ export class McpInstallService {
           error: CLI_NOT_FOUND_MESSAGE,
         };
       }
+      const env = await this.runtimeAdapter.buildManagementCliEnv(claudeBinary);
 
       const { stderr } = await execCli(claudeBinary, args, {
         timeout: TIMEOUT_MS,
         cwd: projectPath,
-        env: buildEnrichedEnv(claudeBinary),
+        env,
       });
 
       if (stderr) {
@@ -330,7 +338,7 @@ export class McpInstallService {
     if (scope && !VALID_SCOPES.has(scope)) {
       return {
         state: 'error',
-        error: `Invalid scope: "${scope}". Must be one of: local, user, project.`,
+        error: `Invalid scope: "${scope}". Must be one of: local, user, project, global.`,
       };
     }
 
@@ -364,11 +372,12 @@ export class McpInstallService {
           error: CLI_NOT_FOUND_MESSAGE,
         };
       }
+      const env = await this.runtimeAdapter.buildManagementCliEnv(claudeBinary);
 
       await execCli(claudeBinary, args, {
         timeout: TIMEOUT_MS,
         cwd: projectPath,
-        env: buildEnrichedEnv(claudeBinary),
+        env,
       });
       return { state: 'success' };
     } catch (err) {

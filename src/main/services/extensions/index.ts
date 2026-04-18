@@ -11,6 +11,11 @@ export { PluginCatalogService } from './catalog/PluginCatalogService';
 export { ExtensionFacadeService } from './ExtensionFacadeService';
 export { McpInstallService } from './install/McpInstallService';
 export { PluginInstallService } from './install/PluginInstallService';
+export {
+  ClaudeExtensionsAdapter,
+  createExtensionsRuntimeAdapter,
+  MultimodelExtensionsAdapter,
+} from './runtime/ExtensionsRuntimeAdapter';
 export { SkillImportService } from './skills/SkillImportService';
 export { SkillMetadataParser } from './skills/SkillMetadataParser';
 export { SkillPlanService } from './skills/SkillPlanService';

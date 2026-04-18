@@ -4,6 +4,7 @@
 
 import { api } from '@renderer/api';
 import { createLogger } from '@shared/utils/logger';
+import { createDefaultCliExtensionCapabilities } from '@shared/utils/providerExtensionCapabilities';
 
 import type { AppState } from '../types';
 import type { CliInstallationStatus, CliProviderId, CliProviderStatus } from '@shared/types';
@@ -36,6 +37,7 @@ export function createLoadingMultimodelCliStatus(): CliInstallationStatus {
     capabilities: {
       teamLaunch: false,
       oneShot: false,
+      extensions: createDefaultCliExtensionCapabilities(),
     },
     backend: null,
   }));
