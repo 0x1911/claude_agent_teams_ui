@@ -13,7 +13,6 @@
 import { createLogger } from '@shared/utils/logger';
 
 import { coercePageLimit, validateProjectId, validateSessionId } from '../ipc/guards';
-import { stripSessionDetailMessages } from '../services/analysis/sessionDetailPayload';
 import { DataCache } from '../services/infrastructure/DataCache';
 
 import type { SessionsByIdsOptions, SessionsPaginationOptions } from '../types';
@@ -189,11 +188,11 @@ export function registerSessionRoutes(app: FastifyInstance, services: HttpServic
       );
       session.hasSubagents = subagents.length > 0;
 
-      // Build session detail with chunks. Strip the raw `messages` array before
-      // caching/returning — the renderer only consumes chunks/processes/session,
-      // and including messages doubled IPC payload size and cache footprint.
-      sessionDetail = stripSessionDetailMessages(
-        services.chunkBuilder.buildSessionDetail(session, parsedSession.messages, subagents)
+      // Build session detail with chunks
+      sessionDetail = services.chunkBuilder.buildSessionDetail(
+        session,
+        parsedSession.messages,
+        subagents
       );
 
       // Cache the result
@@ -319,10 +318,10 @@ export function registerSessionRoutes(app: FastifyInstance, services: HttpServic
             parsedSession.messages
           );
 
-          // Strip the raw `messages` array before caching so the waterfall path
-          // cannot "poison" the cache entry reused by the session-detail route.
-          detail = stripSessionDetailMessages(
-            services.chunkBuilder.buildSessionDetail(session, parsedSession.messages, subagents)
+          detail = services.chunkBuilder.buildSessionDetail(
+            session,
+            parsedSession.messages,
+            subagents
           );
           services.dataCache.set(cacheKey, detail);
         }
