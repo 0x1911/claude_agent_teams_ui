@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { ANIM_SPEED, NODE } from '../constants/canvas-constants';
 import { getStateColor } from '../constants/colors';
@@ -239,19 +239,29 @@ export function useGraphSimulation(): UseGraphSimulationResult {
     };
   }, []);
 
-  return {
-    stateRef,
-    updateData,
-    tick,
-    setNodePosition,
-    clearNodePosition,
-    clearTransientOwnerPositions,
-    resolveNearestOwnerSlot,
-    getLaunchAnchorWorldPosition: (leadNodeId: string) =>
-      launchAnchorPositionsRef.current.get(leadNodeId) ?? null,
-    getActivityWorldRect: (nodeId: string) => activityRectByNodeIdRef.current.get(nodeId) ?? null,
-    getExtraWorldBounds: () => extraWorldBoundsRef.current,
-  };
+  return useMemo(
+    () => ({
+      stateRef,
+      updateData,
+      tick,
+      setNodePosition,
+      clearNodePosition,
+      clearTransientOwnerPositions,
+      resolveNearestOwnerSlot,
+      getLaunchAnchorWorldPosition: (leadNodeId: string) =>
+        launchAnchorPositionsRef.current.get(leadNodeId) ?? null,
+      getActivityWorldRect: (nodeId: string) => activityRectByNodeIdRef.current.get(nodeId) ?? null,
+      getExtraWorldBounds: () => extraWorldBoundsRef.current,
+    }),
+    [
+      updateData,
+      tick,
+      setNodePosition,
+      clearNodePosition,
+      clearTransientOwnerPositions,
+      resolveNearestOwnerSlot,
+    ]
+  );
 }
 
 function applySnapshotToNodes(

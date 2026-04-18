@@ -32,7 +32,7 @@ import {
   findNodeAt,
   getEdgeMidpoint,
 } from '../canvas/hit-detection';
-import { ANIM_SPEED } from '../constants/canvas-constants';
+import { ANIM, ANIM_SPEED } from '../constants/canvas-constants';
 import { getLaunchAnchorScreenPlacement as buildLaunchAnchorScreenPlacement } from '../layout/launchAnchor';
 
 export interface GraphViewProps {
@@ -148,13 +148,6 @@ export function GraphView({
   // ─── Hooks ──────────────────────────────────────────────────────────────
   const simulation = useGraphSimulation();
   const camera = useGraphCamera();
-
-  // Stable refs for RAF loop (avoid recreating animate on hook identity change)
-  const simulationRef = useRef(simulation);
-  simulationRef.current = simulation;
-  const cameraRef = useRef(camera);
-  cameraRef.current = camera;
-
   const interaction = useGraphInteraction(
     useCallback(
       (nodeId: string, x: number, y: number) => {
@@ -162,6 +155,20 @@ export function GraphView({
       },
       [simulation]
     )
+  );
+
+  // Stable refs for RAF loop (avoid recreating animate on hook identity change)
+  const simulationRef = useRef(simulation);
+  simulationRef.current = simulation;
+  const cameraRef = useRef(camera);
+  cameraRef.current = camera;
+  const interactionRef = useRef(interaction);
+  interactionRef.current = interaction;
+  const processActivePointerMoveRef = useRef<((clientX: number, clientY: number) => boolean) | null>(
+    null
+  );
+  const completePointerInteractionRef = useRef<((clientX: number, clientY: number) => void) | null>(
+    null
   );
 
   const getVisibleNodes = useCallback(
@@ -433,16 +440,16 @@ export function GraphView({
   }, []);
 
   useLayoutEffect(() => {
-    if (!isSurfaceActive) {
+    if (isSurfaceActive) {
       return;
     }
-    interaction.handleMouseUp();
-    simulation.clearTransientOwnerPositions();
+    interactionRef.current.handleMouseUp();
+    simulationRef.current.clearTransientOwnerPositions();
     dragPreviewRef.current = null;
     isPanningRef.current = false;
     edgeMouseDownRef.current = null;
     setInteractionGuards(false);
-  }, [interaction, isSurfaceActive, simulation]);
+  }, [isSurfaceActive, setInteractionGuards]);
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {
@@ -454,7 +461,13 @@ export function GraphView({
 
   // ─── Mouse handlers (Figma-style: drag empty space = pan, drag node = move) ─
   const isPanningRef = useRef(false);
-  const edgeMouseDownRef = useRef<{ id: string; x: number; y: number } | null>(null);
+  const edgeMouseDownRef = useRef<{
+    id: string;
+    worldX: number;
+    worldY: number;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -491,7 +504,13 @@ export function GraphView({
         if (hitEdge) {
           markUserInteracted();
           isPanningRef.current = false;
-          edgeMouseDownRef.current = { id: hitEdge, x: world.x, y: world.y };
+          edgeMouseDownRef.current = {
+            id: hitEdge,
+            worldX: world.x,
+            worldY: world.y,
+            clientX: e.clientX,
+            clientY: e.clientY,
+          };
           hoveredEdgeIdRef.current = hitEdge;
         } else {
           // Hit empty space → pan
@@ -518,17 +537,42 @@ export function GraphView({
 
   const processActivePointerMove = useCallback(
     (clientX: number, clientY: number) => {
-      if (!activePrimaryInteractionRef.current) {
-        dragPreviewRef.current = null;
-        return false;
-      }
-
       if (isPanningRef.current) {
         if (typeof document !== 'undefined') {
           document.getSelection()?.removeAllRanges();
         }
         camera.handlePanMove(clientX, clientY);
         return true;
+      }
+
+      const edgeMouseDown = edgeMouseDownRef.current;
+      if (
+        edgeMouseDown &&
+        !interaction.dragNodeId.current &&
+        !interaction.isDragging.current
+      ) {
+        const dx = clientX - edgeMouseDown.clientX;
+        const dy = clientY - edgeMouseDown.clientY;
+        if (dx * dx + dy * dy > ANIM.dragThresholdPx * ANIM.dragThresholdPx) {
+          if (typeof document !== 'undefined') {
+            document.getSelection()?.removeAllRanges();
+          }
+          hoveredEdgeIdRef.current = null;
+          edgeMouseDownRef.current = null;
+          isPanningRef.current = true;
+          camera.handlePanStart(edgeMouseDown.clientX, edgeMouseDown.clientY);
+          camera.handlePanMove(clientX, clientY);
+          return true;
+        }
+      }
+
+      if (
+        !activePrimaryInteractionRef.current &&
+        !interaction.dragNodeId.current &&
+        !interaction.isDragging.current
+      ) {
+        dragPreviewRef.current = null;
+        return false;
       }
 
       const canvas = canvasHandle.current?.getCanvas();
@@ -627,8 +671,8 @@ export function GraphView({
         if (canvas && edgeMouseDownRef.current && !interaction.isDragging.current) {
           const rect = canvas.getBoundingClientRect();
           const world = camera.screenToWorld(clientX - rect.left, clientY - rect.top);
-          const dx = world.x - edgeMouseDownRef.current.x;
-          const dy = world.y - edgeMouseDownRef.current.y;
+          const dx = world.x - edgeMouseDownRef.current.worldX;
+          const dy = world.y - edgeMouseDownRef.current.worldY;
           if (dx * dx + dy * dy <= 25) {
             clickedEdgeId = edgeMouseDownRef.current.id;
           }
@@ -656,6 +700,8 @@ export function GraphView({
     },
     [camera, events, interaction, onOwnerSlotDrop, setInteractionGuards, simulation]
   );
+  processActivePointerMoveRef.current = processActivePointerMove;
+  completePointerInteractionRef.current = completePointerInteraction;
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
@@ -711,36 +757,40 @@ export function GraphView({
       if (
         !activePrimaryInteractionRef.current &&
         !isPanningRef.current &&
-        !interaction.dragNodeId.current &&
-        !interaction.isDragging.current &&
+        !interactionRef.current.dragNodeId.current &&
+        !interactionRef.current.isDragging.current &&
         !edgeMouseDownRef.current
       ) {
         return;
       }
       event.preventDefault();
-      processActivePointerMove(event.clientX, event.clientY);
+      processActivePointerMoveRef.current?.(event.clientX, event.clientY);
     };
 
     const handleWindowMouseUp = (event: MouseEvent): void => {
       if (
         !activePrimaryInteractionRef.current &&
         !isPanningRef.current &&
-        !interaction.dragNodeId.current &&
-        !interaction.isDragging.current &&
+        !interactionRef.current.dragNodeId.current &&
+        !interactionRef.current.isDragging.current &&
         !edgeMouseDownRef.current
       ) {
         setInteractionGuards(false);
         return;
       }
-      completePointerInteraction(event.clientX, event.clientY);
+      completePointerInteractionRef.current?.(event.clientX, event.clientY);
     };
 
     const clearInteraction = (): void => {
-      if (!activePrimaryInteractionRef.current && !isPanningRef.current && !interaction.isDragging.current) {
+      if (
+        !activePrimaryInteractionRef.current &&
+        !isPanningRef.current &&
+        !interactionRef.current.isDragging.current
+      ) {
         return;
       }
-      interaction.handleMouseUp();
-      camera.handlePanEnd();
+      interactionRef.current.handleMouseUp();
+      cameraRef.current.handlePanEnd();
       isPanningRef.current = false;
       edgeMouseDownRef.current = null;
       dragPreviewRef.current = null;
@@ -756,9 +806,14 @@ export function GraphView({
       window.removeEventListener('mouseup', handleWindowMouseUp);
       window.removeEventListener('blur', clearInteraction);
       window.removeEventListener('dragstart', clearInteraction);
+    };
+  }, [setInteractionGuards]);
+
+  useEffect(() => {
+    return () => {
       setInteractionGuards(false);
     };
-  }, [camera, completePointerInteraction, interaction, processActivePointerMove, setInteractionGuards]);
+  }, [setInteractionGuards]);
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {

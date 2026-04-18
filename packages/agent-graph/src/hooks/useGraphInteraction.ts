@@ -3,7 +3,7 @@
  * Delegates hit testing to strategy pattern.
  */
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useMemo } from 'react';
 import type { GraphNode } from '../ports/types';
 import { ANIM } from '../constants/canvas-constants';
 import { findNodeAt } from '../canvas/hit-detection';
@@ -81,13 +81,16 @@ export function useGraphInteraction(
     return findNodeAt(wx, wy, nodes);
   }, []);
 
-  return {
-    hoveredNodeId,
-    dragNodeId,
-    isDragging,
-    handleMouseDown,
-    handleMouseMove,
-    handleMouseUp,
-    handleDoubleClick,
-  };
+  return useMemo(
+    () => ({
+      hoveredNodeId,
+      dragNodeId,
+      isDragging,
+      handleMouseDown,
+      handleMouseMove,
+      handleMouseUp,
+      handleDoubleClick,
+    }),
+    [handleDoubleClick, handleMouseDown, handleMouseMove, handleMouseUp]
+  );
 }

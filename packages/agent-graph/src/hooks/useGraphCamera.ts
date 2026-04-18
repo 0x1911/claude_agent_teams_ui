@@ -4,7 +4,7 @@
  * All state in refs — no React re-renders.
  */
 
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useMemo } from 'react';
 import type { GraphNode } from '../ports/types';
 import { CAMERA, ANIM, NODE, TASK_PILL } from '../constants/canvas-constants';
 import type { WorldBounds } from '../layout/launchAnchor';
@@ -170,17 +170,31 @@ export function useGraphCamera(): UseGraphCameraResult {
     t.zoom = Math.max(CAMERA.minZoom, t.zoom / 1.2);
   }, []);
 
-  return {
-    transformRef,
-    screenToWorld,
-    worldToScreen,
-    handleWheel,
-    handlePanStart,
-    handlePanMove,
-    handlePanEnd,
-    zoomToFit,
-    zoomIn,
-    zoomOut,
-    updateInertia,
-  };
+  return useMemo(
+    () => ({
+      transformRef,
+      screenToWorld,
+      worldToScreen,
+      handleWheel,
+      handlePanStart,
+      handlePanMove,
+      handlePanEnd,
+      zoomToFit,
+      zoomIn,
+      zoomOut,
+      updateInertia,
+    }),
+    [
+      screenToWorld,
+      worldToScreen,
+      handleWheel,
+      handlePanStart,
+      handlePanMove,
+      handlePanEnd,
+      zoomToFit,
+      zoomIn,
+      zoomOut,
+      updateInertia,
+    ]
+  );
 }

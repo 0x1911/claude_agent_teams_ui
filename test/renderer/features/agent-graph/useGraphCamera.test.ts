@@ -7,15 +7,29 @@ import { useGraphCamera, type UseGraphCameraResult } from '../../../../packages/
 import type { GraphNode } from '@claude-teams/agent-graph';
 
 let capturedCamera: UseGraphCameraResult | null = null;
+let firstCamera: UseGraphCameraResult | null = null;
+let secondCamera: UseGraphCameraResult | null = null;
 
 function CameraHarness(): React.JSX.Element | null {
   capturedCamera = useGraphCamera();
   return null;
 }
 
+function CameraIdentityHarness({ pass }: { pass: number }): React.JSX.Element | null {
+  const camera = useGraphCamera();
+  if (pass === 1) {
+    firstCamera = camera;
+  } else {
+    secondCamera = camera;
+  }
+  return null;
+}
+
 describe('useGraphCamera zoomToFit', () => {
   afterEach(() => {
     capturedCamera = null;
+    firstCamera = null;
+    secondCamera = null;
     document.body.innerHTML = '';
   });
 
@@ -65,6 +79,31 @@ describe('useGraphCamera zoomToFit', () => {
     expect(top).toBeGreaterThanOrEqual(0);
     expect(right).toBeLessThanOrEqual(800);
     expect(bottom).toBeLessThanOrEqual(600);
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('returns a referentially stable result across rerenders', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CameraIdentityHarness, { pass: 1 }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.render(React.createElement(CameraIdentityHarness, { pass: 2 }));
+      await Promise.resolve();
+    });
+
+    expect(firstCamera).toBeTruthy();
+    expect(secondCamera).toBe(firstCamera);
 
     await act(async () => {
       root.unmount();
