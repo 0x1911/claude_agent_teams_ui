@@ -1,6 +1,12 @@
 import { buildTeamMemberColorMap } from '@shared/utils/teamMemberColors';
 import { isLeadMember } from '@shared/utils/leadDetection';
 
+import {
+  getParticipantAvatarUrlByIndex,
+  LEAD_PARTICIPANT_AVATAR_URL,
+  PARTICIPANT_AVATAR_URLS,
+} from './memberAvatarCatalog';
+
 import type {
   LeadActivityState,
   MemberLaunchState,
@@ -23,8 +29,26 @@ export function displayMemberName(name: string): string {
   return name === 'team-lead' ? 'lead' : name;
 }
 
+function hashStringToIndex(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
 export function agentAvatarUrl(name: string, size = 64): string {
-  return `https://robohash.org/${encodeURIComponent(name)}?size=${size}x${size}`;
+  void size;
+  const normalized = name.trim().toLowerCase();
+  if (normalized === 'team-lead' || normalized === 'lead') {
+    return LEAD_PARTICIPANT_AVATAR_URL;
+  }
+
+  // Temporarily disabled external avatar API.
+  // return `https://robohash.org/${encodeURIComponent(name)}?size=${size}x${size}`;
+  return getParticipantAvatarUrlByIndex(
+    hashStringToIndex(normalized) % PARTICIPANT_AVATAR_URLS.length
+  );
 }
 
 export const STATUS_DOT_COLORS: Record<MemberStatus, string> = {
@@ -567,6 +591,12 @@ interface MemberColorInput {
   role?: string;
 }
 
+interface MemberAvatarInput {
+  name: string;
+  removedAt?: number | string | null;
+  agentType?: string;
+}
+
 /**
  * Build a consistent name→colorName map for all members.
  * Active members receive colors sequentially from MEMBER_COLOR_PALETTE,
@@ -576,6 +606,49 @@ interface MemberColorInput {
  */
 export function buildMemberColorMap(members: MemberColorInput[]): Map<string, string> {
   return buildTeamMemberColorMap(members, { preferProvidedColors: true });
+}
+
+export function buildMemberAvatarMap(members: readonly MemberAvatarInput[]): Map<string, string> {
+  const map = new Map<string, string>();
+  const activeMembers = members.filter((member) => !member.removedAt);
+  const leadMembers = activeMembers.filter((member) => isLeadMember(member));
+  const teammateMembers = activeMembers.filter((member) => !isLeadMember(member));
+
+  for (const [index, member] of leadMembers.entries()) {
+    map.set(member.name, index === 0 ? LEAD_PARTICIPANT_AVATAR_URL : agentAvatarUrl(member.name));
+  }
+
+  for (const [index, member] of teammateMembers.entries()) {
+    map.set(
+      member.name,
+      getParticipantAvatarUrlByIndex(1 + (index % (PARTICIPANT_AVATAR_URLS.length - 1)))
+    );
+  }
+
+  for (const member of members) {
+    if (!map.has(member.name)) {
+      map.set(
+        member.name,
+        isLeadMember(member) ? LEAD_PARTICIPANT_AVATAR_URL : agentAvatarUrl(member.name)
+      );
+    }
+  }
+
+  map.set('user', agentAvatarUrl('user'));
+  map.set('system', agentAvatarUrl('system'));
+
+  return map;
+}
+
+export function resolveMemberAvatarUrl(
+  member: MemberAvatarInput,
+  avatarMap?: ReadonlyMap<string, string>,
+  size = 64
+): string {
+  return (
+    avatarMap?.get(member.name) ??
+    (isLeadMember(member) ? LEAD_PARTICIPANT_AVATAR_URL : agentAvatarUrl(member.name, size))
+  );
 }
 
 export const KANBAN_COLUMN_DISPLAY: Record<

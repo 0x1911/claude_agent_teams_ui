@@ -1,10 +1,15 @@
+import { useMemo } from 'react';
+
 import { Badge } from '@renderer/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip';
 import { getTeamColorSet } from '@renderer/constants/teamColors';
 import { useTheme } from '@renderer/hooks/useTheme';
+import { useStore } from '@renderer/store';
+import { selectResolvedMembersForTeamName } from '@renderer/store/slices/teamSlice';
 import { formatAgentRole } from '@renderer/utils/formatAgentRole';
 import {
   agentAvatarUrl,
+  buildMemberAvatarMap,
   buildMemberLaunchPresentation,
   displayMemberName,
 } from '@renderer/utils/memberHelpers';
@@ -97,6 +102,11 @@ export const MemberCard = ({
   // const leadContext = useStore((s) =>
   //   member.agentType === 'team-lead' && teamName ? s.leadContextByTeam[teamName] : undefined
   // );
+  const selectedTeamName = useStore((s) => s.selectedTeamName);
+  const teamMembers = useStore((s) =>
+    selectedTeamName ? selectResolvedMembersForTeamName(s, selectedTeamName) : []
+  );
+  const avatarMap = useMemo(() => buildMemberAvatarMap(teamMembers), [teamMembers]);
   const launchPresentation = buildMemberLaunchPresentation({
     member,
     spawnStatus,
@@ -173,7 +183,7 @@ export const MemberCard = ({
               }}
             >
               <img
-                src={agentAvatarUrl(member.name)}
+                src={avatarMap.get(member.name) ?? agentAvatarUrl(member.name)}
                 alt={member.name}
                 className="size-7 rounded-full bg-[var(--color-surface-raised)]"
                 loading="lazy"
