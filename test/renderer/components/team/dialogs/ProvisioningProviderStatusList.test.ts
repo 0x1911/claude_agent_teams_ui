@@ -54,7 +54,7 @@ describe('ProvisioningProviderStatusList', () => {
               backendSummary: 'Codex native',
               details: [
                 '5.4 Mini - verified',
-                '5.1 Codex Max - unavailable - Not available with Codex ChatGPT subscription',
+                '5.1 Codex Max - unavailable - Not available on this Codex native runtime',
               ],
             },
           ],
@@ -68,7 +68,7 @@ describe('ProvisioningProviderStatusList', () => {
     );
     expect(host.textContent).toContain('5.4 Mini - verified');
     expect(host.textContent).toContain(
-      '5.1 Codex Max - unavailable - Not available with Codex ChatGPT subscription'
+      '5.1 Codex Max - unavailable - Not available on this Codex native runtime'
     );
 
     const detailLines = Array.from(host.querySelectorAll('p'));
@@ -90,11 +90,11 @@ describe('ProvisioningProviderStatusList', () => {
           details: [
             '5.2 - verified',
             '5.3 Codex - check failed - Model verification timed out',
-            '5.1 Codex Max - unavailable - Not available with Codex ChatGPT subscription',
+            '5.1 Codex Max - unavailable - Not available on this Codex native runtime',
           ],
         },
       ])
-    ).toBe('5.1 Codex Max - unavailable - Not available with Codex ChatGPT subscription');
+    ).toBe('5.1 Codex Max - unavailable - Not available on this Codex native runtime');
   });
 
   it('summarizes timed out model verification separately from hard failures', async () => {

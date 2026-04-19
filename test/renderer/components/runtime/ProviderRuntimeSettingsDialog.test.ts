@@ -505,7 +505,7 @@ describe('ProviderRuntimeSettingsDialog', () => {
         id: 'key-1',
         envVarName: 'OPENAI_API_KEY',
         scope: 'user',
-        name: 'OpenAI API Key',
+        name: 'Codex API Key',
         maskedValue: 'sk-proj-...1234',
         createdAt: Date.now(),
       },

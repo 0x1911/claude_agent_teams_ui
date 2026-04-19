@@ -116,6 +116,10 @@ export const ProviderRuntimeBackendSelector = ({
     return null;
   }
 
+  if (provider.providerId === 'codex' && options.length === 1) {
+    return null;
+  }
+
   const selectedBackendId = provider.selectedBackendId ?? options[0]?.id ?? '';
   const selectedOption = options.find((option) => option.id === selectedBackendId) ?? options[0];
   const resolvedOption = options.find((option) => option.id === provider.resolvedBackendId) ?? null;

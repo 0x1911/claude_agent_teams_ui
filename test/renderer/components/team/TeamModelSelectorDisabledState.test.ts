@@ -243,7 +243,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     expect(disabledButton?.getAttribute('aria-disabled')).toBe('true');
     expect(disabledButton?.textContent).toContain('Disabled');
     expect(disabledButton?.getAttribute('title')).toContain(
-      'Not available with Codex ChatGPT subscription'
+      'Temporarily disabled for team agents - this model is not currently available on the Codex native runtime.'
     );
 
     await act(async () => {
@@ -391,7 +391,7 @@ describe('TeamModelSelector disabled Codex models', () => {
           value: 'gpt-5.2-codex',
           onValueChange: () => undefined,
           modelIssueReasonByValue: {
-            'gpt-5.2-codex': 'Not available with Codex ChatGPT subscription',
+            'gpt-5.2-codex': 'Not available on this Codex native runtime',
           },
         })
       );
@@ -404,7 +404,7 @@ describe('TeamModelSelector disabled Codex models', () => {
     );
     expect(issueButton?.className).toContain('border-red-500/40');
     expect(issueButton?.getAttribute('title')).toBe(
-      'Not available with Codex ChatGPT subscription'
+      'Not available on this Codex native runtime'
     );
 
     await act(async () => {

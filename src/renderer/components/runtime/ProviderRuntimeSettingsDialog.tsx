@@ -78,7 +78,7 @@ const API_KEY_PROVIDER_CONFIG: Record<
   },
   codex: {
     envVarName: 'OPENAI_API_KEY',
-    name: 'OpenAI API Key',
+    name: 'Codex API Key',
     title: 'API key',
     description:
       'Codex native requires API-key credentials. Save OPENAI_API_KEY here and the app will mirror it into the native CODEX_API_KEY environment when launching Codex.',

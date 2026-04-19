@@ -402,7 +402,7 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
 
     expect(result.ready).toBe(false);
     expect(result.message).toContain('Selected model gpt-5.2-codex is unavailable.');
-    expect(result.message).toContain('Not available with Codex ChatGPT subscription');
+    expect(result.message).toContain('Not available on this Codex native runtime');
   });
 
   it('keeps timed out Codex model verification as a warning with a clean generic reason', async () => {
