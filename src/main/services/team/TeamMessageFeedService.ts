@@ -358,8 +358,7 @@ export class TeamMessageFeedService {
     const cached = this.cacheByTeam.get(teamName);
     const now = Date.now();
     const cacheDirty = this.dirtyTeams.has(teamName);
-    const cacheExpired =
-      !cached || now - cached.cachedAt >= MESSAGE_FEED_CACHE_MAX_AGE_MS;
+    const cacheExpired = !cached || now - cached.cachedAt >= MESSAGE_FEED_CACHE_MAX_AGE_MS;
     if (cached && !cacheDirty && !cacheExpired) {
       return {
         teamName,
