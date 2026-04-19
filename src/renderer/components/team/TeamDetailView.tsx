@@ -76,10 +76,11 @@ import { useShallow } from 'zustand/react/shallow';
 import { AddMemberDialog } from './dialogs/AddMemberDialog';
 import { CreateTaskDialog } from './dialogs/CreateTaskDialog';
 import { EditTeamDialog } from './dialogs/EditTeamDialog';
-import { LaunchTeamDialog } from './dialogs/LaunchTeamDialog';
+import { LaunchTeamDialog, type TeamLaunchDialogMode } from './dialogs/LaunchTeamDialog';
 import { ReviewDialog } from './dialogs/ReviewDialog';
 import { SendMessageDialog } from './dialogs/SendMessageDialog';
 import { TaskDetailDialog } from './dialogs/TaskDetailDialog';
+import { executeTeamRelaunch } from './dialogs/teamRelaunchFlow';
 import { KanbanBoard } from './kanban/KanbanBoard';
 import { UNASSIGNED_OWNER } from './kanban/KanbanFilterPopover';
 import { KanbanSearchInput } from './kanban/KanbanSearchInput';
@@ -127,6 +128,8 @@ import type {
   ResolvedTeamMember,
   TaskRef,
   TeamAgentRuntimeEntry,
+  TeamCreateRequest,
+  TeamLaunchRequest,
   TeamTaskWithKanban,
 } from '@shared/types';
 import type { EditorSelectionAction } from '@shared/types/editor';
@@ -924,7 +927,13 @@ export const TeamDetailView = ({
   const [removeMemberConfirm, setRemoveMemberConfirm] = useState<string | null>(null);
   const [updatingRoleLoading, setUpdatingRoleLoading] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [launchDialogOpen, setLaunchDialogOpen] = useState(false);
+  const [launchDialogState, setLaunchDialogState] = useState<{
+    open: boolean;
+    mode: TeamLaunchDialogMode;
+  }>({
+    open: false,
+    mode: 'launch',
+  });
   const [editorOpen, setEditorOpen] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1156,6 +1165,7 @@ export const TeamDetailView = ({
   const [activeTeamsForLaunch, setActiveTeamsForLaunch] = useState<
     { teamName: string; displayName: string; projectPath: string }[]
   >([]);
+  const launchDialogOpen = launchDialogState.open;
 
   // Session loading and filtering state
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -1666,9 +1676,48 @@ export const TeamDetailView = ({
     setSendDialogOpen(true);
   }, []);
 
-  const handleRestartTeam = useCallback(() => {
-    setLaunchDialogOpen(true);
+  const openLaunchDialog = useCallback((mode: TeamLaunchDialogMode) => {
+    setLaunchDialogState({ open: true, mode });
   }, []);
+
+  const closeLaunchDialog = useCallback(() => {
+    setLaunchDialogState((prev) => ({ ...prev, open: false }));
+  }, []);
+
+  const handleRestartTeam = useCallback(() => {
+    openLaunchDialog('relaunch');
+  }, [openLaunchDialog]);
+
+  const handleLaunchDialogSubmit = useCallback(
+    async (request: TeamLaunchRequest): Promise<void> => {
+      await launchTeam(request);
+    },
+    [launchTeam]
+  );
+
+  const handleRelaunchDialogSubmit = useCallback(
+    async (
+      request: TeamLaunchRequest,
+      nextMembers: TeamCreateRequest['members']
+    ): Promise<void> => {
+      await executeTeamRelaunch({
+        teamName,
+        isTeamAlive: data?.isAlive === true,
+        request,
+        members: nextMembers,
+        stopTeam: (nextTeamName) => api.teams.stop(nextTeamName),
+        replaceMembers: (nextTeamName, nextRequest) =>
+          api.teams.replaceMembers(nextTeamName, nextRequest),
+        launchTeam,
+      });
+    },
+    [data?.isAlive, launchTeam, teamName]
+  );
+
+  const handleChangeLeadRuntime = useCallback(() => {
+    setEditDialogOpen(false);
+    openLaunchDialog(data?.isAlive && !isTeamProvisioning ? 'relaunch' : 'launch');
+  }, [data?.isAlive, isTeamProvisioning, openLaunchDialog]);
 
   const handleSelectMember = useCallback((member: ResolvedTeamMember) => {
     setSelectedMember(member);
@@ -2015,7 +2064,7 @@ export const TeamDetailView = ({
                 <div className="mt-4 flex justify-center gap-2">
                   <button
                     className="rounded-md bg-blue-600 px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500"
-                    onClick={() => setLaunchDialogOpen(true)}
+                    onClick={() => openLaunchDialog('launch')}
                   >
                     Launch
                   </button>
@@ -2032,17 +2081,16 @@ export const TeamDetailView = ({
             </div>
           </div>
           <LaunchTeamDialog
-            mode="launch"
+            mode={launchDialogState.mode}
             open={launchDialogOpen}
             teamName={teamName}
             members={[]}
             defaultProjectPath={draftTeamSummary?.projectPath}
             provisioningError={provisioningError}
             clearProvisioningError={clearProvisioningError}
-            onClose={() => setLaunchDialogOpen(false)}
-            onLaunch={async (request) => {
-              await launchTeam(request);
-            }}
+            onClose={closeLaunchDialog}
+            onLaunch={handleLaunchDialogSubmit}
+            onRelaunch={handleRelaunchDialogSubmit}
           />
         </>
       );
@@ -2304,7 +2352,7 @@ export const TeamDetailView = ({
               {!data.isAlive && !isTeamProvisioning ? (
                 <TeamOfflineStatusBanner
                   teamName={teamName}
-                  onLaunch={() => setLaunchDialogOpen(true)}
+                  onLaunch={() => openLaunchDialog('launch')}
                 />
               ) : null}
 
@@ -2724,6 +2772,7 @@ export const TeamDetailView = ({
                 isTeamProvisioning={isTeamProvisioning}
                 projectPath={data.config.projectPath}
                 onClose={() => setEditDialogOpen(false)}
+                onChangeLeadRuntime={handleChangeLeadRuntime}
                 onSaved={() => void selectTeam(teamName)}
               />
 
@@ -2814,7 +2863,7 @@ export const TeamDetailView = ({
               </Dialog>
 
               <LaunchTeamDialog
-                mode="launch"
+                mode={launchDialogState.mode}
                 open={launchDialogOpen}
                 teamName={teamName}
                 members={membersWithLiveBranches}
@@ -2822,10 +2871,9 @@ export const TeamDetailView = ({
                 provisioningError={provisioningError}
                 clearProvisioningError={clearProvisioningError}
                 activeTeams={activeTeamsForLaunch}
-                onClose={() => setLaunchDialogOpen(false)}
-                onLaunch={async (request) => {
-                  await launchTeam(request);
-                }}
+                onClose={closeLaunchDialog}
+                onLaunch={handleLaunchDialogSubmit}
+                onRelaunch={handleRelaunchDialogSubmit}
               />
 
               <SendMessageDialog

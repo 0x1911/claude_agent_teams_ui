@@ -60,6 +60,7 @@ interface EditTeamDialogProps {
   isTeamProvisioning?: boolean;
   projectPath?: string | null;
   onClose: () => void;
+  onChangeLeadRuntime: () => void;
   onSaved: () => Promise<void> | void;
 }
 
@@ -133,6 +134,7 @@ export const EditTeamDialog = ({
   isTeamProvisioning = false,
   projectPath,
   onClose,
+  onChangeLeadRuntime,
   onSaved,
 }: EditTeamDialogProps): React.JSX.Element => {
   const { isLight } = useTheme();
@@ -533,11 +535,18 @@ export const EditTeamDialog = ({
                       lockedRoleLabel="Team Lead"
                       lockIdentity
                       hideActionButton
-                      modelLockReason="The team lead is shown for context only and cannot be edited from Edit Team."
+                      modelLockReason="Team lead runtime is managed from Relaunch Team."
+                      lockedModelAction={{
+                        label: 'Change lead runtime',
+                        description:
+                          'Open Relaunch Team to change the lead provider, model, or effort.',
+                        onClick: onChangeLeadRuntime,
+                        disabled: isTeamProvisioning,
+                      }}
                     />
                     <p className="text-[11px] text-[var(--color-text-muted)]">
-                      Team lead is shown for context only. Edit Team changes only teammate roster
-                      settings.
+                      Team lead name and role stay read-only here. Open the runtime panel on the
+                      lead row to change provider, model, or effort.
                     </p>
                   </div>
                 ) : null

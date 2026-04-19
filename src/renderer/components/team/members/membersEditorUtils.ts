@@ -132,16 +132,16 @@ interface ExistingMemberColorInput {
   removedAt?: number | string | null;
 }
 
+function getMemberDraftColorSeedKey(member: Pick<MemberDraft, 'id' | 'originalName'>): string {
+  const originalName = member.originalName?.trim();
+  return originalName || `draft:${member.id}`;
+}
+
 export function buildMemberDraftColorMap(
-  members: readonly Pick<MemberDraft, 'name'>[],
+  members: readonly Pick<MemberDraft, 'id' | 'name' | 'originalName'>[],
   existingMembers?: readonly ExistingMemberColorInput[],
   existingColorMap?: ReadonlyMap<string, string>
 ): Map<string, string> {
-  const draftEntries = members
-    .map((member) => member.name.trim())
-    .filter(Boolean)
-    .map((name) => ({ name }));
-
   const normalizedExistingColorMap = new Map<string, string>(
     Array.from(existingColorMap?.entries() ?? []).map(([name, color]) => [
       name.trim().toLowerCase(),
@@ -160,15 +160,15 @@ export function buildMemberDraftColorMap(
     }))
     .filter((member) => member.name);
   const existingNames = new Set(existingSeedEntries.map((member) => member.name.toLowerCase()));
-  const unseenNewDraftNames = new Set<string>();
-  const uniqueNewDraftEntries = draftEntries.filter((entry) => {
-    const normalizedName = entry.name.toLowerCase();
-    if (existingNames.has(normalizedName) || unseenNewDraftNames.has(normalizedName)) {
-      return false;
-    }
-    unseenNewDraftNames.add(normalizedName);
-    return true;
-  });
+  const uniqueNewDraftEntries = members
+    .filter((member) => {
+      if (member.originalName?.trim()) {
+        return false;
+      }
+      const currentName = member.name.trim();
+      return !currentName || !existingNames.has(currentName.toLowerCase());
+    })
+    .map((member) => ({ name: getMemberDraftColorSeedKey(member) }));
 
   const fullMap = buildTeamMemberColorMap([...existingSeedEntries, ...uniqueNewDraftEntries], {
     preferProvidedColors: true,
@@ -178,9 +178,16 @@ export function buildMemberDraftColorMap(
   );
 
   const draftMap = new Map<string, string>();
-  for (const entry of draftEntries) {
-    const color = fullColorByName.get(entry.name.toLowerCase());
-    if (color) draftMap.set(entry.name, color);
+  for (const member of members) {
+    const originalName = member.originalName?.trim();
+    const currentName = member.name.trim();
+    const colorSeedKey = originalName
+      ? originalName
+      : currentName && existingNames.has(currentName.toLowerCase())
+        ? currentName
+        : getMemberDraftColorSeedKey(member);
+    const color = fullColorByName.get(colorSeedKey.toLowerCase());
+    if (color) draftMap.set(member.id, color);
   }
   return draftMap;
 }
@@ -205,7 +212,7 @@ export function buildMemberDraftSuggestions(
       id: m.id,
       name: m.name.trim(),
       subtitle: getMemberDraftRole(m),
-      color: colorMap.get(m.name.trim()) ?? undefined,
+      color: colorMap.get(m.id) ?? undefined,
     }));
 }
 
