@@ -13,8 +13,13 @@ vi.mock('@renderer/components/team/activity/ActivityItem', () => ({
 
 vi.mock('@renderer/components/team/activity/AnimatedHeightReveal', () => ({
   ENTRY_REVEAL_ANIMATION_MS: 220,
-  AnimatedHeightReveal: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
+  AnimatedHeightReveal: ({
+    children,
+    containerRef,
+  }: {
+    children: React.ReactNode;
+    containerRef?: React.RefObject<HTMLDivElement | null>;
+  }) => React.createElement('div', { ref: containerRef }, children),
 }));
 
 vi.mock('@renderer/components/team/activity/useNewItemKeys', () => ({
@@ -283,5 +288,125 @@ describe('ActivityTimeline session separators', () => {
     await act(async () => {
       root.unmount();
     });
+  });
+});
+
+describe('ActivityTimeline viewport observerRoot', () => {
+  let container: HTMLDivElement;
+  let capturedRoots: Array<Element | Document | null>;
+  let originalIntersectionObserver:
+    | typeof globalThis.IntersectionObserver
+    | undefined;
+
+  beforeEach(() => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    container = document.createElement('div');
+    document.body.appendChild(container);
+
+    capturedRoots = [];
+    originalIntersectionObserver = globalThis.IntersectionObserver;
+    class FakeIntersectionObserver {
+      public readonly root: Element | Document | null;
+      public readonly rootMargin: string;
+      public readonly thresholds: ReadonlyArray<number>;
+      constructor(
+        _callback: IntersectionObserverCallback,
+        options?: IntersectionObserverInit
+      ) {
+        this.root = options?.root ?? null;
+        this.rootMargin = options?.rootMargin ?? '0px';
+        this.thresholds = Array.isArray(options?.threshold)
+          ? options.threshold
+          : typeof options?.threshold === 'number'
+            ? [options.threshold]
+            : [0];
+        capturedRoots.push(this.root);
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+  });
+
+  afterEach(() => {
+    if (originalIntersectionObserver) {
+      globalThis.IntersectionObserver = originalIntersectionObserver;
+    }
+    container.remove();
+    document.body.innerHTML = '';
+    vi.unstubAllGlobals();
+  });
+
+  it('creates IntersectionObservers with root=null when no viewport is passed', async () => {
+    const root = createRoot(container);
+    const messages: InboxMessage[] = [
+      makeMessage({
+        messageId: 'msg-1',
+        text: 'hello',
+        from: 'alice',
+        source: 'inbox',
+      }),
+    ];
+
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityTimeline, {
+          messages,
+          teamName: 'demo-team',
+          onMessageVisible: () => {},
+        })
+      );
+    });
+
+    expect(capturedRoots.length).toBeGreaterThan(0);
+    expect(capturedRoots.every((r) => r === null)).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('creates IntersectionObservers with the provided root when viewport.observerRoot is set', async () => {
+    const scrollHost = document.createElement('div');
+    document.body.appendChild(scrollHost);
+    const scrollRef = { current: scrollHost };
+
+    const root = createRoot(container);
+    const messages: InboxMessage[] = [
+      makeMessage({
+        messageId: 'msg-1',
+        text: 'hello',
+        from: 'alice',
+        source: 'inbox',
+      }),
+    ];
+
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityTimeline, {
+          messages,
+          teamName: 'demo-team',
+          onMessageVisible: () => {},
+          viewport: {
+            scrollElementRef: scrollRef,
+            observerRoot: scrollRef,
+            scrollMargin: 0,
+            virtualizationEnabled: false,
+          },
+        })
+      );
+    });
+
+    expect(capturedRoots.length).toBeGreaterThan(0);
+    expect(capturedRoots.every((r) => r === scrollHost)).toBe(true);
+
+    await act(async () => {
+      root.unmount();
+    });
+    scrollHost.remove();
   });
 });

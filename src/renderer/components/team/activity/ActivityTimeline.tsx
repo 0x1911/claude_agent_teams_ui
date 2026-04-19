@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   areInboxMessagesEquivalentForRender,
@@ -23,6 +23,34 @@ import { useNewItemKeys } from './useNewItemKeys';
 
 import type { TimelineItem } from './LeadThoughtsGroup';
 import type { InboxMessage, ResolvedTeamMember } from '@shared/types';
+
+/**
+ * Viewport contract — describes the scroll container that hosts the timeline
+ * and how ActivityTimeline should report visibility against it. When omitted,
+ * ActivityTimeline falls back to the document viewport (current behavior).
+ *
+ * This contract is grouped intentionally so consumers pass a single coherent
+ * object rather than threading several refs and flags. Virtualizer wiring
+ * lands in a follow-up; for now only `observerRoot` has an observable effect.
+ */
+export interface TimelineViewport {
+  /** The element that actually scrolls. */
+  scrollElementRef: RefObject<HTMLElement | null>;
+  /**
+   * Root element for IntersectionObserver-based visibility tracking.
+   * Typically the same node as `scrollElementRef`, but left separate so
+   * future code can observe a more specific inner container when needed.
+   */
+  observerRoot?: RefObject<HTMLElement | null>;
+  /**
+   * Distance from the scroll container's scroll origin to the timeline root,
+   * measured from the DOM. Zero in this release; used by the virtualizer in a
+   * follow-up change.
+   */
+  scrollMargin?: number;
+  /** Enable virtualization (wired in a follow-up; ignored for now). */
+  virtualizationEnabled?: boolean;
+}
 
 interface ActivityTimelineProps {
   messages: InboxMessage[];
@@ -66,6 +94,14 @@ interface ActivityTimelineProps {
   onExpandItem?: (key: string) => void;
   /** Called when ExpandableContent is expanded via "Show more" in any ActivityItem. */
   onExpandContent?: () => void;
+  /**
+   * Optional viewport contract. When provided, IntersectionObserver uses the
+   * passed `observerRoot` instead of the document viewport, which is required
+   * for correctness inside scrollable layouts (sidebar, bottom-sheet) where
+   * the row may be clipped by its scroll parent while still intersecting the
+   * page viewport.
+   */
+  viewport?: TimelineViewport;
 }
 
 const VIEWPORT_THRESHOLD = 0.15;
@@ -141,6 +177,7 @@ const MessageRowWithObserver = ({
   onExpand,
   expandItemKey,
   onExpandContent,
+  observerRoot,
 }: {
   message: InboxMessage;
   teamName: string;
@@ -170,6 +207,7 @@ const MessageRowWithObserver = ({
   onExpand?: (key: string) => void;
   expandItemKey?: string;
   onExpandContent?: () => void;
+  observerRoot?: RefObject<HTMLElement | null>;
 }): React.JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   const reportedRef = useRef(false);
@@ -185,6 +223,10 @@ const MessageRowWithObserver = ({
     if (!onVisible) return;
     const el = ref.current;
     if (!el) return;
+    // Resolve the observer root at effect-time. Falls back to the document
+    // viewport (null) when no root is provided — preserves pre-contract
+    // behavior for layouts without a known scroll owner.
+    const root = observerRoot?.current ?? null;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry?.isIntersecting) return;
@@ -195,11 +237,11 @@ const MessageRowWithObserver = ({
         reportedRef.current = true;
         cb(msg);
       },
-      { threshold: VIEWPORT_THRESHOLD, rootMargin: '0px' }
+      { root, threshold: VIEWPORT_THRESHOLD, rootMargin: '0px' }
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [onVisible]);
+  }, [onVisible, observerRoot]);
 
   return (
     <AnimatedHeightReveal animate={isNew} containerRef={ref}>
@@ -265,6 +307,7 @@ const MemoizedMessageRowWithObserver = React.memo(
     prev.onExpand === next.onExpand &&
     prev.expandItemKey === next.expandItemKey &&
     prev.onExpandContent === next.onExpandContent &&
+    prev.observerRoot === next.observerRoot &&
     areInboxMessagesEquivalentForRender(prev.message, next.message)
 );
 
@@ -291,7 +334,9 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
   onTeamClick,
   onExpandItem,
   onExpandContent,
+  viewport,
 }: ActivityTimelineProps): React.JSX.Element {
+  const observerRoot = viewport?.observerRoot ?? viewport?.scrollElementRef;
   const [visibleCount, setVisibleCount] = useState(MESSAGES_PAGE_SIZE);
   const rootRef = useRef<HTMLDivElement>(null);
   const [compactHeader, setCompactHeader] = useState(false);
@@ -519,6 +564,7 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
               leadContextUpdatedAt={pinnedCanBeLive ? leadContextUpdatedAt : undefined}
               isNew={newItemKeys.has(itemKey)}
               onVisible={onMessageVisible}
+              observerRoot={observerRoot}
               zebraShade={zebraShadeSet.has(0)}
               collapseMode={collapseProps.collapseMode}
               isCollapsed={collapseProps.isCollapsed}
@@ -579,6 +625,7 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
                 canBeLive={false}
                 isNew={newItemKeys.has(itemKey)}
                 onVisible={onMessageVisible}
+                observerRoot={observerRoot}
                 zebraShade={zebraShadeSet.has(realIndex)}
                 collapseMode={collapseProps.collapseMode}
                 isCollapsed={collapseProps.isCollapsed}
@@ -650,6 +697,7 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
               onTeamClick={onTeamClick}
               onExpand={compactHeader ? onExpandItem : undefined}
               expandItemKey={compactHeader ? messageKey : undefined}
+              observerRoot={observerRoot}
               onExpandContent={onExpandContent}
             />
           </React.Fragment>

@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 
-import { ActivityTimeline } from '../activity/ActivityTimeline';
+import { ActivityTimeline, type TimelineViewport } from '../activity/ActivityTimeline';
 import { getThoughtGroupKey, groupTimelineItems } from '../activity/LeadThoughtsGroup';
 import { MessageExpandDialog } from '../activity/MessageExpandDialog';
 import { CollapsibleTeamSection } from '../CollapsibleTeamSection';
@@ -183,6 +183,7 @@ export const MessagesPanel = memo(function MessagesPanel({
   onReplyToMessage,
   onRestartTeam,
   onTaskIdClick,
+  inlineScrollContainerRef,
 }: MessagesPanelProps): React.JSX.Element {
   const {
     sendTeamMessage,
@@ -235,6 +236,28 @@ export const MessagesPanel = memo(function MessagesPanel({
   // Held here so future viewport consumers (virtualization) can observe the
   // true scrolling element in bottom-sheet mode.
   const bottomSheetScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Resolve the active scroll owner for the current layout. This is the
+  // ref that ActivityTimeline's IntersectionObserver will use as its root,
+  // so visibility is measured against the real scroll container rather
+  // than the document viewport. Virtualizer consumers will hook into the
+  // same ref in a follow-up change.
+  const activeScrollContainerRef =
+    position === 'inline'
+      ? (inlineScrollContainerRef ?? null)
+      : position === 'sidebar'
+        ? sidebarScrollRef
+        : bottomSheetScrollRef;
+
+  const activityTimelineViewport = useMemo<TimelineViewport | undefined>(() => {
+    if (!activeScrollContainerRef) return undefined;
+    return {
+      scrollElementRef: activeScrollContainerRef,
+      observerRoot: activeScrollContainerRef,
+      scrollMargin: 0,
+      virtualizationEnabled: false,
+    };
+  }, [activeScrollContainerRef]);
   const handleExpandContent = useCallback(() => {
     // no-op: user is reading expanded content, not composing
   }, []);
@@ -678,6 +701,7 @@ export const MessagesPanel = memo(function MessagesPanel({
         onTaskIdClick={onTaskIdClick}
         onExpandItem={handleExpandItem}
         onExpandContent={handleExpandContent}
+        viewport={activityTimelineViewport}
       />
       {hasMore && (
         <div className="flex justify-center py-2">
@@ -863,6 +887,7 @@ export const MessagesPanel = memo(function MessagesPanel({
             onTaskIdClick={onTaskIdClick}
             onExpandItem={handleExpandItem}
             onExpandContent={handleExpandContent}
+            viewport={activityTimelineViewport}
           />
           {hasMore && (
             <div className="flex justify-center py-2">
@@ -1150,6 +1175,7 @@ export const MessagesPanel = memo(function MessagesPanel({
                   onTaskIdClick={onTaskIdClick}
                   onExpandItem={handleExpandItem}
                   onExpandContent={handleExpandContent}
+                  viewport={activityTimelineViewport}
                 />
                 {hasMore && (
                   <div className="flex justify-center py-2">
