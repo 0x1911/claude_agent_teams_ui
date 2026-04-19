@@ -3590,6 +3590,11 @@ Assessment:
 - `🎯 9   🛡️ 9   🧠 5`
 - Rough surface: `900-1800` lines
 
+Status as of 2026-04-19:
+
+- implementation-complete
+- sign-off evidence captured in [codex-native-runtime-phase-1-signoff-evidence.md](/Users/belief/dev/projects/claude/claude_team_codex_native_runtime_plan/docs/research/codex-native-runtime-phase-1-signoff-evidence.md)
+
 Goal:
 
 - prepare `codex-native` for safe internal unlock without changing default provider behavior

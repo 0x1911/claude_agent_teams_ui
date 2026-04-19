@@ -76,9 +76,15 @@ vi.mock('@renderer/components/runtime/ProviderRuntimeSettingsDialog', () => ({
   },
 }));
 
-vi.mock('@renderer/components/runtime/ProviderRuntimeBackendSelector', () => ({
-  getProviderRuntimeBackendSummary: () => null,
-}));
+vi.mock('@renderer/components/runtime/ProviderRuntimeBackendSelector', async () => {
+  const actual =
+    await vi.importActual<typeof import('@renderer/components/runtime/ProviderRuntimeBackendSelector')>(
+      '@renderer/components/runtime/ProviderRuntimeBackendSelector'
+    );
+  return {
+    getProviderRuntimeBackendSummary: actual.getProviderRuntimeBackendSummary,
+  };
+});
 
 vi.mock('@renderer/components/settings/components', async () => {
   const actual = await vi.importActual<object>('@renderer/components/settings/components');
@@ -197,6 +203,70 @@ function createApiKeyModeProviderIssue(providerId: 'anthropic' | 'codex'): Recor
       apiKeySourceLabel:
         providerId === 'anthropic' ? 'Stored Anthropic API key' : 'Stored OpenAI API key',
     },
+  };
+}
+
+function createCodexNativeRolloutProvider(
+  overrides?: Partial<Record<string, unknown>> & {
+    state?: 'ready' | 'locked' | 'authentication-required' | 'runtime-missing' | 'degraded';
+    audience?: 'general' | 'internal';
+    selectable?: boolean;
+    available?: boolean;
+    statusMessage?: string | null;
+    detailMessage?: string | null;
+  }
+): Record<string, unknown> {
+  return {
+    providerId: 'codex',
+    displayName: 'Codex',
+    supported: true,
+    authenticated:
+      overrides?.state === 'ready' || overrides?.state === 'locked' || overrides?.available === true,
+    authMethod:
+      overrides?.state === 'ready' || overrides?.state === 'locked' || overrides?.available === true
+        ? 'api_key'
+        : null,
+    verificationState:
+      overrides?.state === 'ready' || overrides?.state === 'locked' || overrides?.available === true
+        ? 'verified'
+        : 'unknown',
+    statusMessage: overrides?.statusMessage ?? 'Ready but locked',
+    detailMessage: overrides?.detailMessage ?? 'Internal rollout only.',
+    selectedBackendId: 'codex-native',
+    resolvedBackendId:
+      overrides?.state === 'ready' || overrides?.state === 'locked' || overrides?.available === true
+        ? 'codex-native'
+        : null,
+    models: ['gpt-5-codex'],
+    canLoginFromUi: false,
+    capabilities: {
+      teamLaunch: true,
+      oneShot: true,
+    },
+    availableBackends: [
+      {
+        id: 'codex-native',
+        label: 'Codex native',
+        description: 'Use codex exec JSON mode.',
+        selectable: overrides?.selectable ?? false,
+        recommended: false,
+        available: overrides?.available ?? true,
+        state: overrides?.state ?? 'locked',
+        audience: overrides?.audience ?? 'internal',
+        statusMessage: overrides?.statusMessage ?? 'Ready but locked',
+        detailMessage: overrides?.detailMessage ?? 'Internal rollout only.',
+      },
+    ],
+    backend:
+      overrides?.state === 'ready' || overrides?.state === 'locked' || overrides?.available === true
+        ? {
+            kind: 'codex-native',
+            label: 'Codex native',
+            endpointLabel: 'codex exec --json',
+            authMethodDetail: 'api_key',
+          }
+        : null,
+    ...overrides,
   };
 }
 
@@ -763,6 +833,90 @@ describe('CLI status visibility during completed install state', () => {
     expect(host.textContent).not.toContain('5.1-codex-max');
     expect(host.textContent).not.toContain('5.2-codex');
     expect(host.textContent).not.toContain('Unavailable');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps dashboard codex-native rollout truth explicit for locked internal lanes', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'agent_teams_orchestrator',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: true,
+      providers: [
+        createCodexNativeRolloutProvider({
+          state: 'locked',
+          available: true,
+          selectable: false,
+          statusMessage: 'Ready but locked',
+        }),
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusBanner));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Ready but locked');
+    expect(host.textContent).toContain('Runtime: Codex native - internal - locked');
+    expect(host.textContent).not.toContain('Connected via API key');
+
+    await act(async () => {
+      root.unmount();
+      await Promise.resolve();
+    });
+  });
+
+  it('keeps settings codex-native rollout truth explicit for runtime-missing lanes', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    storeState.cliInstallerState = 'idle';
+    storeState.cliStatus = createInstalledCliStatus({
+      flavor: 'agent_teams_orchestrator',
+      displayName: 'agent_teams_orchestrator',
+      supportsSelfUpdate: false,
+      showVersionDetails: false,
+      showBinaryPath: false,
+      authLoggedIn: false,
+      providers: [
+        createCodexNativeRolloutProvider({
+          authenticated: false,
+          authMethod: null,
+          verificationState: 'unknown',
+          state: 'runtime-missing',
+          available: false,
+          selectable: false,
+          statusMessage: 'Codex CLI not found',
+          detailMessage: 'Install the codex CLI before enabling the lane.',
+          backend: null,
+          resolvedBackendId: null,
+        }),
+      ],
+    });
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(React.createElement(CliStatusSection));
+      await Promise.resolve();
+    });
+
+    expect(host.textContent).toContain('Codex CLI not found');
+    expect(host.textContent).toContain('Runtime: Codex native - internal - runtime missing');
+    expect(host.textContent).not.toContain('Connected via API key');
 
     await act(async () => {
       root.unmount();

@@ -189,4 +189,27 @@ describe('buildProviderAwareCliEnv', () => {
     expect(result.env.CLAUDE_CODE_GEMINI_BACKEND).toBe('api');
     expect(result.env.CLAUDE_CODE_CODEX_BACKEND).toBe('adapter');
   });
+
+  it('preserves codex-native internal unlock env across provider-aware child env building', async () => {
+    buildEnrichedEnvMock.mockReturnValue({
+      PATH: '/usr/bin',
+      CLAUDE_CODE_CODEX_NATIVE_INTERNAL_UNLOCK: '1',
+    });
+
+    const { buildProviderAwareCliEnv } = await import(
+      '../../../../src/main/services/runtime/providerAwareCliEnv'
+    );
+    const result = await buildProviderAwareCliEnv({
+      providerId: 'codex',
+    });
+
+    expect(applyConfiguredConnectionEnvMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        CLAUDE_CODE_CODEX_BACKEND: 'adapter',
+        CLAUDE_CODE_CODEX_NATIVE_INTERNAL_UNLOCK: '1',
+      }),
+      'codex'
+    );
+    expect(result.env.CLAUDE_CODE_CODEX_NATIVE_INTERNAL_UNLOCK).toBe('1');
+  });
 });
