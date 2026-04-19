@@ -6,6 +6,7 @@ import {
   areStringMapsEqual,
 } from '@renderer/utils/messageRenderEquality';
 import { toMessageKey } from '@renderer/utils/teamMessageKey';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Layers } from 'lucide-react';
 
 import { ActivityItem, isNoiseMessage } from './ActivityItem';
@@ -133,6 +134,20 @@ const COMPACT_MESSAGES_WIDTH_PX = 400;
 const EMPTY_TEAM_NAMES: string[] = [];
 const EMPTY_TEAM_COLOR_MAP = new Map<string, string>();
 const DEFAULT_COLLAPSE_MODE = 'default' as const;
+const VIRTUALIZER_OVERSCAN = 8;
+
+/**
+ * Per-kind height estimates for `estimateSize`. These are rough initial guesses
+ * only; the virtualizer re-measures rows as they mount via `measureElement`
+ * (wired in a follow-up PR), so small inaccuracies here are self-correcting.
+ * Sizes come from visually averaged steady-state heights in production layouts.
+ */
+const ROW_SIZE_ESTIMATES: Record<TimelineRow['kind'], number> = {
+  'session-separator': 135,
+  'compaction-divider': 50,
+  'lead-thought-group': 220,
+  'message-row': 140,
+};
 
 function getItemSessionAnchorId(item: TimelineItem): string | undefined {
   if (item.type === 'lead-thoughts') {
@@ -572,6 +587,72 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
     return rows;
   }, [pinnedThoughtGroup, previousSessionAnchorByIndex, startIndex, timelineItems]);
 
+  // Virtualizer gate — dormant unless the parent explicitly opts in via
+  // `viewport.virtualizationEnabled`. The contract carries this flag so the
+  // (large) virtualized render path can land before any caller flips the
+  // switch, and can be toggled on per-layout once measurement is validated.
+  const shouldVirtualize =
+    viewport?.virtualizationEnabled === true &&
+    viewport.scrollElementRef != null &&
+    renderRows.length > 0;
+
+  // DOM-measured distance from the scroll container's scroll origin to the
+  // timeline root. Hand-summing composer/status/padding heights would drift as
+  // soon as any of those blocks change size; measuring the actual offset via
+  // `getBoundingClientRect` keeps the virtualizer accurate without coupling
+  // to layout internals.
+  const [measuredScrollMargin, setMeasuredScrollMargin] = useState(0);
+
+  useEffect(() => {
+    if (!shouldVirtualize) return;
+    const scrollEl = viewport?.scrollElementRef?.current ?? null;
+    const rootEl = rootRef.current;
+    if (!scrollEl || !rootEl) return;
+
+    let pending = false;
+    let rafId: number | null = null;
+    const measure = (): void => {
+      if (pending) return;
+      pending = true;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        pending = false;
+        const scrollRect = scrollEl.getBoundingClientRect();
+        const rootRect = rootEl.getBoundingClientRect();
+        // Distance from top of scroll content to top of timeline root. Adding
+        // `scrollTop` compensates for the fact that both rects are relative
+        // to the viewport at measurement time, not the scrollable content.
+        const next = Math.max(0, rootRect.top - scrollRect.top + scrollEl.scrollTop);
+        setMeasuredScrollMargin((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
+      });
+    };
+
+    measure();
+    const scrollObserver = new ResizeObserver(measure);
+    scrollObserver.observe(scrollEl);
+    const rootObserver = new ResizeObserver(measure);
+    rootObserver.observe(rootEl);
+    scrollEl.addEventListener('scroll', measure, { passive: true });
+    window.addEventListener('resize', measure);
+
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      scrollObserver.disconnect();
+      rootObserver.disconnect();
+      scrollEl.removeEventListener('scroll', measure);
+      window.removeEventListener('resize', measure);
+    };
+  }, [shouldVirtualize, viewport?.scrollElementRef]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: shouldVirtualize ? renderRows.length : 0,
+    getScrollElement: () => viewport?.scrollElementRef?.current ?? null,
+    estimateSize: (index) => ROW_SIZE_ESTIMATES[renderRows[index]?.kind ?? 'message-row'],
+    getItemKey: (index) => renderRows[index]?.key ?? `row-${index}`,
+    overscan: VIRTUALIZER_OVERSCAN,
+    scrollMargin: measuredScrollMargin,
+  });
+
   // Determine the index of the "newest" non-thought timeline item (for auto-expand).
   const newestMessageIndex = useMemo(() => {
     return findNewestMessageIndex(timelineItems);
@@ -731,7 +812,41 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
 
   return (
     <div ref={rootRef} className="space-y-1">
-      {renderRows.map((row) => renderTimelineRow(row))}
+      {shouldVirtualize ? (
+        <div
+          style={{
+            height: `${rowVirtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const row = renderRows[virtualRow.index];
+            if (!row) return null;
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  // `translateY` is offset by scrollMargin so the virtualizer
+                  // positions rows relative to the timeline's own origin,
+                  // not the scroll container's top — otherwise rows would
+                  // overlap the composer / status block at the top.
+                  transform: `translateY(${virtualRow.start - rowVirtualizer.options.scrollMargin}px)`,
+                }}
+              >
+                {renderTimelineRow(row)}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        renderRows.map((row) => renderTimelineRow(row))
+      )}
       {hiddenCount > 0 && (
         <div className="relative flex justify-center pb-3 pt-1">
           {/* Bottom-up shadow gradient: darkest at bottom edge, fades upward */}
