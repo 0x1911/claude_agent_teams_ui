@@ -511,6 +511,27 @@ export class TeamDataService {
     return this.configReader.listTeams();
   }
 
+  async listAliveProcessTeams(): Promise<string[]> {
+    const teams = await this.listTeams();
+    const alive: string[] = [];
+
+    for (const team of teams) {
+      if (team.deletedAt) {
+        continue;
+      }
+      try {
+        const processes = await this.readProcesses(team.teamName);
+        if (processes.some((process) => !process.stoppedAt)) {
+          alive.push(team.teamName);
+        }
+      } catch {
+        // best-effort per team
+      }
+    }
+
+    return alive.sort((left, right) => left.localeCompare(right));
+  }
+
   async getAllTasks(): Promise<GlobalTask[]> {
     const rawTasks = await this.taskReader.getAllTasks();
     const teams = await this.configReader.listTeams();
@@ -1739,6 +1760,23 @@ export class TeamDataService {
     }) as SendMessageResult;
     this.invalidateMessageFeed(teamName);
     return result;
+  }
+
+  async sendSystemNotificationToLead(args: {
+    teamName: string;
+    summary: string;
+    text: string;
+    taskRefs?: TaskRef[];
+  }): Promise<SendMessageResult> {
+    const leadName = await this.resolveLeadName(args.teamName);
+    return this.sendMessage(args.teamName, {
+      member: leadName,
+      from: 'system',
+      summary: args.summary,
+      text: args.text,
+      ...(args.taskRefs && args.taskRefs.length > 0 ? { taskRefs: args.taskRefs } : {}),
+      source: TASK_COMMENT_NOTIFICATION_SOURCE,
+    });
   }
 
   private resolveLeadNameFromConfig(config: TeamConfig | null): string {
