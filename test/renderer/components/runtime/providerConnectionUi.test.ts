@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  formatProviderStatusText,
   getProviderConnectionModeSummary,
   getProviderCredentialSummary,
   getProviderCurrentRuntimeSummary,
@@ -251,5 +252,119 @@ describe('providerConnectionUi', () => {
     });
 
     expect(getProviderCredentialSummary(provider)).toBe('Saved API key available in Manage');
+  });
+
+  it('keeps locked codex-native lanes visible instead of flattening them to connected-via-api-key', () => {
+    const provider = createCodexProvider({
+      authenticated: true,
+      authMethod: 'api_key',
+      statusMessage: 'Codex native runtime ready',
+      selectedBackendId: 'codex-native',
+      resolvedBackendId: 'codex-native',
+      availableBackends: [
+        {
+          id: 'codex-native',
+          label: 'Codex native',
+          description: 'Use codex exec JSON mode.',
+          selectable: false,
+          recommended: false,
+          available: true,
+          state: 'locked',
+          audience: 'internal',
+          statusMessage: 'Ready but locked',
+          detailMessage: 'Internal rollout only.',
+        },
+      ],
+      backend: {
+        kind: 'codex-native',
+        label: 'Codex native',
+      },
+    });
+
+    expect(formatProviderStatusText(provider)).toBe('Ready but locked');
+  });
+
+  it('keeps internal codex-native ready state explicit instead of showing a generic auth label', () => {
+    const provider = createCodexProvider({
+      authenticated: true,
+      authMethod: 'api_key',
+      statusMessage: 'Codex native runtime ready',
+      selectedBackendId: 'codex-native',
+      resolvedBackendId: 'codex-native',
+      availableBackends: [
+        {
+          id: 'codex-native',
+          label: 'Codex native',
+          description: 'Use codex exec JSON mode.',
+          selectable: true,
+          recommended: false,
+          available: true,
+          state: 'ready',
+          audience: 'internal',
+          statusMessage: 'Ready for internal use',
+          detailMessage: 'Internal rollout only.',
+        },
+      ],
+      backend: {
+        kind: 'codex-native',
+        label: 'Codex native',
+      },
+    });
+
+    expect(formatProviderStatusText(provider)).toBe('Ready for internal use');
+  });
+
+  it('surfaces native auth-required state from the selected backend option', () => {
+    const provider = createCodexProvider({
+      authenticated: false,
+      authMethod: null,
+      statusMessage: 'Codex native runtime not ready',
+      selectedBackendId: 'codex-native',
+      resolvedBackendId: null,
+      availableBackends: [
+        {
+          id: 'codex-native',
+          label: 'Codex native',
+          description: 'Use codex exec JSON mode.',
+          selectable: false,
+          recommended: false,
+          available: false,
+          state: 'authentication-required',
+          audience: 'internal',
+          statusMessage: 'Authentication required',
+          detailMessage: 'Set CODEX_API_KEY.',
+        },
+      ],
+      backend: null,
+    });
+
+    expect(formatProviderStatusText(provider)).toBe('Authentication required');
+  });
+
+  it('surfaces native runtime-missing state from the selected backend option', () => {
+    const provider = createCodexProvider({
+      authenticated: false,
+      authMethod: null,
+      statusMessage: 'Codex native runtime not ready',
+      selectedBackendId: 'codex-native',
+      resolvedBackendId: null,
+      availableBackends: [
+        {
+          id: 'codex-native',
+          label: 'Codex native',
+          description: 'Use codex exec JSON mode.',
+          selectable: false,
+          recommended: false,
+          available: false,
+          state: 'runtime-missing',
+          audience: 'internal',
+          statusMessage: 'Codex CLI not found',
+          detailMessage: 'Install the codex CLI before enabling the lane.',
+        },
+      ],
+      backend: null,
+    });
+
+    expect(formatProviderStatusText(provider)).toBe('Codex CLI not found');
   });
 });

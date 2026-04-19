@@ -76,6 +76,24 @@ function isCodexNativeLane(provider: CliProviderStatus): boolean {
   );
 }
 
+function getSelectedRuntimeBackendOption(
+  provider: CliProviderStatus
+): NonNullable<CliProviderStatus['availableBackends']>[number] | null {
+  const options = provider.availableBackends ?? [];
+  if (options.length === 0) {
+    return null;
+  }
+
+  const selectedBackendId = provider.selectedBackendId ?? null;
+  const resolvedBackendId = provider.resolvedBackendId ?? null;
+
+  return (
+    options.find((option) => option.id === selectedBackendId) ??
+    options.find((option) => option.id === resolvedBackendId) ??
+    null
+  );
+}
+
 export function isConnectionManagedRuntimeProvider(provider: CliProviderStatus): boolean {
   return provider.providerId === 'codex' && (provider.availableBackends?.length ?? 0) === 0;
 }
@@ -106,6 +124,27 @@ export function getProviderCurrentRuntimeSummary(provider: CliProviderStatus): s
 }
 
 export function formatProviderStatusText(provider: CliProviderStatus): string {
+  const selectedBackendOption = getSelectedRuntimeBackendOption(provider);
+
+  if (
+    isCodexNativeLane(provider) &&
+    selectedBackendOption &&
+    selectedBackendOption.state &&
+    selectedBackendOption.state !== 'ready'
+  ) {
+    return (
+      selectedBackendOption.statusMessage ?? provider.statusMessage ?? 'Codex native unavailable'
+    );
+  }
+
+  if (
+    isCodexNativeLane(provider) &&
+    selectedBackendOption?.audience === 'internal' &&
+    selectedBackendOption.statusMessage
+  ) {
+    return selectedBackendOption.statusMessage;
+  }
+
   if (!provider.supported) {
     return provider.statusMessage ?? 'Unavailable in current runtime';
   }

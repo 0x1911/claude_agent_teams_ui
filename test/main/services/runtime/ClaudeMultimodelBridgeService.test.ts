@@ -506,4 +506,65 @@ describe('ClaudeMultimodelBridgeService', () => {
       statusMessage: 'Ready for internal use',
     });
   });
+
+  it('preserves codex-native runtime-missing rollout states from runtime status payloads', async () => {
+    execCliMock.mockResolvedValue({
+      stdout: JSON.stringify({
+        providers: {
+          codex: {
+            supported: true,
+            authenticated: false,
+            authMethod: null,
+            verificationState: 'unknown',
+            canLoginFromUi: false,
+            statusMessage: 'Codex native runtime not ready',
+            detailMessage: 'Codex native runtime requires the codex CLI binary to be installed.',
+            selectedBackendId: 'codex-native',
+            resolvedBackendId: null,
+            availableBackends: [
+              {
+                id: 'codex-native',
+                label: 'Codex native',
+                selectable: false,
+                recommended: false,
+                available: false,
+                state: 'runtime-missing',
+                audience: 'internal',
+                statusMessage: 'Codex CLI not found',
+                detailMessage: 'Install the codex CLI before enabling the lane.',
+              },
+            ],
+            capabilities: {
+              teamLaunch: true,
+              oneShot: true,
+              extensions: {
+                plugins: { status: 'unsupported', ownership: 'shared', reason: 'Phase 1' },
+                mcp: { status: 'unsupported', ownership: 'shared', reason: 'Phase 1' },
+                skills: { status: 'unsupported', ownership: 'shared', reason: 'Phase 1' },
+                apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+              },
+            },
+            backend: null,
+          },
+        },
+      }),
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const { ClaudeMultimodelBridgeService } =
+      await import('@main/services/runtime/ClaudeMultimodelBridgeService');
+    const service = new ClaudeMultimodelBridgeService();
+
+    const codex = await service.getProviderStatus('/mock/agent_teams_orchestrator', 'codex');
+
+    expect(codex.availableBackends?.find((backend) => backend.id === 'codex-native')).toMatchObject({
+      id: 'codex-native',
+      selectable: false,
+      available: false,
+      state: 'runtime-missing',
+      audience: 'internal',
+      statusMessage: 'Codex CLI not found',
+    });
+  });
 });
