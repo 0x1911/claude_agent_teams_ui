@@ -226,7 +226,7 @@ export interface GeneralConfig {
 export interface RuntimeConfig {
   providerBackends: {
     gemini: 'auto' | 'api' | 'cli-sdk';
-    codex: 'auto' | 'adapter';
+    codex: 'auto' | 'adapter' | 'api' | 'codex-native';
   };
 }
 

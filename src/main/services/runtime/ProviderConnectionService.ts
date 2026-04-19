@@ -43,6 +43,8 @@ const PROVIDER_API_KEY_ENV_VARS: Partial<Record<CliProviderId, string>> = {
 };
 
 const CODEX_API_KEY_BETA_ENV_VAR = 'CLAUDE_CODE_CODEX_API_KEY_BETA';
+const CODEX_NATIVE_API_KEY_ENV_VAR = 'CODEX_API_KEY';
+const CODEX_NATIVE_BACKEND_ID = 'codex-native';
 
 export class ProviderConnectionService {
   private static instance: ProviderConnectionService | null = null;
@@ -64,7 +66,7 @@ export class ProviderConnectionService {
 
     if (providerId === 'codex') {
       const codexConnection = this.configManager.getConfig().providerConnections.codex;
-      return codexConnection.apiKeyBetaEnabled ? codexConnection.authMode : null;
+      return this.shouldExposeCodexConnectionModes() ? codexConnection.authMode : null;
     }
 
     return null;
@@ -107,31 +109,55 @@ export class ProviderConnectionService {
     }
 
     const codexConnection = this.configManager.getConfig().providerConnections.codex;
-    if (!codexConnection.apiKeyBetaEnabled) {
+    const codexRuntimeBackend = this.getConfiguredCodexRuntimeBackend();
+    if (!this.shouldExposeCodexConnectionModes()) {
       delete env[CODEX_API_KEY_BETA_ENV_VAR];
       delete env.OPENAI_API_KEY;
+      delete env[CODEX_NATIVE_API_KEY_ENV_VAR];
       return env;
     }
 
-    env[CODEX_API_KEY_BETA_ENV_VAR] = '1';
+    if (codexConnection.apiKeyBetaEnabled) {
+      env[CODEX_API_KEY_BETA_ENV_VAR] = '1';
+    } else {
+      delete env[CODEX_API_KEY_BETA_ENV_VAR];
+    }
 
     if (codexConnection.authMode === 'oauth') {
-      env.CLAUDE_CODE_CODEX_BACKEND = 'adapter';
       delete env.OPENAI_API_KEY;
+      delete env[CODEX_NATIVE_API_KEY_ENV_VAR];
       return env;
     }
 
-    env.CLAUDE_CODE_CODEX_BACKEND = 'api';
-
     const storedKey = await this.apiKeyService.lookupPreferred('OPENAI_API_KEY');
-    if (storedKey?.value.trim()) {
-      env.OPENAI_API_KEY = storedKey.value;
+    const existingOpenAiKey =
+      typeof env.OPENAI_API_KEY === 'string' && env.OPENAI_API_KEY.trim()
+        ? env.OPENAI_API_KEY
+        : null;
+    const existingNativeKey =
+      typeof env[CODEX_NATIVE_API_KEY_ENV_VAR] === 'string' &&
+      env[CODEX_NATIVE_API_KEY_ENV_VAR]?.trim()
+        ? env[CODEX_NATIVE_API_KEY_ENV_VAR]
+        : null;
+    const resolvedApiKey =
+      storedKey?.value.trim() ||
+      existingOpenAiKey ||
+      (codexRuntimeBackend === CODEX_NATIVE_BACKEND_ID ? existingNativeKey : null);
+
+    if (resolvedApiKey) {
+      env.OPENAI_API_KEY = resolvedApiKey;
+      if (codexRuntimeBackend === CODEX_NATIVE_BACKEND_ID) {
+        env[CODEX_NATIVE_API_KEY_ENV_VAR] = resolvedApiKey;
+      } else {
+        delete env[CODEX_NATIVE_API_KEY_ENV_VAR];
+      }
       return env;
     }
 
     if (typeof env.OPENAI_API_KEY !== 'string' || !env.OPENAI_API_KEY.trim()) {
       delete env.OPENAI_API_KEY;
     }
+    delete env[CODEX_NATIVE_API_KEY_ENV_VAR];
 
     return env;
   }
@@ -165,20 +191,48 @@ export class ProviderConnectionService {
     }
 
     const codexConnection = this.configManager.getConfig().providerConnections.codex;
-    if (!codexConnection.apiKeyBetaEnabled) {
+    const codexRuntimeBackend = this.getConfiguredCodexRuntimeBackend();
+    if (!this.shouldExposeCodexConnectionModes()) {
       return env;
     }
 
-    env[CODEX_API_KEY_BETA_ENV_VAR] = '1';
-    env.CLAUDE_CODE_CODEX_BACKEND = codexConnection.authMode === 'oauth' ? 'adapter' : 'api';
+    if (codexConnection.apiKeyBetaEnabled) {
+      env[CODEX_API_KEY_BETA_ENV_VAR] = '1';
+    } else {
+      delete env[CODEX_API_KEY_BETA_ENV_VAR];
+    }
 
     if (codexConnection.authMode !== 'api_key') {
       return env;
     }
 
     const storedKey = await this.apiKeyService.lookupPreferred('OPENAI_API_KEY');
+    const existingOpenAiKey =
+      typeof env.OPENAI_API_KEY === 'string' && env.OPENAI_API_KEY.trim()
+        ? env.OPENAI_API_KEY
+        : null;
+    const existingNativeKey =
+      typeof env[CODEX_NATIVE_API_KEY_ENV_VAR] === 'string' &&
+      env[CODEX_NATIVE_API_KEY_ENV_VAR]?.trim()
+        ? env[CODEX_NATIVE_API_KEY_ENV_VAR]
+        : null;
+    const resolvedApiKey =
+      storedKey?.value.trim() ||
+      existingOpenAiKey ||
+      (codexRuntimeBackend === CODEX_NATIVE_BACKEND_ID ? existingNativeKey : null);
+
     if (storedKey?.value.trim()) {
       env.OPENAI_API_KEY = storedKey.value;
+    } else if (
+      !existingOpenAiKey &&
+      existingNativeKey &&
+      codexRuntimeBackend === CODEX_NATIVE_BACKEND_ID
+    ) {
+      env.OPENAI_API_KEY = existingNativeKey;
+    }
+
+    if (codexRuntimeBackend === CODEX_NATIVE_BACKEND_ID && resolvedApiKey) {
+      env[CODEX_NATIVE_API_KEY_ENV_VAR] = resolvedApiKey;
     }
 
     return env;
@@ -216,7 +270,8 @@ export class ProviderConnectionService {
     }
 
     const codexConnection = this.configManager.getConfig().providerConnections.codex;
-    if (!codexConnection.apiKeyBetaEnabled || codexConnection.authMode !== 'api_key') {
+    const codexRuntimeBackend = this.getConfiguredCodexRuntimeBackend();
+    if (!this.shouldExposeCodexConnectionModes() || codexConnection.authMode !== 'api_key') {
       return null;
     }
 
@@ -224,10 +279,17 @@ export class ProviderConnectionService {
       return null;
     }
 
-    return (
-      'Codex API key mode is enabled, but no OPENAI_API_KEY is configured. ' +
-      'Add a stored/environment API key or switch Codex auth mode back to OAuth.'
-    );
+    if (
+      codexRuntimeBackend === CODEX_NATIVE_BACKEND_ID &&
+      typeof env[CODEX_NATIVE_API_KEY_ENV_VAR] === 'string' &&
+      env[CODEX_NATIVE_API_KEY_ENV_VAR]?.trim()
+    ) {
+      return null;
+    }
+
+    return codexRuntimeBackend === CODEX_NATIVE_BACKEND_ID
+      ? 'Codex API key mode is enabled for codex-native, but no OPENAI_API_KEY or CODEX_API_KEY is configured. Add a stored/environment API key or switch Codex auth mode back to OAuth.'
+      : 'Codex API key mode is enabled, but no OPENAI_API_KEY is configured. Add a stored/environment API key or switch Codex auth mode back to OAuth.';
   }
 
   async getConfiguredConnectionIssues(
@@ -260,17 +322,23 @@ export class ProviderConnectionService {
   async getConnectionInfo(providerId: CliProviderId): Promise<CliProviderConnectionInfo> {
     const capabilities = PROVIDER_CAPABILITIES[providerId];
     const storedApiKey = await this.getStoredApiKey(providerId);
-    const externalCredential = this.getExternalCredential(providerId);
+    const codexRuntimeBackend =
+      providerId === 'codex' ? this.getConfiguredCodexRuntimeBackend() : null;
+    const externalCredential = this.getExternalCredential(providerId, codexRuntimeBackend);
     const codexBetaEnabled =
       providerId === 'codex'
         ? this.configManager.getConfig().providerConnections.codex.apiKeyBetaEnabled
         : undefined;
     const configurableAuthModes =
-      providerId === 'codex' && codexBetaEnabled
+      providerId === 'codex' &&
+      (codexBetaEnabled || codexRuntimeBackend === CODEX_NATIVE_BACKEND_ID)
         ? (['oauth', 'api_key'] as CliProviderAuthMode[])
         : capabilities.configurableAuthModes;
     const configuredAuthMode =
-      providerId === 'codex' && !codexBetaEnabled ? null : this.getConfiguredAuthMode(providerId);
+      providerId === 'codex' &&
+      !(codexBetaEnabled || codexRuntimeBackend === CODEX_NATIVE_BACKEND_ID)
+        ? null
+        : this.getConfiguredAuthMode(providerId);
 
     return {
       ...capabilities,
@@ -301,7 +369,22 @@ export class ProviderConnectionService {
     return this.apiKeyService.lookupPreferred(envVarName);
   }
 
-  private getExternalCredential(providerId: CliProviderId): ExternalCredential {
+  private getConfiguredCodexRuntimeBackend(): 'auto' | 'adapter' | 'api' | 'codex-native' {
+    return this.configManager.getConfig().runtime.providerBackends.codex;
+  }
+
+  private shouldExposeCodexConnectionModes(): boolean {
+    const config = this.configManager.getConfig();
+    return (
+      config.providerConnections.codex.apiKeyBetaEnabled ||
+      config.runtime.providerBackends.codex === CODEX_NATIVE_BACKEND_ID
+    );
+  }
+
+  private getExternalCredential(
+    providerId: CliProviderId,
+    codexRuntimeBackend: 'auto' | 'adapter' | 'api' | 'codex-native' | null = null
+  ): ExternalCredential {
     const shellEnv = getCachedShellEnv() ?? {};
     const sources = [shellEnv, process.env];
 
@@ -336,6 +419,16 @@ export class ProviderConnectionService {
     }
 
     if (providerId === 'codex') {
+      if (codexRuntimeBackend === CODEX_NATIVE_BACKEND_ID) {
+        const nativeApiKey = findEnvValue(CODEX_NATIVE_API_KEY_ENV_VAR);
+        if (nativeApiKey) {
+          return {
+            label: `Detected from ${CODEX_NATIVE_API_KEY_ENV_VAR}`,
+            value: nativeApiKey,
+          };
+        }
+      }
+
       const apiKey = findEnvValue('OPENAI_API_KEY');
       if (apiKey) {
         return {

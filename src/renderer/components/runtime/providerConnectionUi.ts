@@ -69,11 +69,22 @@ export function formatProviderAuthMethodLabelForProvider(
   return formatProviderAuthMethodLabel(authMethod);
 }
 
+function isCodexNativeLane(provider: CliProviderStatus): boolean {
+  return (
+    provider.providerId === 'codex' &&
+    (provider.resolvedBackendId === 'codex-native' || provider.selectedBackendId === 'codex-native')
+  );
+}
+
 export function isConnectionManagedRuntimeProvider(provider: CliProviderStatus): boolean {
-  return provider.providerId === 'codex';
+  return provider.providerId === 'codex' && (provider.availableBackends?.length ?? 0) === 0;
 }
 
 function getCodexCurrentRuntimeLabel(provider: CliProviderStatus): string {
+  if (isCodexNativeLane(provider) && provider.backend?.label) {
+    return provider.backend.label;
+  }
+
   if (provider.authenticated) {
     return provider.authMethod === 'api_key' ? CODEX_API_KEY_LABEL : CODEX_SUBSCRIPTION_LABEL;
   }
@@ -86,7 +97,7 @@ function getCodexCurrentRuntimeLabel(provider: CliProviderStatus): string {
 }
 
 export function getProviderCurrentRuntimeSummary(provider: CliProviderStatus): string | null {
-  if (provider.providerId !== 'codex') {
+  if (provider.providerId !== 'codex' || !isConnectionManagedRuntimeProvider(provider)) {
     return null;
   }
 
@@ -163,6 +174,12 @@ export function getProviderCredentialSummary(provider: CliProviderStatus): strin
   }
 
   if (provider.providerId === 'codex' && provider.connection?.apiKeyBetaEnabled !== true) {
+    if (isCodexNativeLane(provider)) {
+      return provider.connection.apiKeySource === 'stored'
+        ? 'Saved API key available in Manage'
+        : (provider.connection.apiKeySourceLabel ?? 'API key is configured');
+    }
+
     return provider.connection.apiKeySource === 'stored'
       ? 'OpenAI API key is saved in Manage. Enable API key mode to use it.'
       : 'OpenAI API key detected. Enable API key mode in Manage to use it.';

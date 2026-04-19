@@ -105,6 +105,15 @@ function getProviderTerminalCommand(provider: CliProviderStatus): {
     };
   }
 
+  if (provider.providerId === 'codex') {
+    return {
+      args: ['auth', 'login', '--provider', provider.providerId],
+      env: {
+        CLAUDE_CODE_CODEX_BACKEND: provider.selectedBackendId ?? 'auto',
+      },
+    };
+  }
+
   return {
     args: ['auth', 'login', '--provider', provider.providerId],
   };
@@ -120,6 +129,15 @@ function getProviderTerminalLogoutCommand(provider: CliProviderStatus): {
       env: {
         CLAUDE_CODE_ENTRY_PROVIDER: 'gemini',
         CLAUDE_CODE_GEMINI_BACKEND: provider.selectedBackendId ?? 'auto',
+      },
+    };
+  }
+
+  if (provider.providerId === 'codex') {
+    return {
+      args: ['auth', 'logout', '--provider', provider.providerId],
+      env: {
+        CLAUDE_CODE_CODEX_BACKEND: provider.selectedBackendId ?? 'auto',
       },
     };
   }

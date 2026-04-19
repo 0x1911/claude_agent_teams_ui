@@ -239,4 +239,49 @@ describe('configValidation', () => {
       expect(result.error).toContain('providerConnections.codex.authMode');
     }
   });
+
+  it('accepts Codex runtime backend updates for api and codex-native', () => {
+    const apiResult = validateConfigUpdatePayload('runtime', {
+      providerBackends: {
+        codex: 'api',
+      },
+    });
+
+    expect(apiResult.valid).toBe(true);
+    if (apiResult.valid) {
+      expect(apiResult.data).toEqual({
+        providerBackends: {
+          codex: 'api',
+        },
+      });
+    }
+
+    const nativeResult = validateConfigUpdatePayload('runtime', {
+      providerBackends: {
+        codex: 'codex-native',
+      },
+    });
+
+    expect(nativeResult.valid).toBe(true);
+    if (nativeResult.valid) {
+      expect(nativeResult.data).toEqual({
+        providerBackends: {
+          codex: 'codex-native',
+        },
+      });
+    }
+  });
+
+  it('rejects unknown Codex runtime backends', () => {
+    const result = validateConfigUpdatePayload('runtime', {
+      providerBackends: {
+        codex: 'native',
+      },
+    });
+
+    expect(result.valid).toBe(false);
+    if (!result.valid) {
+      expect(result.error).toContain('auto, adapter, api, codex-native');
+    }
+  });
 });

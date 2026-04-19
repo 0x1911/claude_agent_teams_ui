@@ -103,6 +103,17 @@ function isApiKeyProviderId(providerId: CliProviderId): providerId is ApiKeyProv
   return providerId === 'anthropic' || providerId === 'codex' || providerId === 'gemini';
 }
 
+function hasExplicitRuntimeBackends(provider: CliProviderStatus): boolean {
+  return (provider.availableBackends?.length ?? 0) > 0;
+}
+
+function isCodexNativeLane(provider: CliProviderStatus): boolean {
+  return (
+    provider.providerId === 'codex' &&
+    (provider.selectedBackendId === 'codex-native' || provider.resolvedBackendId === 'codex-native')
+  );
+}
+
 function findPreferredApiKeyEntry(apiKeys: ApiKeyEntry[], envVarName: string): ApiKeyEntry | null {
   const matches = apiKeys.filter((entry) => entry.envVarName === envVarName);
   return matches.find((entry) => entry.scope === 'user') ?? null;
@@ -113,9 +124,11 @@ function getConnectionDescription(provider: CliProviderStatus): string {
     case 'anthropic':
       return 'Choose how app-launched Anthropic sessions authenticate.';
     case 'codex':
-      return provider.connection?.apiKeyBetaEnabled
-        ? 'Choose whether app-launched Codex sessions use your Codex subscription or an OpenAI API key. Runtime follows this automatically.'
-        : 'Codex uses your subscription session by default. Enable API key mode if you want to switch Codex to OPENAI_API_KEY billing.';
+      return hasExplicitRuntimeBackends(provider)
+        ? 'Choose which credentials app-launched Codex sessions should use. Runtime backend is configured separately below.'
+        : provider.connection?.apiKeyBetaEnabled
+          ? 'Choose whether app-launched Codex sessions use your Codex subscription or an OpenAI API key.'
+          : 'Codex uses your subscription session by default. Enable API key mode if you want to switch Codex credential routing to API-key billing.';
     case 'gemini':
       return 'Configure optional API access. CLI SDK and ADC are still discovered automatically.';
   }
@@ -126,7 +139,9 @@ function getRuntimeDescription(provider: CliProviderStatus): string {
     case 'anthropic':
       return 'Anthropic currently has no separate runtime backend selector.';
     case 'codex':
-      return 'Codex runtime selection follows the active connection method automatically.';
+      return hasExplicitRuntimeBackends(provider)
+        ? 'Choose which Codex runtime backend multimodel should use. Connection method only controls credentials.'
+        : 'Codex runtime selection follows the active connection method automatically.';
     case 'gemini':
       return 'Choose which Gemini runtime backend multimodel should use.';
   }
@@ -146,8 +161,8 @@ function getAuthModeDescription(providerId: CliProviderId, authMode: CliProvider
 
   if (providerId === 'codex') {
     return authMode === 'api_key'
-      ? 'Use OPENAI_API_KEY and the public OpenAI Responses API backend.'
-      : 'Use your Codex subscription session and the built-in Codex runtime.';
+      ? 'Use API-key credentials for app-launched Codex sessions. The selected runtime backend decides how those credentials are consumed.'
+      : 'Use your Codex subscription session. API-key-only backends remain unavailable until you switch this credential mode.';
   }
 
   return '';
@@ -185,25 +200,20 @@ function getConnectionAlert(provider: CliProviderStatus): string | null {
 
   if (
     provider.providerId === 'codex' &&
-    provider.connection?.apiKeyBetaEnabled &&
     authMode === 'api_key' &&
     !provider.connection?.apiKeyConfigured
   ) {
-    return 'API key mode is selected, but no OPENAI_API_KEY credential is available yet.';
+    return isCodexNativeLane(provider)
+      ? 'API key mode is selected, but no OPENAI_API_KEY or CODEX_API_KEY credential is available yet.'
+      : 'API key mode is selected, but no OPENAI_API_KEY credential is available yet.';
   }
 
-  if (
-    provider.providerId === 'codex' &&
-    provider.connection?.apiKeyBetaEnabled &&
-    authMode === 'oauth' &&
-    !hasCodexSubscriptionSession
-  ) {
+  if (provider.providerId === 'codex' && authMode === 'oauth' && !hasCodexSubscriptionSession) {
     return 'Codex subscription mode is selected. Sign in with Codex to use this provider.';
   }
 
   if (
     provider.providerId === 'codex' &&
-    provider.connection?.apiKeyBetaEnabled &&
     authMode === 'oauth' &&
     provider.connection?.apiKeySource === 'stored'
   ) {
@@ -266,7 +276,9 @@ function getConnectionMethodCardOptions(
 
 function getConnectionMethodCardsHint(provider: CliProviderStatus): string | null {
   if (provider.providerId === 'codex') {
-    return 'Runtime follows your connection method automatically.';
+    return hasExplicitRuntimeBackends(provider)
+      ? 'Connection method controls credentials only. Runtime backend selection is independent.'
+      : 'Runtime follows your connection method automatically.';
   }
 
   if (provider.providerId === 'anthropic') {
@@ -899,7 +911,8 @@ export const ProviderRuntimeSettingsDialog = ({
 
               {selectedProvider.providerId === 'codex' &&
               selectedProvider.connection?.apiKeyBetaAvailable &&
-              !selectedProvider.connection.apiKeyBetaEnabled ? (
+              !selectedProvider.connection.apiKeyBetaEnabled &&
+              !showConnectionMethodCards ? (
                 <div
                   className="space-y-3 rounded-md border p-3"
                   style={{ borderColor: 'var(--color-border-subtle)' }}

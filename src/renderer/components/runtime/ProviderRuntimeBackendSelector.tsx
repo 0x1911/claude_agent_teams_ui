@@ -100,7 +100,10 @@ export const ProviderRuntimeBackendSelector = ({
             <SelectItem
               key={option.id}
               value={option.id}
-              disabled={!option.available && option.id !== selectedBackendId}
+              disabled={
+                (!option.available || option.selectable === false) &&
+                option.id !== selectedBackendId
+              }
               className="py-2.5"
             >
               <div className="flex min-w-0 flex-col gap-1">
@@ -126,6 +129,16 @@ export const ProviderRuntimeBackendSelector = ({
                       }}
                     >
                       Unavailable
+                    </span>
+                  ) : option.selectable === false ? (
+                    <span
+                      className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px]"
+                      style={{
+                        color: 'var(--color-text-secondary)',
+                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                      }}
+                    >
+                      Locked
                     </span>
                   ) : null}
                 </div>
@@ -176,6 +189,27 @@ export const ProviderRuntimeBackendSelector = ({
                   </TooltipTrigger>
                   <TooltipContent>
                     {selectedOption.detailMessage ?? selectedOption.statusMessage ?? 'Unavailable'}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : selectedOption.selectable === false ? (
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="cursor-help rounded-full px-1.5 py-0.5 text-[10px]"
+                      style={{
+                        color: 'var(--color-text-secondary)',
+                        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                      }}
+                    >
+                      Locked
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {selectedOption.detailMessage ??
+                      selectedOption.statusMessage ??
+                      'This backend cannot be selected yet.'}
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

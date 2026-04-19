@@ -442,10 +442,16 @@ function validateRuntimeSection(data: unknown): ValidationSuccess<'runtime'> | V
       }
 
       if (providerId === 'codex') {
-        if (backendId !== 'auto' && backendId !== 'adapter') {
+        if (
+          backendId !== 'auto' &&
+          backendId !== 'adapter' &&
+          backendId !== 'api' &&
+          backendId !== 'codex-native'
+        ) {
           return {
             valid: false,
-            error: 'runtime.providerBackends.codex must be one of: auto, adapter',
+            error:
+              'runtime.providerBackends.codex must be one of: auto, adapter, api, codex-native',
           };
         }
         providerBackends.codex = backendId;

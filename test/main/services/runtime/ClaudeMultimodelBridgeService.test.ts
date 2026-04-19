@@ -2,6 +2,11 @@
 import type { PathLike } from 'fs';
 import * as path from 'path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  getProviderConnectionModeSummary,
+  getProviderCurrentRuntimeSummary,
+  isConnectionManagedRuntimeProvider,
+} from '@renderer/components/runtime/providerConnectionUi';
 
 const execCliMock = vi.fn();
 const buildProviderAwareCliEnvMock = vi.fn();
@@ -292,5 +297,146 @@ describe('ClaudeMultimodelBridgeService', () => {
         },
       },
     });
+  });
+
+  it('keeps codex-native lane truth honest from unified runtime status through renderer summaries', async () => {
+    execCliMock.mockResolvedValue({
+      stdout: JSON.stringify({
+        providers: {
+          anthropic: {
+            supported: true,
+            authenticated: true,
+            authMethod: 'oauth_token',
+            verificationState: 'verified',
+            canLoginFromUi: true,
+            models: ['claude-sonnet-4-5'],
+            capabilities: {
+              teamLaunch: true,
+              oneShot: true,
+              extensions: {
+                plugins: { status: 'supported', ownership: 'shared', reason: null },
+                mcp: { status: 'supported', ownership: 'shared', reason: null },
+                skills: { status: 'supported', ownership: 'shared', reason: null },
+                apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+              },
+            },
+            backend: { kind: 'anthropic', label: 'Anthropic' },
+          },
+          codex: {
+            supported: true,
+            authenticated: true,
+            authMethod: 'oauth_token',
+            verificationState: 'verified',
+            canLoginFromUi: true,
+            statusMessage: 'Codex native lane is wired but remains locked for normal selection.',
+            detailMessage: 'Use the fallback adapter/API lane unless the experimental native lane is explicitly enabled.',
+            selectedBackendId: 'codex-native',
+            resolvedBackendId: 'codex-native',
+            availableBackends: [
+              {
+                id: 'auto',
+                label: 'Auto',
+                selectable: true,
+                recommended: true,
+                available: true,
+              },
+              {
+                id: 'codex-native',
+                label: 'Codex native',
+                selectable: false,
+                recommended: false,
+                available: true,
+                statusMessage: 'Experimental native lane',
+                detailMessage: 'Phase 0 keeps the lane locked behind rollout policy.',
+              },
+            ],
+            externalRuntimeDiagnostics: [
+              {
+                id: 'codex-cli',
+                label: 'Codex CLI',
+                detected: true,
+                statusMessage: 'Detected',
+                detailMessage: 'System codex binary available.',
+              },
+            ],
+            capabilities: {
+              teamLaunch: true,
+              oneShot: true,
+              extensions: {
+                plugins: {
+                  status: 'unsupported',
+                  ownership: 'shared',
+                  reason: 'codex-native phase 0 keeps plugin execution disabled.',
+                },
+                mcp: {
+                  status: 'unsupported',
+                  ownership: 'shared',
+                  reason: 'Headless-limited lane',
+                },
+                skills: {
+                  status: 'unsupported',
+                  ownership: 'shared',
+                  reason: 'Headless-limited lane',
+                },
+                apiKeys: { status: 'supported', ownership: 'shared', reason: null },
+              },
+            },
+            backend: {
+              kind: 'codex-native',
+              label: 'Codex native',
+              authMethodDetail: 'API key',
+            },
+          },
+          gemini: {
+            supported: false,
+            authenticated: false,
+          },
+        },
+      }),
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const { ClaudeMultimodelBridgeService } =
+      await import('@main/services/runtime/ClaudeMultimodelBridgeService');
+    const service = new ClaudeMultimodelBridgeService();
+
+    const providers = await service.getProviderStatuses('/mock/agent_teams_orchestrator');
+    const codex = providers.find((provider) => provider.providerId === 'codex');
+
+    expect(codex).toMatchObject({
+      providerId: 'codex',
+      authenticated: true,
+      selectedBackendId: 'codex-native',
+      resolvedBackendId: 'codex-native',
+      backend: {
+        kind: 'codex-native',
+        label: 'Codex native',
+      },
+      availableBackends: [
+        expect.objectContaining({
+          id: 'auto',
+          selectable: true,
+        }),
+        expect.objectContaining({
+          id: 'codex-native',
+          selectable: false,
+          available: true,
+          statusMessage: 'Experimental native lane',
+        }),
+      ],
+      externalRuntimeDiagnostics: [
+        expect.objectContaining({
+          id: 'codex-cli',
+          detected: true,
+        }),
+      ],
+    });
+    expect(codex?.capabilities.extensions.plugins).toMatchObject({
+      status: 'unsupported',
+    });
+    expect(isConnectionManagedRuntimeProvider(codex!)).toBe(false);
+    expect(getProviderConnectionModeSummary(codex!)).toBeNull();
+    expect(getProviderCurrentRuntimeSummary(codex!)).toBeNull();
   });
 });

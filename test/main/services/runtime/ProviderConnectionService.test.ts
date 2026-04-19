@@ -9,16 +9,30 @@ vi.mock('@main/utils/shellEnv', () => ({
 
 describe('ProviderConnectionService', () => {
   const originalOpenAiApiKey = process.env.OPENAI_API_KEY;
+  const originalCodexApiKey = process.env.CODEX_API_KEY;
 
-  function createConfig(authMode: 'auto' | 'oauth' | 'api_key' = 'auto') {
+  function createConfig(
+    authMode: 'auto' | 'oauth' | 'api_key' = 'auto',
+    overrides?: {
+      codexAuthMode?: 'oauth' | 'api_key';
+      codexApiKeyBetaEnabled?: boolean;
+      codexRuntimeBackend?: 'auto' | 'adapter' | 'api' | 'codex-native';
+    }
+  ) {
     return {
       providerConnections: {
         anthropic: {
           authMode,
         },
         codex: {
-          apiKeyBetaEnabled: false,
-          authMode: 'oauth' as const,
+          apiKeyBetaEnabled: overrides?.codexApiKeyBetaEnabled ?? false,
+          authMode: overrides?.codexAuthMode ?? ('oauth' as const),
+        },
+      },
+      runtime: {
+        providerBackends: {
+          gemini: 'auto' as const,
+          codex: overrides?.codexRuntimeBackend ?? ('auto' as const),
         },
       },
     };
@@ -29,15 +43,22 @@ describe('ProviderConnectionService', () => {
     vi.clearAllMocks();
     getCachedShellEnvMock.mockReturnValue({});
     delete process.env.OPENAI_API_KEY;
+    delete process.env.CODEX_API_KEY;
   });
 
   afterEach(() => {
     if (originalOpenAiApiKey === undefined) {
       delete process.env.OPENAI_API_KEY;
+    } else {
+      process.env.OPENAI_API_KEY = originalOpenAiApiKey;
+    }
+
+    if (originalCodexApiKey === undefined) {
+      delete process.env.CODEX_API_KEY;
       return;
     }
 
-    process.env.OPENAI_API_KEY = originalOpenAiApiKey;
+    process.env.CODEX_API_KEY = originalCodexApiKey;
   });
 
   it('removes Anthropic environment credentials when OAuth mode is selected', async () => {
@@ -284,15 +305,11 @@ describe('ProviderConnectionService', () => {
       } as never,
       {
         getConfig: () => ({
-          providerConnections: {
-            anthropic: {
-              authMode: 'auto',
-            },
-            codex: {
-              apiKeyBetaEnabled: true,
-              authMode: 'api_key',
-            },
-          },
+          ...createConfig('auto', {
+            codexApiKeyBetaEnabled: true,
+            codexAuthMode: 'api_key',
+            codexRuntimeBackend: 'api',
+          }),
         }),
       } as never
     );
@@ -307,11 +324,11 @@ describe('ProviderConnectionService', () => {
 
     expect(lookupPreferred).toHaveBeenCalledWith('OPENAI_API_KEY');
     expect(result.OPENAI_API_KEY).toBe('openai-stored-key');
-    expect(result.CLAUDE_CODE_CODEX_BACKEND).toBe('api');
+    expect(result.CLAUDE_CODE_CODEX_BACKEND).toBe('auto');
     expect(result.CLAUDE_CODE_CODEX_API_KEY_BETA).toBe('1');
   });
 
-  it('forces the Codex adapter and strips OPENAI_API_KEY in OAuth mode', async () => {
+  it('keeps the configured Codex backend and strips OPENAI_API_KEY in oauth mode', async () => {
     const { ProviderConnectionService } =
       await import('@main/services/runtime/ProviderConnectionService');
 
@@ -320,16 +337,10 @@ describe('ProviderConnectionService', () => {
         lookupPreferred: vi.fn().mockResolvedValue(null),
       } as never,
       {
-        getConfig: () => ({
-          providerConnections: {
-            anthropic: {
-              authMode: 'auto',
-            },
-            codex: {
-              apiKeyBetaEnabled: true,
-              authMode: 'oauth',
-            },
-          },
+        getConfig: () => createConfig('auto', {
+          codexApiKeyBetaEnabled: true,
+          codexAuthMode: 'oauth',
+          codexRuntimeBackend: 'api',
         }),
       } as never
     );
@@ -343,7 +354,7 @@ describe('ProviderConnectionService', () => {
     );
 
     expect(result.OPENAI_API_KEY).toBeUndefined();
-    expect(result.CLAUDE_CODE_CODEX_BACKEND).toBe('adapter');
+    expect(result.CLAUDE_CODE_CODEX_BACKEND).toBe('auto');
     expect(result.CLAUDE_CODE_CODEX_API_KEY_BETA).toBe('1');
   });
 
@@ -356,17 +367,12 @@ describe('ProviderConnectionService', () => {
         lookupPreferred: vi.fn().mockResolvedValue(null),
       } as never,
       {
-        getConfig: () => ({
-          providerConnections: {
-            anthropic: {
-              authMode: 'auto',
-            },
-            codex: {
-              apiKeyBetaEnabled: true,
-              authMode: 'api_key',
-            },
-          },
-        }),
+        getConfig: () =>
+          createConfig('auto', {
+            codexApiKeyBetaEnabled: true,
+            codexAuthMode: 'api_key',
+            codexRuntimeBackend: 'api',
+          }),
       } as never
     );
 
@@ -376,7 +382,7 @@ describe('ProviderConnectionService', () => {
     expect(issue).toContain('OPENAI_API_KEY');
   });
 
-  it('augments PTY env for Codex without deleting an existing OPENAI_API_KEY in oauth mode', async () => {
+  it('augments PTY env for Codex without rewriting the configured backend in oauth mode', async () => {
     const { ProviderConnectionService } =
       await import('@main/services/runtime/ProviderConnectionService');
 
@@ -385,17 +391,12 @@ describe('ProviderConnectionService', () => {
         lookupPreferred: vi.fn().mockResolvedValue(null),
       } as never,
       {
-        getConfig: () => ({
-          providerConnections: {
-            anthropic: {
-              authMode: 'auto',
-            },
-            codex: {
-              apiKeyBetaEnabled: true,
-              authMode: 'oauth',
-            },
-          },
-        }),
+        getConfig: () =>
+          createConfig('auto', {
+            codexApiKeyBetaEnabled: true,
+            codexAuthMode: 'oauth',
+            codexRuntimeBackend: 'api',
+          }),
       } as never
     );
 
@@ -407,7 +408,106 @@ describe('ProviderConnectionService', () => {
     );
 
     expect(result.OPENAI_API_KEY).toBe('shell-key');
-    expect(result.CLAUDE_CODE_CODEX_BACKEND).toBe('adapter');
+    expect(result.CLAUDE_CODE_CODEX_BACKEND).toBeUndefined();
     expect(result.CLAUDE_CODE_CODEX_API_KEY_BETA).toBe('1');
+  });
+
+  it('exposes Codex connection modes when codex-native is selected even without the old API beta toggle', async () => {
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () =>
+          createConfig('auto', {
+            codexApiKeyBetaEnabled: false,
+            codexAuthMode: 'oauth',
+            codexRuntimeBackend: 'codex-native',
+          }),
+      } as never
+    );
+
+    const info = await service.getConnectionInfo('codex');
+
+    expect(info).toMatchObject({
+      configurableAuthModes: ['oauth', 'api_key'],
+      configuredAuthMode: 'oauth',
+      apiKeyBetaEnabled: false,
+    });
+  });
+
+  it('mirrors a stored OpenAI key into CODEX_API_KEY for codex-native without changing the selected backend', async () => {
+    const lookupPreferred = vi.fn().mockResolvedValue({
+      envVarName: 'OPENAI_API_KEY',
+      value: 'openai-stored-key',
+    });
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred,
+      } as never,
+      {
+        getConfig: () =>
+          createConfig('auto', {
+            codexApiKeyBetaEnabled: false,
+            codexAuthMode: 'api_key',
+            codexRuntimeBackend: 'codex-native',
+          }),
+      } as never
+    );
+
+    const result = await service.applyConfiguredConnectionEnv(
+      {
+        CLAUDE_CODE_CODEX_BACKEND: 'codex-native',
+      },
+      'codex'
+    );
+
+    expect(lookupPreferred).toHaveBeenCalledWith('OPENAI_API_KEY');
+    expect(result.OPENAI_API_KEY).toBe('openai-stored-key');
+    expect(result.CODEX_API_KEY).toBe('openai-stored-key');
+    expect(result.CLAUDE_CODE_CODEX_BACKEND).toBe('codex-native');
+    expect(result.CLAUDE_CODE_CODEX_API_KEY_BETA).toBeUndefined();
+  });
+
+  it('accepts CODEX_API_KEY as the native external credential source for codex-native', async () => {
+    getCachedShellEnvMock.mockReturnValue({
+      CODEX_API_KEY: 'native-key',
+    });
+
+    const { ProviderConnectionService } =
+      await import('@main/services/runtime/ProviderConnectionService');
+
+    const service = new ProviderConnectionService(
+      {
+        lookupPreferred: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        getConfig: () =>
+          createConfig('auto', {
+            codexApiKeyBetaEnabled: false,
+            codexAuthMode: 'api_key',
+            codexRuntimeBackend: 'codex-native',
+          }),
+      } as never
+    );
+
+    const info = await service.getConnectionInfo('codex');
+    const issue = await service.getConfiguredConnectionIssue(
+      {
+        CODEX_API_KEY: 'native-key',
+      },
+      'codex'
+    );
+
+    expect(info.apiKeyConfigured).toBe(true);
+    expect(info.apiKeySource).toBe('environment');
+    expect(info.apiKeySourceLabel).toBe('Detected from CODEX_API_KEY');
+    expect(issue).toBeNull();
   });
 });
