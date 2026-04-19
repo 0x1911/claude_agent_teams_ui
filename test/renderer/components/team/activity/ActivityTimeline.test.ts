@@ -464,3 +464,129 @@ describe('ActivityTimeline viewport observerRoot', () => {
     scrollHost.remove();
   });
 });
+
+describe('ActivityTimeline virtualization threshold', () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    container.remove();
+    document.body.innerHTML = '';
+    vi.unstubAllGlobals();
+  });
+
+  const buildMany = (count: number): InboxMessage[] =>
+    Array.from({ length: count }, (_, i) =>
+      makeMessage({
+        messageId: `msg-${i}`,
+        text: `message ${i}`,
+        from: 'alice',
+        source: 'inbox',
+        leadSessionId: `member-session-${i}`,
+      })
+    );
+
+  it('does not enter the virtualized render path when the row count is below the threshold', async () => {
+    const scrollHost = document.createElement('div');
+    document.body.appendChild(scrollHost);
+    const scrollRef = { current: scrollHost };
+
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityTimeline, {
+          messages: buildMany(10),
+          teamName: 'demo-team',
+          viewport: {
+            scrollElementRef: scrollRef,
+            observerRoot: scrollRef,
+            scrollMargin: 0,
+            virtualizationEnabled: true,
+          },
+        })
+      );
+    });
+
+    // Virtualized path wraps items in an absolute-position container; the
+    // direct path does not. Assert the wrapper is absent.
+    const absoluteWrapper = container.querySelector<HTMLDivElement>('div[style*="position: relative"]');
+    expect(absoluteWrapper).toBeNull();
+    // Sanity check: direct render still emits at least one activity item.
+    expect(container.textContent).toContain('message 0');
+
+    await act(async () => {
+      root.unmount();
+    });
+    scrollHost.remove();
+  });
+
+  it('falls back to the direct render path when no viewport is provided', async () => {
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityTimeline, {
+          messages: buildMany(80),
+          teamName: 'demo-team',
+        })
+      );
+    });
+
+    const absoluteWrapper = container.querySelector<HTMLDivElement>('div[style*="position: relative"]');
+    expect(absoluteWrapper).toBeNull();
+    expect(container.textContent).toContain('message 0');
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it('enters the virtualized render path when row count crosses the threshold', async () => {
+    const scrollHost = document.createElement('div');
+    document.body.appendChild(scrollHost);
+    const scrollRef = { current: scrollHost };
+
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(ActivityTimeline, {
+          messages: buildMany(80),
+          teamName: 'demo-team',
+          viewport: {
+            scrollElementRef: scrollRef,
+            observerRoot: scrollRef,
+            scrollMargin: 0,
+            virtualizationEnabled: true,
+          },
+        })
+      );
+    });
+
+    // Default pagination caps visible rows at 30, which stays below the
+    // threshold, so the direct render path is in effect here. Click "show
+    // all" to expose every message — that pushes row count past the gate.
+    const showAllButton = [...container.querySelectorAll('button')].find(
+      (b) => b.textContent?.toLowerCase().includes('show all')
+    );
+    expect(showAllButton).toBeDefined();
+
+    await act(async () => {
+      showAllButton?.click();
+    });
+
+    // Virtualized path: sized container div with `position: relative`
+    // directly inside the timeline root. jsdom serialises style attributes
+    // with spaces after the colon, so match case-insensitively.
+    const html = container.innerHTML;
+    expect(html.toLowerCase()).toMatch(/position:\s*relative/);
+
+    await act(async () => {
+      root.unmount();
+    });
+    scrollHost.remove();
+  });
+});

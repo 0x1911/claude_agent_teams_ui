@@ -137,6 +137,15 @@ const DEFAULT_COLLAPSE_MODE = 'default' as const;
 const VIRTUALIZER_OVERSCAN = 8;
 
 /**
+ * Row count above which virtualization is worth its complexity cost. Below
+ * this, the direct render path is both simpler and faster (no wrapper div,
+ * no position: absolute, no measurement churn). Chosen so conversations under
+ * roughly one session of activity stay on the direct path and the virtualized
+ * path only activates when scrolling behavior actually starts to matter.
+ */
+const VIRTUALIZATION_ROW_THRESHOLD = 60;
+
+/**
  * Per-kind height estimates for `estimateSize`. These are rough initial guesses
  * only; the virtualizer re-measures rows as they mount via `measureElement`
  * (wired in a follow-up PR), so small inaccuracies here are self-correcting.
@@ -587,14 +596,15 @@ export const ActivityTimeline = React.memo(function ActivityTimeline({
     return rows;
   }, [pinnedThoughtGroup, previousSessionAnchorByIndex, startIndex, timelineItems]);
 
-  // Virtualizer gate — dormant unless the parent explicitly opts in via
-  // `viewport.virtualizationEnabled`. The contract carries this flag so the
-  // (large) virtualized render path can land before any caller flips the
-  // switch, and can be toggled on per-layout once measurement is validated.
+  // Virtualizer gate — activates only when the parent opts in via
+  // `viewport.virtualizationEnabled`, the scroll element ref is present, and
+  // the row count is large enough for virtualization to pay for itself. Below
+  // the threshold the direct render path is both simpler and faster, so we
+  // keep it for short lists.
   const shouldVirtualize =
     viewport?.virtualizationEnabled === true &&
     viewport.scrollElementRef != null &&
-    renderRows.length > 0;
+    renderRows.length >= VIRTUALIZATION_ROW_THRESHOLD;
 
   // DOM-measured distance from the scroll container's scroll origin to the
   // timeline root. Hand-summing composer/status/padding heights would drift as

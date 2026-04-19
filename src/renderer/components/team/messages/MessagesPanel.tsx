@@ -255,7 +255,10 @@ export const MessagesPanel = memo(function MessagesPanel({
       scrollElementRef: activeScrollContainerRef,
       observerRoot: activeScrollContainerRef,
       scrollMargin: 0,
-      virtualizationEnabled: false,
+      // Opt into virtualization; ActivityTimeline keeps the direct render
+      // path for short lists and only switches to the windowed path once
+      // the row count crosses its internal threshold.
+      virtualizationEnabled: true,
     };
   }, [activeScrollContainerRef]);
   const handleExpandContent = useCallback(() => {
