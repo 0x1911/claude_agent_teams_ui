@@ -144,8 +144,14 @@ export class HunkSnippetMatcher {
   ): boolean {
     if (!snippet.newString && !snippet.oldString) return false;
 
-    if (snippet.type === 'write-new' || snippet.type === 'write-update') {
-      // Full-file writes are intentionally excluded from localized hunk↔snippet matching.
+    if (
+      snippet.type === 'write-new' ||
+      snippet.type === 'write-update' ||
+      snippet.type === 'notebook-edit' ||
+      snippet.type === 'shell-snapshot' ||
+      snippet.type === 'hook-snapshot'
+    ) {
+      // Full-file and snapshot changes are intentionally excluded from localized hunk↔snippet matching.
       // They are handled by whole-file reject logic or hunk-level inverse patch.
       return false;
     }

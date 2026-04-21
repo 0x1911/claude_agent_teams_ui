@@ -83,7 +83,15 @@ const SnippetDiffView = ({
         ? 'Full rewrite'
         : snippet.type === 'multi-edit'
           ? 'Multi-edit'
-          : 'Edit';
+          : snippet.type === 'notebook-edit'
+            ? 'Notebook'
+            : snippet.type === 'shell-snapshot'
+              ? snippet.toolName === 'PowerShell'
+                ? 'PowerShell'
+                : 'Shell'
+              : snippet.type === 'hook-snapshot'
+                ? 'Hook'
+                : 'Edit';
 
   return (
     <div className="overflow-hidden rounded-lg border border-border">
@@ -135,9 +143,33 @@ const SnippetDiffView = ({
 
 export const ReviewDiffContent = ({ file }: ReviewDiffContentProps) => {
   const nonErrorSnippets = useMemo(() => file.snippets.filter((s) => !s.isError), [file.snippets]);
+  const ledgerMetadataRows = useMemo(() => {
+    const rows = new Set<string>();
+    for (const snippet of nonErrorSnippets) {
+      const relation = snippet.ledger?.relation;
+      if (relation) {
+        rows.add(
+          `${relation.kind === 'rename' ? 'Rename' : 'Copy'}: ${relation.oldPath} -> ${relation.newPath}`
+        );
+      }
+      const beforeReason = snippet.ledger?.beforeState?.unavailableReason;
+      const afterReason = snippet.ledger?.afterState?.unavailableReason;
+      if (beforeReason) rows.add(`Before content metadata only: ${beforeReason}`);
+      if (afterReason) rows.add(`After content metadata only: ${afterReason}`);
+    }
+    return [...rows];
+  }, [nonErrorSnippets]);
 
   return (
     <div className="space-y-4 p-4">
+      {ledgerMetadataRows.length > 0 && (
+        <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          {ledgerMetadataRows.map((row) => (
+            <div key={row}>{row}</div>
+          ))}
+        </div>
+      )}
+
       {nonErrorSnippets.map((snippet, index) => (
         <SnippetDiffView
           key={`${snippet.toolUseId}-${index}`}

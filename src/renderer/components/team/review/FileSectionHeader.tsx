@@ -9,6 +9,8 @@ import type { FileChangeWithContent, HunkDecision } from '@shared/types';
 import type { FileChangeSummary } from '@shared/types/review';
 
 const CONTENT_SOURCE_LABELS: Record<string, string> = {
+  'ledger-exact': 'Ledger Exact',
+  'ledger-snapshot': 'Ledger Snapshot',
   'file-history': 'File History',
   'snippet-reconstruction': 'Reconstructed',
   'disk-current': 'Current Disk',
@@ -57,6 +59,14 @@ export const FileSectionHeader = ({
 }: FileSectionHeaderProps): React.ReactElement => {
   const isMissingOnDisk = fileContent ? fileContent.modifiedFullContent == null : false;
   const isPreviewOnly = isMissingOnDisk || fileContent?.contentSource === 'unavailable';
+  const requiresManualLedgerReview = file.snippets.some(
+    (snippet) =>
+      !!snippet.ledger &&
+      (!!snippet.ledger.beforeState?.unavailableReason ||
+        !!snippet.ledger.afterState?.unavailableReason) &&
+      (snippet.ledger.originalFullContent == null || snippet.ledger.modifiedFullContent == null)
+  );
+  const rejectDisabled = isPreviewOnly || requiresManualLedgerReview;
   const restoreContent =
     fileContent?.modifiedFullContent ??
     (() => {
@@ -189,6 +199,12 @@ export const FileSectionHeader = ({
         </span>
       )}
 
+      {requiresManualLedgerReview && (
+        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-300">
+          MANUAL REVIEW
+        </span>
+      )}
+
       <div className="ml-auto flex items-center gap-1.5" data-no-collapse>
         {externalChange && onReloadFromDisk && onKeepDraft && (
           <div className="mr-1 flex items-center gap-1.5">
@@ -242,7 +258,7 @@ export const FileSectionHeader = ({
                   <span>
                     <button
                       onClick={() => onRejectFile(file.filePath)}
-                      disabled={applying || isPreviewOnly}
+                      disabled={applying || rejectDisabled}
                       className={[
                         'rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50',
                         fileDecision === 'rejected'
@@ -254,9 +270,11 @@ export const FileSectionHeader = ({
                     </button>
                   </span>
                 </TooltipTrigger>
-                {isPreviewOnly && (
+                {rejectDisabled && (
                   <TooltipContent side="bottom">
-                    Accept/Reject is disabled while the file is missing on disk.
+                    {requiresManualLedgerReview
+                      ? 'Reject is disabled because this ledger change has binary, large, or unavailable content.'
+                      : 'Accept/Reject is disabled while the file is missing on disk.'}
                   </TooltipContent>
                 )}
               </Tooltip>

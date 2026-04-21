@@ -15,6 +15,7 @@ import type { FSWatcher } from 'chokidar';
 
 const logger = createLogger('Service:TeamLogSourceTracker');
 const BOARD_TASK_LOG_FRESHNESS_DIRNAME = '.board-task-log-freshness';
+const BOARD_TASK_CHANGE_FRESHNESS_DIRNAME = '.board-task-change-freshness';
 const BOARD_TASK_LOG_FRESHNESS_FILE_SUFFIX = '.json';
 
 interface TeamLogSourceSnapshot {
@@ -288,7 +289,18 @@ export class TeamLogSourceTracker {
       }
       if (
         changedPath &&
-        this.handleTaskLogFreshnessSignalChange(teamName, current.projectDir, changedPath)
+        (this.handleTaskFreshnessSignalChange(
+          teamName,
+          current.projectDir,
+          changedPath,
+          BOARD_TASK_LOG_FRESHNESS_DIRNAME
+        ) ||
+          this.handleTaskFreshnessSignalChange(
+            teamName,
+            current.projectDir,
+            changedPath,
+            BOARD_TASK_CHANGE_FRESHNESS_DIRNAME
+          ))
       ) {
         return;
       }
@@ -311,12 +323,13 @@ export class TeamLogSourceTracker {
     });
   }
 
-  private handleTaskLogFreshnessSignalChange(
+  private handleTaskFreshnessSignalChange(
     teamName: string,
     projectDir: string,
-    changedPath: string
+    changedPath: string,
+    signalDirName: string
   ): boolean {
-    const signalDir = path.join(projectDir, BOARD_TASK_LOG_FRESHNESS_DIRNAME);
+    const signalDir = path.join(projectDir, signalDirName);
     const relativePath = path.relative(signalDir, changedPath);
     if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
       return path.normalize(changedPath) === path.normalize(signalDir);

@@ -1,8 +1,10 @@
 import { computeDiffContextHash } from '@shared/utils/diffContextHash';
 import { createLogger } from '@shared/utils/logger';
+import { createHash } from 'crypto';
 import { applyPatch, structuredPatch } from 'diff';
-import { readFile, unlink, writeFile } from 'fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { diff3Merge } from 'node-diff3';
+import { dirname } from 'path';
 
 import { HunkSnippetMatcher } from './HunkSnippetMatcher';
 
@@ -11,12 +13,19 @@ import type {
   ApplyReviewResult,
   ConflictCheckResult,
   FileChangeWithContent,
+  LedgerChangeRelation,
   RejectResult,
   SnippetDiff,
 } from '@shared/types';
 import type { StructuredPatchHunk } from 'diff';
 
 const logger = createLogger('Service:ReviewApplierService');
+
+type ApplyErrorCode = NonNullable<ApplyReviewResult['errors'][number]['code']>;
+type LedgerApplyOutcome =
+  | { handled: false }
+  | { handled: true; status: 'applied' | 'skipped' }
+  | { handled: true; status: 'conflict' | 'error'; error: string; code: ApplyErrorCode };
 
 /**
  * Service for applying reject decisions from code review.
@@ -255,15 +264,42 @@ export class ReviewApplierService {
       const allHunksRejected =
         Object.keys(decision.hunkDecisions).length > 0 &&
         Object.values(decision.hunkDecisions).every((d) => d === 'rejected');
-      const hasWriteNewSnippet = fileContent.snippets.some((s) => s.type === 'write-new');
+      const hasNewFileSnippet = fileContent.snippets.some(
+        (s) => s.type === 'write-new' || s.ledger?.operation === 'create'
+      );
 
       // Special case: rejecting an entirely new file should remove it from disk.
       // IMPORTANT: Do NOT delete on partial reject — users may want to keep parts of the new file.
       const shouldDeleteNewFile =
         fileContent.isNewFile &&
-        hasWriteNewSnippet &&
+        hasNewFileSnippet &&
         original === '' &&
         (decision.fileDecision === 'rejected' || allHunksRejected);
+
+      const ledgerOutcome = await this.tryApplyLedgerDecision(
+        decision.filePath,
+        original,
+        modified,
+        decision.fileDecision === 'rejected',
+        allHunksRejected,
+        rejectedHunkIndices,
+        fileContent.snippets
+      );
+      if (ledgerOutcome.handled) {
+        if (ledgerOutcome.status === 'applied') {
+          applied++;
+        } else if (ledgerOutcome.status === 'skipped') {
+          skipped++;
+        } else if (ledgerOutcome.status === 'conflict' || ledgerOutcome.status === 'error') {
+          if (ledgerOutcome.status === 'conflict') conflicts++;
+          errors.push({
+            filePath: decision.filePath,
+            error: ledgerOutcome.error,
+            code: ledgerOutcome.code,
+          });
+        }
+        continue;
+      }
 
       if (shouldDeleteNewFile) {
         // If we have an expected modified baseline, guard against deleting a user-modified file.
@@ -275,6 +311,7 @@ export class ReviewApplierService {
               filePath: decision.filePath,
               error:
                 'File was modified since review was computed; refusing to delete new file automatically.',
+              code: 'conflict',
             });
             continue;
           }
@@ -289,6 +326,7 @@ export class ReviewApplierService {
           errors.push({
             filePath: decision.filePath,
             error: 'Cannot delete new file: expected modified content is unavailable.',
+            code: 'unavailable',
           });
           continue;
         }
@@ -304,6 +342,7 @@ export class ReviewApplierService {
             errors.push({
               filePath: decision.filePath,
               error: `Failed to delete new file: ${msg}`,
+              code: 'io-error',
             });
           }
         }
@@ -314,6 +353,7 @@ export class ReviewApplierService {
         errors.push({
           filePath: decision.filePath,
           error: 'Содержимое файла недоступно для применения review',
+          code: 'unavailable',
         });
         continue;
       }
@@ -393,6 +433,407 @@ export class ReviewApplierService {
 
   // ── Private: Rejection strategies ──
 
+  private async tryApplyLedgerDecision(
+    filePath: string,
+    original: string | null,
+    modified: string | null,
+    fileRejected: boolean,
+    allHunksRejected: boolean,
+    rejectedHunkIndices: number[],
+    snippets: SnippetDiff[]
+  ): Promise<LedgerApplyOutcome> {
+    const ledgerSnippets = snippets.filter((snippet) => snippet.ledger && !snippet.isError);
+    if (ledgerSnippets.length === 0) {
+      return { handled: false };
+    }
+
+    const firstLedger = ledgerSnippets[0]?.ledger;
+    const lastLedger = ledgerSnippets[ledgerSnippets.length - 1]?.ledger;
+    if (!firstLedger || !lastLedger) {
+      return { handled: false };
+    }
+
+    const fullReject = fileRejected || allHunksRejected;
+    const hasSnapshot = ledgerSnippets.some(
+      (snippet) => snippet.type === 'shell-snapshot' || snippet.type === 'hook-snapshot'
+    );
+    const hasUnavailableState = ledgerSnippets.some(
+      (snippet) =>
+        snippet.ledger?.beforeState?.unavailableReason ||
+        snippet.ledger?.afterState?.unavailableReason
+    );
+    const relation = this.resolveLedgerRelation(ledgerSnippets);
+
+    if (!fullReject) {
+      if (relation?.kind === 'rename') {
+        return {
+          handled: true,
+          status: 'error',
+          code: 'manual-review-required',
+          error: 'Ledger rename partial reject requires manual review.',
+        };
+      }
+      if (!hasSnapshot) {
+        return { handled: false };
+      }
+      if (original === null || modified === null) {
+        return {
+          handled: true,
+          status: 'error',
+          code: 'manual-review-required',
+          error: 'Ledger snapshot content is unavailable; partial reject requires manual review.',
+        };
+      }
+      const guard = await this.checkLedgerCurrentHash(filePath, lastLedger.afterState?.sha256);
+      if (!guard.ok) {
+        return guard.outcome;
+      }
+      const patchResult = this.tryHunkLevelReject(original, modified, rejectedHunkIndices);
+      if (!patchResult) {
+        return {
+          handled: true,
+          status: 'error',
+          code: 'manual-review-required',
+          error: 'Ledger snapshot partial reject could not be applied safely.',
+        };
+      }
+      try {
+        await writeFile(filePath, patchResult.newContent, 'utf8');
+        return { handled: true, status: 'applied' };
+      } catch (err) {
+        return {
+          handled: true,
+          status: 'error',
+          code: 'io-error',
+          error: `Не удалось записать файл: ${String(err)}`,
+        };
+      }
+    }
+
+    if (relation?.kind === 'rename') {
+      return this.rejectLedgerRename(ledgerSnippets, relation, original, hasUnavailableState);
+    }
+
+    const operation = this.resolveLedgerOperation(ledgerSnippets);
+    if (operation === 'create') {
+      const afterHash = lastLedger.afterState?.sha256 ?? lastLedger.afterHash ?? undefined;
+      const current = await this.readCurrentText(filePath);
+      if (current.missing) {
+        return { handled: true, status: 'applied' };
+      }
+      if (current.error) {
+        return {
+          handled: true,
+          status: 'error',
+          code: 'io-error',
+          error: current.error,
+        };
+      }
+      if (!afterHash) {
+        return {
+          handled: true,
+          status: 'error',
+          code: hasUnavailableState ? 'manual-review-required' : 'unavailable',
+          error: 'Ledger after content hash is unavailable; refusing to delete file automatically.',
+        };
+      }
+      if (this.hashText(current.content) !== afterHash) {
+        return {
+          handled: true,
+          status: 'conflict',
+          code: 'conflict',
+          error: 'File was modified since review was computed; refusing ledger delete.',
+        };
+      }
+      try {
+        await unlink(filePath);
+        return { handled: true, status: 'applied' };
+      } catch (err) {
+        const msg = String(err);
+        if (msg.includes('ENOENT')) {
+          return { handled: true, status: 'applied' };
+        }
+        return {
+          handled: true,
+          status: 'error',
+          code: 'io-error',
+          error: `Failed to delete new file: ${msg}`,
+        };
+      }
+    }
+
+    if (operation === 'delete') {
+      if (original === null) {
+        return {
+          handled: true,
+          status: 'error',
+          code: 'manual-review-required',
+          error: 'Ledger before content is unavailable; deleted file requires manual restore.',
+        };
+      }
+      const current = await this.readCurrentText(filePath);
+      if (!current.missing) {
+        return {
+          handled: true,
+          status: 'conflict',
+          code: 'conflict',
+          error:
+            current.error || 'File exists on disk; refusing to overwrite while rejecting delete.',
+        };
+      }
+      try {
+        await writeFile(filePath, original, 'utf8');
+        return { handled: true, status: 'applied' };
+      } catch (err) {
+        return {
+          handled: true,
+          status: 'error',
+          code: 'io-error',
+          error: `Не удалось записать файл: ${String(err)}`,
+        };
+      }
+    }
+
+    if (original === null) {
+      return {
+        handled: true,
+        status: 'error',
+        code: hasUnavailableState ? 'manual-review-required' : 'unavailable',
+        error:
+          'Ledger before content is unavailable; rejecting this change requires manual review.',
+      };
+    }
+    const guard = await this.checkLedgerCurrentHash(filePath, lastLedger.afterState?.sha256);
+    if (!guard.ok) {
+      return guard.outcome;
+    }
+    try {
+      await writeFile(filePath, original, 'utf8');
+      return { handled: true, status: 'applied' };
+    } catch (err) {
+      return {
+        handled: true,
+        status: 'error',
+        code: 'io-error',
+        error: `Не удалось записать файл: ${String(err)}`,
+      };
+    }
+  }
+
+  private resolveLedgerOperation(snippets: SnippetDiff[]): 'create' | 'modify' | 'delete' {
+    if (snippets.some((snippet) => snippet.ledger?.operation === 'create')) return 'create';
+    if (snippets[snippets.length - 1]?.ledger?.operation === 'delete') return 'delete';
+    return 'modify';
+  }
+
+  private resolveLedgerRelation(snippets: SnippetDiff[]): LedgerChangeRelation | undefined {
+    return snippets.find((snippet) => snippet.ledger?.relation)?.ledger?.relation;
+  }
+
+  private async rejectLedgerRename(
+    snippets: SnippetDiff[],
+    relation: LedgerChangeRelation,
+    original: string | null,
+    hasUnavailableState: boolean
+  ): Promise<LedgerApplyOutcome> {
+    const oldSnippet =
+      snippets.find(
+        (snippet) =>
+          snippet.ledger?.operation === 'delete' &&
+          this.pathMatchesRelationPath(snippet.filePath, relation.oldPath)
+      ) ?? snippets.find((snippet) => snippet.ledger?.operation === 'delete');
+    const newSnippet =
+      snippets.find(
+        (snippet) =>
+          snippet.ledger?.operation === 'create' &&
+          this.pathMatchesRelationPath(snippet.filePath, relation.newPath)
+      ) ?? snippets.find((snippet) => snippet.ledger?.operation === 'create');
+    const oldFilePath =
+      oldSnippet?.filePath ??
+      this.resolveRelatedLedgerPath(newSnippet?.filePath, relation.newPath, relation.oldPath);
+    const newFilePath = newSnippet?.filePath;
+    const oldContent = oldSnippet?.ledger?.originalFullContent ?? original;
+    const newHash = newSnippet?.ledger?.afterState?.sha256 ?? newSnippet?.ledger?.afterHash;
+    const oldHash = oldSnippet?.ledger?.beforeState?.sha256 ?? oldSnippet?.ledger?.beforeHash;
+
+    if (!oldFilePath || !newFilePath || oldContent === null) {
+      return {
+        handled: true,
+        status: 'error',
+        code: 'manual-review-required',
+        error: 'Ledger rename metadata is incomplete; manual review is required.',
+      };
+    }
+    if (hasUnavailableState || !newHash) {
+      return {
+        handled: true,
+        status: 'error',
+        code: 'manual-review-required',
+        error: 'Ledger rename content metadata is unavailable; manual review is required.',
+      };
+    }
+
+    const newCurrent = await this.readCurrentText(newFilePath);
+    if (!newCurrent.missing) {
+      if (newCurrent.error) {
+        return {
+          handled: true,
+          status: 'error',
+          code: 'io-error',
+          error: newCurrent.error,
+        };
+      }
+      if (this.hashText(newCurrent.content) !== newHash) {
+        return {
+          handled: true,
+          status: 'conflict',
+          code: 'conflict',
+          error: 'Renamed file was modified since review was computed; refusing ledger reject.',
+        };
+      }
+    }
+
+    const oldCurrent = await this.readCurrentText(oldFilePath);
+    if (!oldCurrent.missing) {
+      if (oldCurrent.error) {
+        return {
+          handled: true,
+          status: 'error',
+          code: 'io-error',
+          error: oldCurrent.error,
+        };
+      }
+      if (!oldHash || this.hashText(oldCurrent.content) !== oldHash) {
+        return {
+          handled: true,
+          status: 'conflict',
+          code: 'conflict',
+          error: 'Original rename path already exists with different content; refusing overwrite.',
+        };
+      }
+    }
+
+    try {
+      if (oldCurrent.missing) {
+        await mkdir(dirname(oldFilePath), { recursive: true });
+        await writeFile(oldFilePath, oldContent, 'utf8');
+      }
+      if (!newCurrent.missing) {
+        await unlink(newFilePath);
+      }
+      return { handled: true, status: 'applied' };
+    } catch (err) {
+      return {
+        handled: true,
+        status: 'error',
+        code: 'io-error',
+        error: `Failed to reject ledger rename: ${String(err)}`,
+      };
+    }
+  }
+
+  private pathMatchesRelationPath(filePath: string, relationPath: string): boolean {
+    const normalizedFilePath = filePath.replace(/\\/g, '/');
+    const normalizedRelationPath = relationPath.replace(/\\/g, '/');
+    return (
+      normalizedFilePath === normalizedRelationPath ||
+      normalizedFilePath.endsWith(`/${normalizedRelationPath}`)
+    );
+  }
+
+  private resolveRelatedLedgerPath(
+    anchorPath: string | undefined,
+    anchorRelationPath: string,
+    targetRelationPath: string
+  ): string | null {
+    if (!anchorPath) {
+      return null;
+    }
+    const normalizedAnchor = anchorPath.replace(/\\/g, '/');
+    const normalizedRelation = anchorRelationPath.replace(/\\/g, '/');
+    if (!normalizedAnchor.endsWith(normalizedRelation)) {
+      return null;
+    }
+    return `${normalizedAnchor.slice(0, normalizedAnchor.length - normalizedRelation.length)}${targetRelationPath.replace(/\\/g, '/')}`;
+  }
+
+  private async checkLedgerCurrentHash(
+    filePath: string,
+    expectedHash: string | undefined
+  ): Promise<{ ok: true } | { ok: false; outcome: LedgerApplyOutcome }> {
+    if (!expectedHash) {
+      return {
+        ok: false,
+        outcome: {
+          handled: true,
+          status: 'error',
+          code: 'manual-review-required',
+          error: 'Ledger expected content hash is unavailable; refusing automatic apply.',
+        },
+      };
+    }
+    const current = await this.readCurrentText(filePath);
+    if (current.missing) {
+      return {
+        ok: false,
+        outcome: {
+          handled: true,
+          status: 'conflict',
+          code: 'conflict',
+          error: 'File is missing on disk; refusing ledger apply.',
+        },
+      };
+    }
+    if (current.error) {
+      return {
+        ok: false,
+        outcome: {
+          handled: true,
+          status: 'error',
+          code: 'io-error',
+          error: current.error,
+        },
+      };
+    }
+    if (this.hashText(current.content) !== expectedHash) {
+      return {
+        ok: false,
+        outcome: {
+          handled: true,
+          status: 'conflict',
+          code: 'conflict',
+          error: 'File was modified since review was computed; refusing ledger apply.',
+        },
+      };
+    }
+    return { ok: true };
+  }
+
+  private async readCurrentText(
+    filePath: string
+  ): Promise<
+    | { missing: true; content: ''; error?: undefined }
+    | { missing: false; content: string; error?: undefined }
+    | { missing: false; content: ''; error: string }
+  > {
+    try {
+      return { missing: false, content: await readFile(filePath, 'utf8') };
+    } catch (err) {
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? String((err as { code?: unknown }).code)
+          : '';
+      if (code === 'ENOENT') {
+        return { missing: true, content: '' };
+      }
+      return { missing: false, content: '', error: `Не удалось прочитать файл: ${String(err)}` };
+    }
+  }
+
+  private hashText(content: string): string {
+    return createHash('sha256').update(content).digest('hex');
+  }
+
   /**
    * Snippet-level rejection: reverse specific snippets by position (most accurate).
    *
@@ -409,7 +850,13 @@ export class ReviewApplierService {
     // They are not localized, and matching a single hunk to a full-file write
     // can incorrectly delete/overwrite large parts of the file.
     const validSnippets = snippets.filter(
-      (s) => !s.isError && s.type !== 'write-new' && s.type !== 'write-update'
+      (s) =>
+        !s.isError &&
+        s.type !== 'write-new' &&
+        s.type !== 'write-update' &&
+        s.type !== 'notebook-edit' &&
+        s.type !== 'shell-snapshot' &&
+        s.type !== 'hook-snapshot'
     );
     if (validSnippets.length === 0) return null;
 

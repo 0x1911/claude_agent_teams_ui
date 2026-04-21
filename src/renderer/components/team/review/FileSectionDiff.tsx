@@ -117,6 +117,15 @@ export const FileSectionDiff = ({
 
   const resolvedOriginal = fileContent?.originalFullContent ?? null;
   const isMissingOnDisk = fileContent ? fileContent.modifiedFullContent == null : false;
+  const hasLedgerManualAction = file.snippets.some(
+    (snippet) =>
+      !!snippet.ledger &&
+      (snippet.ledger.relation?.kind === 'rename' ||
+        (!!snippet.ledger.beforeState?.unavailableReason &&
+          snippet.ledger.originalFullContent == null) ||
+        (!!snippet.ledger.afterState?.unavailableReason &&
+          snippet.ledger.modifiedFullContent == null))
+  );
 
   // Show CodeMirror only when we have a trustworthy original baseline:
   // - new files: original is legitimately empty
@@ -168,8 +177,8 @@ export const FileSectionDiff = ({
           original={originalForDiff}
           modified={resolvedModified}
           fileName={file.relativePath}
-          readOnly={false}
-          showMergeControls={!isMissingOnDisk}
+          readOnly={hasLedgerManualAction}
+          showMergeControls={!isMissingOnDisk && !hasLedgerManualAction}
           collapseUnchanged={collapseUnchanged}
           usePortionCollapse={true}
           onHunkAccepted={(idx) => onHunkAccepted(file.filePath, idx)}

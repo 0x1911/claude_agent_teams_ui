@@ -63,6 +63,11 @@ export class FileContentResolver {
     modified: string | null;
     source: FileChangeWithContent['contentSource'];
   }> {
+    const ledgerResult = this.tryLedgerContent(snippets);
+    if (ledgerResult) {
+      return ledgerResult;
+    }
+
     // Read current file from disk (= modified state after agent's changes)
     let currentContent: string | null = null;
     try {
@@ -183,7 +188,9 @@ export class FileContentResolver {
       }
     }
 
-    const isNewFile = snippets.some((s) => s.type === 'write-new');
+    const isNewFile = snippets.some(
+      (s) => s.type === 'write-new' || s.ledger?.operation === 'create'
+    );
 
     return {
       filePath,
@@ -256,6 +263,47 @@ export class FileContentResolver {
   }
 
   // ── Private: Resolution strategies ──
+
+  private tryLedgerContent(snippets: SnippetDiff[]): {
+    original: string | null;
+    modified: string | null;
+    source: FileChangeWithContent['contentSource'];
+  } | null {
+    const ledgerSnippets = snippets
+      .filter((snippet) => snippet.ledger && !snippet.isError)
+      .sort((a, b) => {
+        const aTime = Date.parse(a.timestamp);
+        const bTime = Date.parse(b.timestamp);
+        if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) {
+          return aTime - bTime;
+        }
+        return a.toolUseId.localeCompare(b.toolUseId);
+      });
+
+    if (ledgerSnippets.length === 0) {
+      return null;
+    }
+
+    const first = ledgerSnippets[0]?.ledger;
+    const last = ledgerSnippets[ledgerSnippets.length - 1]?.ledger;
+    if (!first || !last) {
+      return null;
+    }
+    const original = first.originalFullContent ?? (first.operation === 'create' ? '' : null);
+    const modified = last.modifiedFullContent ?? (last.operation === 'delete' ? '' : null);
+    if (original === null && modified === null) {
+      return null;
+    }
+
+    const hasSnapshot = ledgerSnippets.some(
+      (snippet) => snippet.ledger?.source === 'ledger-snapshot'
+    );
+    return {
+      original,
+      modified,
+      source: hasSnapshot ? 'ledger-snapshot' : 'ledger-exact',
+    };
+  }
 
   /**
    * Strategy 1: Read original content from Claude's file-history backup.
@@ -426,6 +474,13 @@ export class FileContentResolver {
 
         case 'write-update': {
           // Full file overwrite — can't reconstruct previous content from snippets alone
+          return null;
+        }
+
+        case 'notebook-edit':
+        case 'shell-snapshot':
+        case 'hook-snapshot': {
+          // Snapshot/full-file changes are only safe when ledger content is available.
           return null;
         }
 

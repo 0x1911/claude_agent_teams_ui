@@ -1,9 +1,29 @@
 /** Один snippet-level дифф от одного tool_use */
+export interface LedgerContentState {
+  exists?: boolean;
+  sha256?: string;
+  sizeBytes?: number;
+  unavailableReason?: string;
+}
+
+export interface LedgerChangeRelation {
+  kind: 'rename' | 'copy';
+  oldPath: string;
+  newPath: string;
+}
+
 export interface SnippetDiff {
   toolUseId: string;
   filePath: string;
-  toolName: 'Edit' | 'Write' | 'MultiEdit';
-  type: 'edit' | 'write-new' | 'write-update' | 'multi-edit';
+  toolName: 'Edit' | 'Write' | 'MultiEdit' | 'NotebookEdit' | 'Bash' | 'PowerShell' | 'PostToolUse';
+  type:
+    | 'edit'
+    | 'write-new'
+    | 'write-update'
+    | 'multi-edit'
+    | 'notebook-edit'
+    | 'shell-snapshot'
+    | 'hook-snapshot';
   oldString: string;
   newString: string;
   replaceAll: boolean;
@@ -11,6 +31,21 @@ export interface SnippetDiff {
   isError: boolean;
   /** Hash of ±3 surrounding context lines for reliable hunk↔snippet matching */
   contextHash?: string;
+  /** Exact content captured by the orchestrator task-change ledger. */
+  ledger?: {
+    eventId: string;
+    source: 'ledger-exact' | 'ledger-snapshot';
+    confidence: 'exact' | 'high' | 'medium' | 'low' | 'ambiguous';
+    originalFullContent: string | null;
+    modifiedFullContent: string | null;
+    beforeHash: string | null;
+    afterHash: string | null;
+    operation?: 'create' | 'modify' | 'delete';
+    beforeState?: LedgerContentState;
+    afterState?: LedgerContentState;
+    relation?: LedgerChangeRelation;
+    executionSeq?: number;
+  };
 }
 
 /** Агрегированные изменения по файлу */
@@ -106,7 +141,11 @@ export interface ApplyReviewResult {
   applied: number;
   skipped: number;
   conflicts: number;
-  errors: { filePath: string; error: string }[];
+  errors: {
+    filePath: string;
+    error: string;
+    code?: 'conflict' | 'unavailable' | 'manual-review-required' | 'io-error';
+  }[];
 }
 
 /** Полный file content для CodeMirror */
@@ -114,6 +153,8 @@ export interface FileChangeWithContent extends FileChangeSummary {
   originalFullContent: string | null;
   modifiedFullContent: string | null;
   contentSource:
+    | 'ledger-exact'
+    | 'ledger-snapshot'
     | 'file-history'
     | 'snippet-reconstruction'
     | 'disk-current'
@@ -174,7 +215,7 @@ export interface FileEditEvent {
   /** tool_use.id */
   toolUseId: string;
   /** Тип операции */
-  toolName: 'Edit' | 'Write' | 'MultiEdit' | 'NotebookEdit';
+  toolName: 'Edit' | 'Write' | 'MultiEdit' | 'NotebookEdit' | 'Bash' | 'PowerShell' | 'PostToolUse';
   /** Timestamp из JSONL */
   timestamp: string;
   /** Краткое описание: "Edited 3 lines", "Created new file", etc */
