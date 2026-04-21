@@ -849,6 +849,153 @@ describe('TeamProvisioningService prepare/auth behavior', () => {
     });
   });
 
+  it('builds Anthropic launch identity with exact max effort and resolved fast mode', () => {
+    const svc = new TeamProvisioningService();
+    const launchIdentity = (svc as any).buildProviderModelLaunchIdentity({
+      request: {
+        providerId: 'anthropic',
+        model: 'claude-opus-4-6',
+        effort: 'max',
+        fastMode: 'on',
+        limitContext: true,
+      },
+      facts: {
+        defaultModel: 'opus[1m]',
+        modelIds: new Set(['claude-opus-4-6']),
+        modelCatalog: {
+          schemaVersion: 1,
+          providerId: 'anthropic',
+          source: 'anthropic-models-api',
+          status: 'ready',
+          fetchedAt: '2026-04-21T00:00:00.000Z',
+          staleAt: '2026-04-21T00:01:00.000Z',
+          defaultModelId: 'opus',
+          defaultLaunchModel: 'opus[1m]',
+          models: [
+            {
+              id: 'claude-opus-4-6',
+              launchModel: 'claude-opus-4-6',
+              displayName: 'Opus 4.6',
+              hidden: false,
+              supportedReasoningEfforts: ['low', 'medium', 'high', 'max'],
+              defaultReasoningEffort: 'high',
+              supportsFastMode: true,
+              inputModalities: ['text', 'image'],
+              supportsPersonality: false,
+              isDefault: false,
+              upgrade: false,
+              source: 'anthropic-models-api',
+            },
+          ],
+          diagnostics: {
+            configReadState: 'ready',
+            appServerState: 'healthy',
+          },
+        },
+        runtimeCapabilities: {
+          modelCatalog: { dynamic: true, source: 'anthropic-models-api' },
+          reasoningEffort: {
+            supported: true,
+            values: ['low', 'medium', 'high', 'max'],
+            configPassthrough: true,
+          },
+          fastMode: {
+            supported: true,
+            available: true,
+            reason: null,
+            source: 'runtime',
+          },
+        },
+      },
+    });
+
+    expect(launchIdentity).toMatchObject({
+      providerId: 'anthropic',
+      selectedModel: 'claude-opus-4-6',
+      selectedModelKind: 'explicit',
+      resolvedLaunchModel: 'claude-opus-4-6',
+      selectedEffort: 'max',
+      resolvedEffort: 'max',
+      selectedFastMode: 'on',
+      resolvedFastMode: true,
+      fastResolutionReason: null,
+    });
+  });
+
+  it('rejects Anthropic max and fast when the exact resolved launch model does not support them', () => {
+    const svc = new TeamProvisioningService();
+    const facts = {
+      defaultModel: 'opus[1m]',
+      modelIds: new Set(['opus[1m]']),
+      modelCatalog: {
+        schemaVersion: 1,
+        providerId: 'anthropic',
+        source: 'anthropic-models-api',
+        status: 'ready',
+        fetchedAt: '2026-04-21T00:00:00.000Z',
+        staleAt: '2026-04-21T00:01:00.000Z',
+        defaultModelId: 'opus',
+        defaultLaunchModel: 'opus[1m]',
+        models: [
+          {
+            id: 'opus[1m]',
+            launchModel: 'opus[1m]',
+            displayName: 'Opus 4.7 (1M)',
+            hidden: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            supportsFastMode: false,
+            inputModalities: ['text', 'image'],
+            supportsPersonality: false,
+            isDefault: true,
+            upgrade: false,
+            source: 'anthropic-models-api',
+          },
+        ],
+        diagnostics: {
+          configReadState: 'ready',
+          appServerState: 'healthy',
+        },
+      },
+      runtimeCapabilities: {
+        modelCatalog: { dynamic: true, source: 'anthropic-models-api' },
+        reasoningEffort: {
+          supported: true,
+          values: ['low', 'medium', 'high', 'max'],
+          configPassthrough: true,
+        },
+        fastMode: {
+          supported: true,
+          available: true,
+          reason: null,
+          source: 'runtime',
+        },
+      },
+    };
+
+    expect(() =>
+      (svc as any).validateRuntimeLaunchSelection({
+        actorLabel: 'Team lead',
+        providerId: 'anthropic',
+        model: 'opus',
+        effort: 'max',
+        limitContext: false,
+        facts,
+      })
+    ).toThrow('does not support it in the current runtime');
+
+    expect(() =>
+      (svc as any).validateRuntimeLaunchSelection({
+        actorLabel: 'Team lead',
+        providerId: 'anthropic',
+        model: 'opus',
+        fastMode: 'on',
+        limitContext: false,
+        facts,
+      })
+    ).toThrow('enables Anthropic Fast mode');
+  });
+
   it('emits a lead-message refresh after provisioning reaches ready', async () => {
     const svc = new TeamProvisioningService();
     const emitter = vi.fn();

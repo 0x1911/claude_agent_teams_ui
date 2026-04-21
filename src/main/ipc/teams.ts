@@ -1490,12 +1490,15 @@ async function handleLaunchTeam(
   if (payload.model !== undefined && typeof payload.model !== 'string') {
     return { success: false, error: 'model must be a string' };
   }
-  const providerId =
+  const explicitProviderId =
     payload.providerId === 'codex'
       ? 'codex'
       : payload.providerId === 'gemini'
         ? 'gemini'
-        : 'anthropic';
+        : payload.providerId === 'anthropic'
+          ? 'anthropic'
+          : undefined;
+  const providerId = explicitProviderId ?? 'anthropic';
   const providerBackendValidation = parseOptionalProviderBackendId(
     payload.providerBackendId,
     providerId
