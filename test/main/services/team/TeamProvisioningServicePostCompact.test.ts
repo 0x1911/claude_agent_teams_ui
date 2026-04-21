@@ -23,6 +23,7 @@ vi.mock('@main/services/team/ClaudeBinaryResolver', () => ({
 
 vi.mock('@main/utils/childProcess', () => ({
   spawnCli: vi.fn(),
+  execCli: vi.fn(),
   killProcessTree: vi.fn(),
 }));
 
@@ -39,7 +40,7 @@ vi.mock('@main/utils/pathDecoder', async (importOriginal) => {
 
 import { TeamProvisioningService } from '@main/services/team/TeamProvisioningService';
 import { ClaudeBinaryResolver } from '@main/services/team/ClaudeBinaryResolver';
-import { spawnCli } from '@main/utils/childProcess';
+import { execCli, spawnCli } from '@main/utils/childProcess';
 import { setAppDataBasePath } from '@main/utils/pathDecoder';
 
 function createFakeChild() {
@@ -78,6 +79,56 @@ async function setupRunningTeam(teamName: string) {
   vi.mocked(ClaudeBinaryResolver.resolve).mockResolvedValue('/fake/claude');
   const { child, writeSpy } = createFakeChild();
   vi.mocked(spawnCli).mockReturnValue(child as any);
+  vi.mocked(execCli).mockImplementation(async (_binaryPath, args) => {
+    const providerIndex = args.indexOf('--provider');
+    const providerId = providerIndex >= 0 ? args[providerIndex + 1] : 'anthropic';
+    if (args[0] === 'model' && args[1] === 'list') {
+      return {
+        stdout: JSON.stringify({
+          providers: {
+            [providerId ?? 'anthropic']: {
+              defaultModel: providerId === 'codex' ? 'gpt-5.4' : 'opus[1m]',
+              models:
+                providerId === 'codex'
+                  ? ['gpt-5.4']
+                  : ['opus[1m]', 'opus', 'claude-opus-4-6', 'sonnet', 'haiku'],
+            },
+          },
+        }),
+        stderr: '',
+      };
+    }
+    if (args[0] === 'runtime' && args[1] === 'status') {
+      return {
+        stdout: JSON.stringify({
+          providers: {
+            [providerId ?? 'anthropic']: {
+              runtimeCapabilities:
+                providerId === 'codex'
+                  ? {
+                      reasoningEffort: {
+                        supported: true,
+                        values: ['minimal', 'low', 'medium', 'high', 'xhigh'],
+                        configPassthrough: true,
+                      },
+                    }
+                  : {
+                      fastMode: {
+                        supported: false,
+                        available: false,
+                        reason: 'Test runtime does not expose fast mode.',
+                        source: 'test',
+                      },
+                    },
+              modelCatalog: null,
+            },
+          },
+        }),
+        stderr: '',
+      };
+    }
+    return { stdout: '{}', stderr: '' };
+  });
 
   const svc = new TeamProvisioningService();
   (svc as any).buildProvisioningEnv = vi.fn(async () => ({

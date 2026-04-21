@@ -140,11 +140,41 @@ describe('teamModelAvailability', () => {
 
   it('keeps both Anthropic Opus 4.7 and explicit Opus 4.6 in the fallback selector options', () => {
     expect(getAvailableTeamProviderModelOptions('anthropic')).toEqual([
-      { value: '', label: 'Default', badgeLabel: 'Default' },
-      { value: 'opus', label: 'Opus 4.7', badgeLabel: 'Opus 4.7' },
-      { value: 'claude-opus-4-6', label: 'Opus 4.6', badgeLabel: 'Opus 4.6' },
-      { value: 'sonnet', label: 'Sonnet 4.6', badgeLabel: 'Sonnet 4.6' },
-      { value: 'haiku', label: 'Haiku 4.5', badgeLabel: 'Haiku 4.5' },
+      {
+        value: '',
+        label: 'Default',
+        badgeLabel: 'Default',
+        availabilityStatus: undefined,
+        availabilityReason: undefined,
+      },
+      {
+        value: 'opus',
+        label: 'Opus 4.7',
+        badgeLabel: 'Opus 4.7',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+      {
+        value: 'claude-opus-4-6',
+        label: 'Opus 4.6',
+        badgeLabel: 'Opus 4.6',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+      {
+        value: 'sonnet',
+        label: 'Sonnet 4.6',
+        badgeLabel: 'Sonnet 4.6',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
+      {
+        value: 'haiku',
+        label: 'Haiku 4.5',
+        badgeLabel: 'Haiku 4.5',
+        availabilityStatus: 'available',
+        availabilityReason: null,
+      },
     ]);
   });
 

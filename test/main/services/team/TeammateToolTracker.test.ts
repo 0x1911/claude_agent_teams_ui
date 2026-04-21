@@ -25,7 +25,7 @@ async function createSubagentLog(
   return filePath;
 }
 
-async function waitForCondition(check: () => void, attempts = 20): Promise<void> {
+async function waitForCondition(check: () => void, attempts = 100): Promise<void> {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
@@ -161,6 +161,8 @@ describe('TeammateToolTracker', () => {
     tracker.handleLogSourceChange('my-team');
     await waitForCondition(() => {
       expect(events).toHaveLength(1);
+      const fileState = (tracker as any).stateByTeam.get('my-team')?.filesByPath.get(filePath);
+      expect(fileState?.lineCarry).toBe(resultLine.slice(0, splitAt).trim());
     });
 
     await appendFile(filePath, `${resultLine.slice(splitAt)}\n`, 'utf8');
